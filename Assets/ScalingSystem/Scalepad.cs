@@ -38,6 +38,10 @@ public class ScalePad : MonoBehaviour
     // 현재 이 패드를 밟고 있는 PlayerShapeController (null이면 아무도 없음)
     private PlayerShapeController currentPlayer = null;
 
+    // ③ Player_Root + Player_Mesh 둘 다 Tag: Player이므로 Enter/Exit가 두 번씩 호출됨
+    // 카운터로 실제로 몇 개의 Collider가 겹쳐있는지 추적하여 중복 해제 방지
+    private int overlapCount = 0;
+
     void Start()
     {
         meshRenderer = GetComponent<MeshRenderer>();
@@ -66,6 +70,7 @@ public class ScalePad : MonoBehaviour
     private void OnDisable()
     {
         // 비활성화 시 현재 밟고 있던 플레이어의 동작 해제 및 색상 복원
+        overlapCount = 0;
         ReleaseCurrentPlayer();
     }
 
@@ -80,10 +85,15 @@ public class ScalePad : MonoBehaviour
             return;
         }
 
-        // 현재 패드를 밟기 시작 — 동작 시작 및 색상 활성화
-        currentPlayer = shapeController;
-        shapeController.SetAction(PadTypeToAction(padType));
-        SetPadColor(activateColor);
+        overlapCount++;
+
+        // ③ 첫 번째 Enter일 때만 동작 시작 및 색상 활성화 (중복 SetAction 방지)
+        if (overlapCount == 1)
+        {
+            currentPlayer = shapeController;
+            shapeController.SetAction(PadTypeToAction(padType));
+            SetPadColor(activateColor);
+        }
     }
 
     private void OnTriggerExit(Collider other)
@@ -93,13 +103,16 @@ public class ScalePad : MonoBehaviour
         PlayerShapeController shapeController = FindShapeController(other);
         if (shapeController == null) return;
 
-        // 발판에서 발을 뗌 — 동작 중단 및 색상 복원
-        shapeController.ClearAction(PadTypeToAction(padType));
-
-        if (currentPlayer == shapeController)
+        // ③ 카운터를 줄이고, 0이 됐을 때만 동작 중단 및 색상 복원
+        overlapCount = Mathf.Max(0, overlapCount - 1);
+        if (overlapCount == 0)
         {
-            currentPlayer = null;
-            SetPadColor(defaultColor);
+            shapeController.ClearAction(PadTypeToAction(padType));
+            if (currentPlayer == shapeController)
+            {
+                currentPlayer = null;
+                SetPadColor(defaultColor);
+            }
         }
     }
 

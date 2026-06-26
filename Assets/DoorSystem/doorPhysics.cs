@@ -13,12 +13,15 @@ public class doorPhysics : MonoBehaviour
 
     private Vector3 doorStartPosition;
     private Vector3 doorTargetPosition;
-    private Vector3 doorBottomPosition; // 변수는 유지되나 레버 로직에서는 제외됩니다.
-    
-    private Vector3 currentTargetPosition; 
+    private Vector3 doorBottomPosition;
+
+    private Vector3 currentTargetPosition;
 
     private bool isPadPressed = false;
     private bool isBlocked = false;
+
+    // ④ Player_Root + Player_Mesh 둘 다 Tag: Player이므로 Enter/Exit 중복 호출 방지
+    private int blockedOverlapCount = 0;
 
     void Awake()
     {
@@ -30,8 +33,8 @@ public class doorPhysics : MonoBehaviour
             doorStartPosition = doorRigidbody.transform.position;
             doorTargetPosition = doorStartPosition + new Vector3(0, doorTargetYOffset, 0);
             doorBottomPosition = doorStartPosition - new Vector3(0, doorTargetYOffset, 0);
-            
-            currentTargetPosition = doorStartPosition; 
+
+            currentTargetPosition = doorStartPosition;
         }
     }
 
@@ -39,29 +42,17 @@ public class doorPhysics : MonoBehaviour
     {
         float leverAngle = leverHead != null ? leverHead.GetCurrentAngle() : 0f;
 
-        // --- 수정된 우선순위 조건문 ---
-        
-        // 1. 레버가 30도 이상일 때 -> 무조건 위로 고정
         if (leverAngle >= leverTriggerAngle)
         {
             currentTargetPosition = doorTargetPosition;
         }
-        // 2. 레버가 -30도 이하일 때 -> 무조건 원래 위치(중간)로 고정 ★ 수정된 부분
         else if (leverAngle <= -leverTriggerAngle)
         {
             currentTargetPosition = doorStartPosition;
         }
-        // 3. 레버가 중간 범위(-30 < x < 30)에 있을 때 -> 발판(Pad) 상태에 따름
         else
         {
-            if (isPadPressed)
-            {
-                currentTargetPosition = doorTargetPosition; // 발판 밟으면 위로
-            }
-            else
-            {
-                currentTargetPosition = doorStartPosition;  // 발판 안 밟으면 원래 위치(중간)로
-            }
+            currentTargetPosition = isPadPressed ? doorTargetPosition : doorStartPosition;
         }
 
         Vector3 moveTarget = isBlocked ? doorRigidbody.transform.position : currentTargetPosition;
@@ -80,13 +71,20 @@ public class doorPhysics : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
-            isBlocked = true;
+        if (!other.CompareTag("Player")) return;
+
+        // ④ 카운터 증가 — 첫 번째 Enter에서만 isBlocked = true
+        blockedOverlapCount++;
+        isBlocked = true;
     }
 
     private void OnTriggerExit(Collider other)
     {
-        if (other.CompareTag("Player"))
+        if (!other.CompareTag("Player")) return;
+
+        // ④ 카운터를 줄이고, 0이 됐을 때만 isBlocked 해제
+        blockedOverlapCount = Mathf.Max(0, blockedOverlapCount - 1);
+        if (blockedOverlapCount == 0)
             isBlocked = false;
     }
 }
