@@ -366,6 +366,8 @@ MonoBehaviour:
   rotateSpeed: 3
   maxAngle: 45
   normalSmoothSpeed: 5
+  returnDelay: 1
+  returnSpeed: 0.1
 --- !u!1 &346158840
 GameObject:
   m_ObjectHideFlags: 0

@@ -8,10 +8,14 @@ public class LeverHead : MonoBehaviour
     public float maxAngle = 45f;
     [Tooltip("충돌 노멀을 보간하는 속도. 값이 클수록 방향 전환이 빠릅니다.")]
     public float normalSmoothSpeed = 5f;
+    public float returnDelay = 2f;
+    public float returnSpeed = 1.5f;
 
     private float targetAngle = 0f;
     private bool isBeingPushed = false;
     private Vector3 smoothedNormal = Vector3.zero;
+    private float returnTimer = 0f;
+    private bool isReturning = false;
 
     void Start()
     {
@@ -44,6 +48,34 @@ public class LeverHead : MonoBehaviour
                 1f - Mathf.Exp(-rotateSpeed * Time.fixedDeltaTime)
             );
         }
+        else if (isReturning)
+        {
+            returnTimer -= Time.fixedDeltaTime;
+            if (returnTimer <= 0f)
+            {
+                leverPivot.localRotation = Quaternion.Slerp(
+                    leverPivot.localRotation,
+                    Quaternion.Euler(
+                        leverPivot.localEulerAngles.x,
+                        -45f,
+                        leverPivot.localEulerAngles.z
+                    ),
+                    1f - Mathf.Exp(-returnSpeed * Time.fixedDeltaTime)
+                );
+
+                float current = leverPivot.localEulerAngles.y;
+                if (current > 180f) current -= 360f;
+                if (Mathf.Abs(current - (-45f)) < 0.5f)
+                {
+                    isReturning = false;
+                    leverPivot.localRotation = Quaternion.Euler(
+                        leverPivot.localEulerAngles.x,
+                        -45f,
+                        leverPivot.localEulerAngles.z
+                    );
+                }
+            }
+        }
     }
 
     void OnCollisionEnter(Collision collision)
@@ -51,8 +83,9 @@ public class LeverHead : MonoBehaviour
         if (!collision.gameObject.CompareTag("Player")) return;
 
         isBeingPushed = true;
+        isReturning = false;
+        returnTimer = 0f;
 
-        // 충돌 첫 프레임 노멀을 초기값으로 설정
         smoothedNormal = collision.contacts[0].normal;
         UpdatePushDirection(smoothedNormal);
     }
@@ -61,7 +94,6 @@ public class LeverHead : MonoBehaviour
     {
         if (!collision.gameObject.CompareTag("Player")) return;
 
-        // 충돌 노멀을 부드럽게 Lerp하여 스케일 변화로 인한 노멀 흔들림 완화
         smoothedNormal = Vector3.Lerp(
             smoothedNormal,
             collision.contacts[0].normal,
@@ -76,21 +108,20 @@ public class LeverHead : MonoBehaviour
 
         isBeingPushed = false;
         smoothedNormal = Vector3.zero;
+        isReturning = true;
+        returnTimer = returnDelay;
 
         if (leverPivot == null) return;
         targetAngle = leverPivot.localEulerAngles.y;
         if (targetAngle > 180f) targetAngle -= 360f;
     }
 
-    /// <summary>충돌 노멀을 leverPivot 로컬 공간으로 변환해 targetAngle 결정</summary>
     private void UpdatePushDirection(Vector3 worldNormal)
     {
         if (leverPivot == null) return;
 
         Vector3 localDir = leverPivot.InverseTransformDirection(worldNormal);
 
-        // XZ 평면에서 절댓값이 더 큰 축 기준으로 방향 판단
-        // 레버 배치 방향에 무관하게 안정적으로 동작
         float pushDirection;
         if (Mathf.Abs(localDir.z) >= Mathf.Abs(localDir.x))
             pushDirection = localDir.z > 0 ? 1f : -1f;

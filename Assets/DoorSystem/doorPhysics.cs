@@ -18,6 +18,7 @@ public class doorPhysics : MonoBehaviour
     private Vector3 currentTargetPosition;
 
     private bool isPadPressed = false;
+    private bool isOpenLocked = false;
     private bool isBlocked = false;
 
     // ④ Player_Root + Player_Mesh 둘 다 Tag: Player이므로 Enter/Exit 중복 호출 방지
@@ -41,19 +42,17 @@ public class doorPhysics : MonoBehaviour
     void FixedUpdate()
     {
         float leverAngle = leverHead != null ? leverHead.GetCurrentAngle() : 0f;
-
+        //레버에 의한 문 열림/닫힘 세부수정부분
         if (leverAngle >= leverTriggerAngle)
         {
-            currentTargetPosition = doorTargetPosition;
+            isOpenLocked = true;
         }
-        else if (leverAngle <= -leverTriggerAngle)
+        else if (leverAngle <= 0f)
         {
-            currentTargetPosition = doorStartPosition;
+            isOpenLocked = false;
         }
-        else
-        {
-            currentTargetPosition = isPadPressed ? doorTargetPosition : doorStartPosition;
-        }
+
+        currentTargetPosition = (isOpenLocked || isPadPressed) ? doorTargetPosition : doorStartPosition;
 
         Vector3 moveTarget = isBlocked ? doorRigidbody.transform.position : currentTargetPosition;
 
