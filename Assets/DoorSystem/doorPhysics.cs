@@ -60,7 +60,7 @@ public class doorPhysics : MonoBehaviour
             Vector3.MoveTowards(doorRigidbody.transform.position, moveTarget, doorSpeed * Time.fixedDeltaTime)
         );
 
-        Debug.Log($"leverAngle: {leverAngle:F1} | Pad: {isPadPressed} | Blocked: {isBlocked} | Target: {currentTargetPosition}");
+        //Debug.Log($"leverAngle: {leverAngle:F1} | Pad: {isPadPressed} | Blocked: {isBlocked} | Target: {currentTargetPosition}");
     }
 
     public void SetPadPressed(bool pressed)
