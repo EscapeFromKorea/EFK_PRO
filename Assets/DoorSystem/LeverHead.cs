@@ -11,11 +11,17 @@ public class LeverHead : MonoBehaviour
     public float returnDelay = 2f;
     public float returnSpeed = 1.5f;
 
+    [Header("충돌 끊김 보정")]
+    public float pushExitGrace = 0.3f;
+
     private float targetAngle = 0f;
     private bool isBeingPushed = false;
     private Vector3 smoothedNormal = Vector3.zero;
     private float returnTimer = 0f;
     private bool isReturning = false;
+
+    private float exitGraceTimer = 0f;
+    private bool pendingExit = false;
 
     void Start()
     {
@@ -36,36 +42,56 @@ public class LeverHead : MonoBehaviour
     {
         if (leverPivot == null) return;
 
+        if (pendingExit)
+        {
+            exitGraceTimer -= Time.fixedDeltaTime;
+            if (exitGraceTimer <= 0f)
+            {
+                pendingExit = false;
+                isBeingPushed = false;
+                smoothedNormal = Vector3.zero;
+                isReturning = true;
+                returnTimer = returnDelay;
+
+                targetAngle = leverPivot.localEulerAngles.y;
+                if (targetAngle > 180f) targetAngle -= 360f;
+            }
+        }
+
         if (isBeingPushed)
         {
-            leverPivot.localRotation = Quaternion.Slerp(
-                leverPivot.localRotation,
-                Quaternion.Euler(
-                    leverPivot.localEulerAngles.x,
-                    targetAngle,
-                    leverPivot.localEulerAngles.z
-                ),
-                1f - Mathf.Exp(-rotateSpeed * Time.fixedDeltaTime)
+            float currentY = leverPivot.localEulerAngles.y;
+            if (currentY > 180f) currentY -= 360f;
+
+            float newY = Mathf.MoveTowardsAngle(currentY, targetAngle, rotateSpeed * 20f * Time.fixedDeltaTime);
+
+            leverPivot.localRotation = Quaternion.Euler(
+                leverPivot.localEulerAngles.x,
+                newY,
+                leverPivot.localEulerAngles.z
             );
+
+            float afterAngle = leverPivot.localEulerAngles.y;
+            if (afterAngle > 180f) afterAngle -= 360f;
+            Debug.Log($"[Rotate] time={Time.time:F3}, angle={afterAngle:F2}, pendingExit={pendingExit}");
         }
         else if (isReturning)
         {
             returnTimer -= Time.fixedDeltaTime;
             if (returnTimer <= 0f)
             {
-                leverPivot.localRotation = Quaternion.Slerp(
-                    leverPivot.localRotation,
-                    Quaternion.Euler(
-                        leverPivot.localEulerAngles.x,
-                        -45f,
-                        leverPivot.localEulerAngles.z
-                    ),
-                    1f - Mathf.Exp(-returnSpeed * Time.fixedDeltaTime)
+                float currentY = leverPivot.localEulerAngles.y;
+                if (currentY > 180f) currentY -= 360f;
+
+                float newY = Mathf.MoveTowardsAngle(currentY, -45f, returnSpeed * 20f * Time.fixedDeltaTime);
+
+                leverPivot.localRotation = Quaternion.Euler(
+                    leverPivot.localEulerAngles.x,
+                    newY,
+                    leverPivot.localEulerAngles.z
                 );
 
-                float current = leverPivot.localEulerAngles.y;
-                if (current > 180f) current -= 360f;
-                if (Mathf.Abs(current - (-45f)) < 0.5f)
+                if (Mathf.Abs(newY - (-45f)) < 0.5f)
                 {
                     isReturning = false;
                     leverPivot.localRotation = Quaternion.Euler(
@@ -82,12 +108,17 @@ public class LeverHead : MonoBehaviour
     {
         if (!collision.gameObject.CompareTag("Player")) return;
 
+        pendingExit = false;
         isBeingPushed = true;
         isReturning = false;
         returnTimer = 0f;
 
         smoothedNormal = collision.contacts[0].normal;
         UpdatePushDirection(smoothedNormal);
+
+        float enterAngle = leverPivot.localEulerAngles.y;
+        if (enterAngle > 180f) enterAngle -= 360f;
+        Debug.Log($"[Enter] angle={enterAngle:F2}, targetAngle={targetAngle:F2}, time={Time.time:F3}");
     }
 
     void OnCollisionStay(Collision collision)
@@ -106,14 +137,8 @@ public class LeverHead : MonoBehaviour
     {
         if (!collision.gameObject.CompareTag("Player")) return;
 
-        isBeingPushed = false;
-        smoothedNormal = Vector3.zero;
-        isReturning = true;
-        returnTimer = returnDelay;
-
-        if (leverPivot == null) return;
-        targetAngle = leverPivot.localEulerAngles.y;
-        if (targetAngle > 180f) targetAngle -= 360f;
+        pendingExit = true;
+        exitGraceTimer = pushExitGrace;
     }
 
     private void UpdatePushDirection(Vector3 worldNormal)
