@@ -9,7 +9,7 @@ public class doorPhysics : MonoBehaviour
 
     [Header("레버 설정")]
     public LeverHead leverHead;
-    public float leverTriggerAngle = 30f;
+    //public float leverTriggerAngle = 30f;
 
     private Vector3 doorStartPosition;
     private Vector3 doorTargetPosition;
@@ -18,10 +18,9 @@ public class doorPhysics : MonoBehaviour
     private Vector3 currentTargetPosition;
 
     private bool isPadPressed = false;
-    private bool isOpenLocked = false;
+    //private bool isOpenLocked = false;
     private bool isBlocked = false;
 
-    // ④ Player_Root + Player_Mesh 둘 다 Tag: Player이므로 Enter/Exit 중복 호출 방지
     private int blockedOverlapCount = 0;
 
     void Awake()
@@ -41,26 +40,18 @@ public class doorPhysics : MonoBehaviour
 
     void FixedUpdate()
     {
-        float leverAngle = leverHead != null ? leverHead.GetCurrentAngle() : 0f;
-        //레버에 의한 문 열림/닫힘 세부수정부분
-        if (leverAngle >= leverTriggerAngle)
-        {
-            isOpenLocked = true;
-        }
-        else if (leverAngle <= 0f)
-        {
-            isOpenLocked = false;
-        }
+        float leverAngle = leverHead != null ? leverHead.GetCurrentAngle() : -40f;
 
-        currentTargetPosition = (isOpenLocked || isPadPressed) ? doorTargetPosition : doorStartPosition;
+        float t = Mathf.InverseLerp(-40f, 40f, leverAngle);
+        Vector3 leverBasedPosition = Vector3.Lerp(doorStartPosition, doorTargetPosition, t);
+
+        currentTargetPosition = isPadPressed ? doorTargetPosition : leverBasedPosition;
 
         Vector3 moveTarget = isBlocked ? doorRigidbody.transform.position : currentTargetPosition;
 
         doorRigidbody.MovePosition(
             Vector3.MoveTowards(doorRigidbody.transform.position, moveTarget, doorSpeed * Time.fixedDeltaTime)
         );
-
-        //Debug.Log($"leverAngle: {leverAngle:F1} | Pad: {isPadPressed} | Blocked: {isBlocked} | Target: {currentTargetPosition}");
     }
 
     public void SetPadPressed(bool pressed)
@@ -72,7 +63,6 @@ public class doorPhysics : MonoBehaviour
     {
         if (!other.CompareTag("Player")) return;
 
-        // ④ 카운터 증가 — 첫 번째 Enter에서만 isBlocked = true
         blockedOverlapCount++;
         isBlocked = true;
     }
@@ -81,7 +71,6 @@ public class doorPhysics : MonoBehaviour
     {
         if (!other.CompareTag("Player")) return;
 
-        // ④ 카운터를 줄이고, 0이 됐을 때만 isBlocked 해제
         blockedOverlapCount = Mathf.Max(0, blockedOverlapCount - 1);
         if (blockedOverlapCount == 0)
             isBlocked = false;
