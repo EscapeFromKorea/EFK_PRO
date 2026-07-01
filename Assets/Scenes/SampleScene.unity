@@ -255,7 +255,7 @@ GameObject:
   - component: {fileID: 255848424}
   - component: {fileID: 255848427}
   - component: {fileID: 255848426}
-  - component: {fileID: 255848425}
+  - component: {fileID: 255848429}
   - component: {fileID: 255848428}
   m_Layer: 0
   m_Name: lever_head
@@ -280,27 +280,6 @@ Transform:
   - {fileID: 1853100902}
   m_Father: {fileID: 527791187}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!65 &255848425
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 255848423}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 3, y: 0.2, z: 0.2}
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!23 &255848426
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -365,11 +344,34 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   leverPivot: {fileID: 527791187}
   rotateSpeed: 3
-  maxAngle: 45
+  maxAngle: 40
   normalSmoothSpeed: 5
-  returnDelay: 1
+  returnDelay: 3
   returnSpeed: 0.1
   pushExitGrace: 0.1
+--- !u!136 &255848429
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 255848423}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.15
+  m_Height: 3.2
+  m_Direction: 0
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!21 &313128415
 Material:
   serializedVersion: 8
@@ -1963,7 +1965,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -2167,7 +2169,6 @@ MonoBehaviour:
   doorTargetYOffset: 3
   doorSpeed: 2
   leverHead: {fileID: 255848428}
-  leverTriggerAngle: 30
 --- !u!65 &1875213022
 BoxCollider:
   m_ObjectHideFlags: 0

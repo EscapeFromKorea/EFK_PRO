@@ -8,7 +8,7 @@ public class LeverHead : MonoBehaviour
     public float maxAngle = 45f;
     [Tooltip("충돌 노멀을 보간하는 속도. 값이 클수록 방향 전환이 빠릅니다.")]
     public float normalSmoothSpeed = 5f;
-    public float returnDelay = 2f;
+    public float returnDelay = 5f;
     public float returnSpeed = 1.5f;
 
     [Header("충돌 끊김 보정")]
@@ -70,10 +70,6 @@ public class LeverHead : MonoBehaviour
                 newY,
                 leverPivot.localEulerAngles.z
             );
-
-            float afterAngle = leverPivot.localEulerAngles.y;
-            if (afterAngle > 180f) afterAngle -= 360f;
-            Debug.Log($"[Rotate] time={Time.time:F3}, angle={afterAngle:F2}, pendingExit={pendingExit}");
         }
         else if (isReturning)
         {
@@ -115,10 +111,6 @@ public class LeverHead : MonoBehaviour
 
         smoothedNormal = collision.contacts[0].normal;
         UpdatePushDirection(smoothedNormal);
-
-        float enterAngle = leverPivot.localEulerAngles.y;
-        if (enterAngle > 180f) enterAngle -= 360f;
-        Debug.Log($"[Enter] angle={enterAngle:F2}, targetAngle={targetAngle:F2}, time={Time.time:F3}");
     }
 
     void OnCollisionStay(Collision collision)
@@ -147,12 +139,11 @@ public class LeverHead : MonoBehaviour
 
         Vector3 localDir = leverPivot.InverseTransformDirection(worldNormal);
 
-        float pushDirection;
-        if (Mathf.Abs(localDir.z) >= Mathf.Abs(localDir.x))
-            pushDirection = localDir.z > 0 ? 1f : -1f;
-        else
-            pushDirection = localDir.x > 0 ? 1f : -1f;
+        if (Mathf.Abs(localDir.x) > Mathf.Abs(localDir.z))
+            return;
 
+        float pushDirection = localDir.z > 0 ? 1f : -1f;
         targetAngle = Mathf.Clamp(pushDirection * maxAngle, -maxAngle, maxAngle);
+        Debug.Log($"[Normal] x={localDir.x:F2}, y={localDir.y:F2}, z={localDir.z:F2}");
     }
 }
