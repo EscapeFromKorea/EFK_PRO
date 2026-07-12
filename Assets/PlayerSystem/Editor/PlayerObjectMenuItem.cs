@@ -32,6 +32,7 @@ public static class PlayerObjectMenuItem
     private static void CreatePlayer(PlayerShapeType shape)
     {
         EnsureSwitcher();
+        EnsureFollowCamera();
 
         Vector3 spawnPos = Vector3.zero;
         if (SceneView.lastActiveSceneView != null)
@@ -50,8 +51,15 @@ public static class PlayerObjectMenuItem
         rb.constraints = RigidbodyConstraints.None;
         rb.angularDrag = 0.5f;
         ConfigureContinuousRollPhysics(rb, shape);
+        // 토크+마찰 물리 구르기에 맞춘 오버라이드. 정육면체/정사면체 공통으로 적용하고 구에는 적용하지 않는다.
+        if (shape != PlayerShapeType.Sphere)
+            ConfigureTorqueRollPhysics(rb);
 
         PlayerMover mover = root.AddComponent<PlayerMover>();
+        // 정육면체/정사면체는 토크+마찰 물리 구르기로 통일한다. 구(Sphere)만 기존 velocity/각속도
+        // 대입 방식(useTorqueRolling=false 기본값)을 그대로 유지해 동작이 변하지 않는다.
+        if (shape != PlayerShapeType.Sphere)
+            mover.useTorqueRolling = true;
         root.AddComponent<PlayerJump>();
         root.AddComponent<PlayerAccelReceiver>();
         PlayerShapeController shapeController = root.AddComponent<PlayerShapeController>();
@@ -112,6 +120,20 @@ public static class PlayerObjectMenuItem
             rb.solverVelocityIterations = 4;
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         }
+    }
+
+    /// <summary>
+    /// 토크+마찰 구르기 경로(정육면체/정사면체 공통) Rigidbody 오버라이드.
+    /// - centerOfMass를 도형 기하 중심(0,0.5,0)에 고정 → 텀블링이 좌우 대칭이 되고, 자식 콜라이더
+    ///   배치(컴파운드 구/박스)에 따라 자동 계산되는 무게중심이 치우쳐 한쪽으로 쏠리는 걸 막는다.
+    /// - angularDrag를 낮춰(0.1) 토크로 시작된 구르기가 과하게 죽지 않게 한다(기본 0.5는 무겁다).
+    /// - maxAngularVelocity를 20으로 → 토크 구동에서는 각속도를 강제하지 않으므로 현실적 범위면 충분.
+    /// </summary>
+    private static void ConfigureTorqueRollPhysics(Rigidbody rb)
+    {
+        rb.centerOfMass = new Vector3(0f, 0.5f, 0f);
+        rb.angularDrag = 0.1f;
+        rb.maxAngularVelocity = 20f;
     }
 
     private static GameObject CreateVisual(PlayerShapeType shape, Mesh tetraMesh)
@@ -182,43 +204,66 @@ public static class PlayerObjectMenuItem
                 vertexSphere.radius = TetrahedronVertexColliderRadius;
                 Vector3 inwardDir = vertex.normalized; // 무게중심(원점) -> 꼭짓점 방향
                 vertexSphere.center = vertex - inwardDir * TetrahedronVertexColliderRadius;
-                vertexSphere.material = GetLowFrictionMaterial();
+                // 토크+마찰 구르기: 접촉 모서리가 미끄러지지 않고 피벗 역할을 하도록 그립 마찰.
+                // (기존 저마찰은 '각속도 강제' 방식의 접촉 충돌 완화용이라 여기선 정반대로 부적합.)
+                vertexSphere.material = GetTetrahedronGripMaterial();
             }
             return;
         }
 
         // 정육면체 솔리드/트리거 콜라이더. BoxCollider가 곧 실제 정육면체 모양 그 자체이므로
-        // 형태를 바꿀 이유는 없다. 다만 완전히 평평한 면으로 접지한 채 매 프레임 각속도를
-        // 강제하면(v=ωr) 모서리가 바닥을 파고들려 해 솔버와 충돌하는 문제는 정사면체와 똑같이
-        // 겪으므로, 솔리드 콜라이더에는 저마찰 PhysicMaterial을 씌워 접촉면을 따라 생기는
-        // 마찰력을 줄이고 충돌 강도를 낮춘다.
+        // 형태를 바꿀 이유는 없다. 정육면체도 토크+마찰 물리 구르기로 통일했으므로, 솔리드
+        // 콜라이더에는 고마찰 그립 재질(GetCubeGripMaterial)을 씌워 넓은 접촉면이 미끄러지지
+        // 않고 앞모서리를 피벗 삼아 넘어가게 한다.
         BoxCollider box = go.AddComponent<BoxCollider>();
         box.size = Vector3.one;
         box.isTrigger = isTrigger;
         if (!isTrigger)
-            box.material = GetLowFrictionMaterial();
+            // 정육면체도 토크+마찰 구르기로 통일. 넓은 평면으로 접지하므로 정사면체보다 강한
+            // 그립(마찰)을 줘야 앞모서리를 피벗 삼아 미끄러지지 않고 넘어간다.
+            box.material = GetCubeGripMaterial();
     }
 
     /// <summary>정사면체 컴파운드 콜라이더의 꼭짓점 구 반지름. 너무 크면 형태가 뭉툭해지고,
     /// 너무 작으면 뾰족한 점에 가까워져 접촉이 다시 불안정해진다.</summary>
     private const float TetrahedronVertexColliderRadius = 0.12f;
 
-    private static PhysicMaterial lowFrictionMaterial;
+    private static PhysicMaterial tetrahedronGripMaterial;
+    private static PhysicMaterial cubeGripMaterial;
 
-    private static PhysicMaterial GetLowFrictionMaterial()
+    /// <summary>
+    /// 정사면체 토크+마찰 구르기 그립 재질. 꼭짓점 컴파운드 구가 접촉 모서리를 붙잡아 토크를 실제
+    /// 구르기로 변환하게 한다. 씬 테스트 결과 그립이 과해 마찰을 낮췄다(static 1.0→0.7, dynamic
+    /// 0.8→0.55). 정육면체보다 접촉 면적이 작아 더 낮은 마찰로도 충분히 굴러간다.
+    /// </summary>
+    private static PhysicMaterial GetTetrahedronGripMaterial()
     {
-        if (lowFrictionMaterial == null)
-        {
-            // 정육면체/정사면체 솔리드 콜라이더가 함께 쓰는 공용 저마찰 재질.
-            lowFrictionMaterial = new PhysicMaterial("PlayerPolyhedron_LowFriction")
-            {
-                dynamicFriction = 0.1f,
-                staticFriction = 0.1f,
-                frictionCombine = PhysicMaterialCombine.Minimum
-            };
-        }
+        if (tetrahedronGripMaterial == null)
+            tetrahedronGripMaterial = CreateGripMaterial("PlayerTetrahedron_RollGrip", 0.7f, 0.55f);
+        return tetrahedronGripMaterial;
+    }
 
-        return lowFrictionMaterial;
+    /// <summary>
+    /// 정육면체 토크+마찰 구르기 그립 재질. 넓은 평면으로 접지해 미끄러지기 쉬우므로 정사면체보다
+    /// 강한 그립(static 1.0 / dynamic 0.8)을 줘 앞모서리 피벗이 안정적으로 걸리게 한다.
+    /// </summary>
+    private static PhysicMaterial GetCubeGripMaterial()
+    {
+        if (cubeGripMaterial == null)
+            cubeGripMaterial = CreateGripMaterial("PlayerCube_RollGrip", 1.0f, 0.8f);
+        return cubeGripMaterial;
+    }
+
+    private static PhysicMaterial CreateGripMaterial(string name, float staticFriction, float dynamicFriction)
+    {
+        return new PhysicMaterial(name)
+        {
+            staticFriction = staticFriction,
+            dynamicFriction = dynamicFriction,
+            frictionCombine = PhysicMaterialCombine.Maximum,
+            bounciness = 0f,
+            bounceCombine = PhysicMaterialCombine.Minimum
+        };
     }
 
     private static Material CreateDefaultMaterial()
@@ -236,5 +281,23 @@ public static class PlayerObjectMenuItem
         GameObject switcherObj = new GameObject("PlayerControlSwitcher");
         Undo.RegisterCreatedObjectUndo(switcherObj, "Create PlayerControlSwitcher");
         switcherObj.AddComponent<PlayerControlSwitcher>();
+    }
+
+    /// <summary>
+    /// 씬의 기존 카메라에 PlayerFollowCamera를 붙여 활성 플레이어를 따라가게 한다. 카메라 오브젝트는
+    /// PlayerSystem 밖의 씬 자산이므로 새로 만들지 않고, 이미 있는 Main Camera(없으면 아무 Camera)에
+    /// 우리 컴포넌트만 부착한다. 이미 붙어 있거나 씬에 카메라가 없으면 아무 것도 하지 않는다
+    /// (그 경우 씬의 카메라에 직접 이 스크립트를 추가하면 된다).
+    /// </summary>
+    private static void EnsureFollowCamera()
+    {
+        if (Object.FindObjectOfType<PlayerFollowCamera>() != null) return;
+
+        Camera cam = Camera.main;
+        if (cam == null) cam = Object.FindObjectOfType<Camera>();
+        if (cam == null) return;
+
+        Undo.AddComponent<PlayerFollowCamera>(cam.gameObject);
+        Debug.Log($"[PlayerSystem] '{cam.name}'에 PlayerFollowCamera를 자동 부착했습니다.");
     }
 }

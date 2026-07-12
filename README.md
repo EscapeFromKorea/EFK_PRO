@@ -15,11 +15,12 @@ Unity 2022.3.62f3 기반 샌드박스형 3D 플랫포머 게임 "The Axiom"의 �
 
 | 파일 | 역할 |
 |---|---|
-| `PlayerMover.cs` | WASD 이동을 담당하며, 접지 중에는 매 프레임 `rb.angularVelocity`를 이동 velocity 기반 공식으로 하드 설정해 실제 물리 회전으로 "구르는" 연출까지 함께 낸다(자세한 내용은 아래 계층 구조 섹션 참고). |
-| `PlayerJump.cs` | Space("Jump" 입력축, 기존에 이미 정의되어 있었음)로 점프. `JumpPad`가 직접 호출하는 `LaunchFromPad()` 제공. |
+| `PlayerMover.cs` | WASD 이동을 담당. **두 경로가 공존한다**: 정육면체/정사면체는 토크+마찰로 실제 굴리는 물리 구르기(`useTorqueRolling=true`), 구(Sphere)는 예전 방식인 velocity/각속도 하드 대입(legacy). 조종성 보정(`steerResponsiveness`/`turnAssist`), 입력 방향 회전(`inputYawOffset`), 스케일 토크 보정(`scaleTorqueCompensation`), 조작권 상실 시 감쇠(`uncontrolledDamping`)까지 담당한다(자세한 "왜"는 아래 전용 섹션 참고). |
+| `PlayerJump.cs` | Space("Jump" 입력축, 기존에 이미 정의되어 있었음)로 점프. `JumpPad`가 직접 호출하는 `LaunchFromPad()` 제공. 조작권이 없으면(Tab 전환) 큐된 점프를 비워 뒤늦게 점프하지 않게 한다. |
 | `PlayerGroundContact.cs` | `Player_Collider`에 부착해 실제 충돌 접촉 법선 기반으로 접지 여부를 판단한다. `PlayerShapeController.groundContact`에 연결해 재사용한다. |
-| `PlayerControlSwitcher.cs` | Tab 키로 여러 플레이어 오브젝트 중 하나에만 조작권을 부여. |
-| `Editor/PlayerObjectMenuItem.cs` | `Tools > PlayerSystem > Create Player > Sphere/Cube/Tetrahedron` 메뉴로 플레이어 오브젝트 생성. |
+| `PlayerControlSwitcher.cs` | Tab 키로 여러 플레이어 오브젝트 중 하나에만 조작권을 부여. 순환 순서는 GameObject 이름 오름차순(ordinal)으로 결정적이며, 활성 플레이어가 바뀌면 `PlayerFollowCamera`에 새 타깃을 알린다. |
+| `PlayerFollowCamera.cs` | 활성 플레이어의 **위치만** 부드럽게 따라가는 3인칭 카메라. 구르기 회전에 휩쓸려 화면이 도는 멀미를 막기 위해 타깃 회전은 무시한다. 씬의 기존 Main Camera에 부착해 쓴다. |
+| `Editor/PlayerObjectMenuItem.cs` | `Tools > PlayerSystem > Create Player > Sphere/Cube/Tetrahedron` 메뉴로 플레이어 오브젝트 생성. 정육면체/정사면체에는 토크 구르기 설정(고마찰 그립 재질 등)을, Main Camera에는 `PlayerFollowCamera`를 자동 세팅한다. |
 | `Editor/TetrahedronMeshGenerator.cs` | Unity 기본 Primitive에 없는 정사면체 메쉬를 코드로 생성. |
 
 PlayerSystem 신설 초기에는 이동 거리만큼 시각 전용 자식 오브젝트만 회전시켜 "굴러가는 척"하는
@@ -44,6 +45,45 @@ PlayerSystem 신설 초기에는 이동 거리만큼 시각 전용 자식 오브
 **손대지 않은 파일** — `DoorSystem`의 `doorPhysics.cs`/`LeverHead.cs`/`PadTrigger.cs`는 Rigidbody
 물리와 `"Player"` 태그 검사만으로 동작하므로 이번 작업과 무관해 수정하지 않았습니다.
 
+## 토크+마찰 구르기, 조종성, Tab 전환, 팔로우 카메라 (PlayerSystem 후속 개편)
+
+초기 PlayerSystem은 세 도형 모두 접지 중 `rb.angularVelocity`를 이동 velocity로부터 나온 값
+(`Cross(up, move) / rollRadius`, v=ωr)으로 매 프레임 하드 설정해 "굴러가는 것처럼" **보이게만**
+했습니다. 이는 물리엔진이 굴리는 게 아니라 스크립트가 결과 회전을 흉내 내 강제하는 방식이라,
+정육면체/정사면체처럼 평평한 면으로 바닥에 밀착하는 도형에서는 접촉면 양 끝이 서로 반대로
+움직이려 해(하나는 파고들고 하나는 뜨려) PhysX 접촉 솔버와 매 스텝 충돌했습니다(강제 스핀 vs
+모서리 피벗의 근본 모순). "현실적으로 모서리를 축으로 굴러가게" 해달라는 요구에 맞춰 다면체를
+**토크+마찰 기반 물리 구르기**로 다시 설계했습니다. 구(Sphere)는 이 문제가 없어(접촉점이 항상
+하나) 기존 방식을 그대로 둡니다.
+
+- **토크로 굴리고 마찰이 붙잡는다.** `useTorqueRolling`이 켜진 도형(정육면체/정사면체)은 접지 중
+  velocity/각속도를 직접 대입하지 않고, 이동 방향과 직교하는 수평축으로 `AddTorque`만 겁니다.
+  선형 전진은 회전의 결과로 자연 발생합니다. 이때 접촉 모서리가 미끄러지지 않고 **피벗** 역할을
+  하려면 마찰이 높아야 하므로, 예전의 저마찰 재질을 걷어내고 **고마찰 그립 `PhysicMaterial`**을
+  씌웁니다(정육면체는 넓은 면으로 접지해 더 미끄러지기 쉬워 정사면체보다 강한 그립을 줍니다).
+- **조종성 보정.** 순수 토크만으로는 한 축에 각운동량이 붙으면 방향 전환이 어렵습니다.
+  `steerResponsiveness`(원하는 구르기 축과 어긋난 각속도 성분만 감쇠)와 `turnAssist`(수평 속도의
+  방향만 입력 쪽으로 재정렬, 속력은 유지)로 "구르는 물리감"을 유지하면서 조향감을 줍니다.
+- **입력 방향 회전(`inputYawOffset`).** 카메라 시점과 입력 축이 어긋나 있어, 입력 방향을 월드 up
+  기준으로 회전 보정합니다. 세 도형(구 포함, 레거시 경로도)에 **공통** 적용해 방향감을 일치시킵니다.
+- **스케일 대응(`scaleTorqueCompensation`).** ScalingSystem으로 도형이 커지거나 납작해지면 관성
+  텐서와 무게중심-피벗 거리가 함께 커져 고정 토크로는 모서리를 못 넘습니다. 현재 스케일에 비례해
+  토크를 자동으로 키워 뒤집힘을 보정합니다(구는 legacy라 해당 없음).
+
+**Tab 전환 개편.** 조작권을 잃은 플레이어가 관성/각속도로 계속 굴러가지 않도록
+`uncontrolledDamping`으로 수평 속도·각속도를 프레임레이트 무관하게 빠르게 감쇠합니다(수직=중력은
+유지). 순환 순서는 등록 순서(비결정적)가 아니라 **GameObject 이름 오름차순(ordinal)**으로 고정되며
+(`Player_Cube → Player_Sphere → Player_Tetrahedron`), 활성 대상은 인덱스가 아닌 **참조**로 추적해
+정렬/등록/파괴로 목록이 흔들려도 같은 플레이어를 계속 가리킵니다. 파괴된 참조는 매 시점
+정리(prune)합니다. `IsControlled`은 외부에서 함부로 못 바꾸도록 읽기 전용 프로퍼티가 되었고,
+전환은 `SetControlled()`를 거칩니다.
+
+**팔로우 카메라.** 활성 플레이어를 따라가되, 토크 모드 도형은 Root가 실제로 회전(구르기)하므로
+카메라가 그 회전을 물려받으면 화면이 통째로 돌아 멀미가 납니다. 그래서 `PlayerFollowCamera`는
+타깃의 **위치만** 읽고(offset은 월드 공간 고정), 회전은 "카메라→타깃"을 월드 up 기준으로 바라보는
+방향으로만 정해 구르기와 분리합니다. `cameraYawOffset`으로 시점 각도를 `inputYawOffset`과 맞추고,
+스위처가 Tab 전환 시 카메라 타깃을 갱신합니다.
+
 ## 플레이어 오브젝트 계층 구조
 
 `Tools > PlayerSystem > Create Player > Sphere/Cube/Tetrahedron`(`PlayerObjectMenuItem.cs`)가
@@ -59,11 +99,17 @@ Player_<Shape>                (Root, Rigidbody 회전 자유(RigidbodyConstraint
 ```
 
 Rigidbody 회전을 더 이상 고정하지 않는 이유: 정육면체/정사면체가 실제 물리로 모서리에 걸리며
-통통 튀듯 자연스럽게 구르는 연출을 얻기 위해서입니다. 대신 `PlayerMover`가 접지 중 매 프레임
-`rb.angularVelocity = Cross(Vector3.up, 이동 velocity) / rollRadius`를 하드 설정해, 구/정육면체/
-정사면체 세 도형 모두 같은 공식 하나로 매끄럽게 굴러가는 것처럼 보이게 만듭니다(별도의 "시각
-전용 회전" 스크립트는 더 이상 없습니다). `Player_Mesh`/`Player_MeshVisual`/`Player_Collider`는
-모두 로컬 회전이 identity라 Root의 실제 회전을 그대로 물려받습니다.
+통통 튀듯 자연스럽게 구르는 연출을 얻기 위해서입니다. 굴리는 **방식은 도형에 따라 다릅니다**
+(자세한 "왜"는 위의 "토크+마찰 구르기 …" 섹션 참고):
+
+- **정육면체/정사면체(토크 모드, `useTorqueRolling=true`)**: `PlayerMover`가 접지 중 토크만 걸고
+  고마찰 그립으로 실제 모서리 피벗 텀블링을 일으킵니다. velocity/각속도를 하드 설정하지 않습니다.
+- **구(Sphere, legacy)**: 접지 중 매 프레임 `rb.angularVelocity = Cross(Vector3.up, 이동 velocity)
+  / rollRadius`를 하드 설정하는 예전 방식을 그대로 씁니다(구는 접촉점이 하나뿐이라 이 방식으로도
+  자연스럽게 굴러갑니다).
+
+별도의 "시각 전용 회전" 스크립트는 더 이상 없으며, `Player_Mesh`/`Player_MeshVisual`/
+`Player_Collider`는 모두 로컬 회전이 identity라 Root의 실제 회전을 그대로 물려받습니다.
 
 회전이 자유로워진 대신, Root 원점 기준 고정 방향 Raycast로는 접지(바닥에 닿았는지)를 신뢰할 수
 없습니다 — 물체가 회전하면 Root와 실제 지면 사이의 상대 방향이 매 프레임 달라지기 때문입니다.
@@ -80,9 +126,13 @@ Rigidbody 회전을 더 이상 고정하지 않는 이유: 정육면체/정사�
 콜라이더 형태는 도형마다 다릅니다: 구는 `SphereCollider`, 정육면체는 `BoxCollider`, 정사면체는
 Unity에 대응하는 기본 Primitive Collider가 없어 꼭짓점 4개에 작은 `SphereCollider`를 배치한
 컴파운드로 근사합니다(단, 트리거 쪽은 침투 방지가 필요 없어 실제 사면체 모양의
-`MeshCollider(convex)`를 그대로 씁니다). 정육면체/정사면체 솔리드 콜라이더에는 저마찰
-`PhysicMaterial`을 씌워, 평평한 면으로 접지한 채 각속도를 강제할 때 생기는 접촉 솔버 충돌을
-완화합니다.
+`MeshCollider(convex)`를 그대로 씁니다). 정육면체/정사면체 솔리드 콜라이더에는 **고마찰 그립
+`PhysicMaterial`**을 씌웁니다 — 토크로 굴릴 때 접촉 모서리가 미끄러지지 않고 피벗 역할을 해야
+실제로 구르기 때문입니다(정육면체 `static 1.0 / dynamic 0.8`, 정사면체 `static 0.7 / dynamic 0.55`,
+둘 다 `frictionCombine=Maximum`). 예전에는 각속도를 강제하던 방식의 접촉 충돌을 줄이려 반대로
+저마찰을 썼지만, 토크+마찰 구르기로 바뀌면서 정반대 튜닝이 되었습니다. 또한 토크 모드 도형은
+Rigidbody `centerOfMass`를 기하 중심 `(0, 0.5, 0)`으로 고정하고 `angularDrag`를 `0.1`로,
+`maxAngularVelocity`를 `20`으로 잡아 구르기가 대칭적이고 과하게 죽지 않도록 합니다.
 
 ## 각 폴더 시스템 동작 방식
 
@@ -113,12 +163,16 @@ Unity에 대응하는 기본 Primitive Collider가 없어 꼭짓점 4개에 작�
 합니다.
 
 ### PlayerSystem — 플레이어 조작
-`PlayerMover`가 WASD 이동을 담당하며, 접지 중에는 이동 velocity로부터 계산한 각속도를 Rigidbody에
-직접 설정해 구/정육면체/정사면체 모두 실제 물리로 굴러가게 만듭니다. `PlayerJump`가 Space 점프를
-담당하고, 접지 판정은 `PlayerGroundContact`(실제 충돌 접촉 법선 기반)를 우선 사용하며 없으면
-고정 Raycast로 대체합니다. 여러 플레이어 오브젝트가 씬에 있으면 `PlayerControlSwitcher`가 Tab
-키로 조작권(`IsControlled`)을 하나씩 순환시킵니다. 조작권이 없는 오브젝트는 입력에 반응하지
-않지만, 다른 기믹(부스트, 점프대, 중력 등)에 의한 물리 이동은 그대로 받습니다.
+`PlayerMover`가 WASD 이동을 담당합니다. 접지 중 구르기는 도형에 따라 두 경로로 나뉩니다 —
+정육면체/정사면체는 토크+고마찰 그립으로 실제 모서리 피벗 텀블링(`useTorqueRolling=true`), 구는
+이동 velocity로부터 각속도를 하드 설정하는 legacy 방식입니다(위의 "토크+마찰 구르기 …" 섹션에
+"왜"를 정리해 두었습니다). `PlayerJump`가 Space 점프를 담당하고, 접지 판정은 `PlayerGroundContact`
+(실제 충돌 접촉 법선 기반)를 우선 사용하며 없으면 고정 Raycast로 대체합니다. 여러 플레이어
+오브젝트가 씬에 있으면 `PlayerControlSwitcher`가 Tab 키로 조작권(`IsControlled`)을 이름 알파벳
+순서로 순환시키고, 조작권을 잃은 오브젝트는 `uncontrolledDamping`으로 곧 멈춥니다. 조작권이 없는
+오브젝트는 입력에 반응하지 않지만, 다른 기믹(부스트, 점프대, 중력 등)에 의한 물리 이동은 그대로
+받습니다. `PlayerFollowCamera`(씬 카메라에 부착)가 현재 조작 중인 플레이어의 위치를 따라가되
+구르기 회전에는 휩쓸리지 않습니다.
 
 ## Inspector 설정값
 
@@ -225,8 +279,10 @@ Inspector에 노출되는 필드가 없다. `Awake()`에서 태그/Rigidbody/`Pl
 
 #### PlayerControlSwitcher.cs
 
-Inspector에 노출되는 필드가 없다(모든 필드가 `private`). Tab 키 순환 로직과 등록/해제만
-자동으로 처리한다.
+Inspector에 노출되는 필드가 없다(모든 상태가 `private`). Tab 키 순환, 등록/해제, 죽은 참조
+정리(prune)를 자동으로 처리한다. 순환 순서는 GameObject 이름 오름차순(ordinal)으로 결정적이고,
+활성 대상은 참조로 추적해 정렬/등록/파괴에도 같은 플레이어를 유지한다. 활성 플레이어가 바뀌면
+`PlayerFollowCamera.SetActiveTarget()`으로 카메라 타깃을 갱신한다(카메라가 없으면 무시).
 
 #### PlayerGroundContact.cs
 
@@ -244,12 +300,41 @@ Inspector에 노출되는 필드가 없다(모든 필드가 `private`). Tab 키 
 
 #### PlayerMover.cs
 
+`useTorqueRolling`이 이 스크립트의 동작을 둘로 가른다. **legacy(구, `false`)** 전용 필드는
+`rollRadius`, **토크 모드(정육면체/정사면체, `true`)** 전용 필드는 아래 `[useTorqueRolling 전용]`
+표시가 붙은 것들이다. `inputYawOffset`은 두 경로 공통이다. 생성 메뉴가 정육면체/정사면체에는
+`useTorqueRolling=true`를 자동으로 세팅한다.
+
 | 필드 | 기본값 | 설명 |
 |---|---|---|
-| `moveSpeed` | `5f` | 수평 이동 속도. `AccelPad.boostSpeed`(기본 `20f`)와 비교하면 "기본 속도 대비 4배 정도가 부스트 속도"라는 감각으로 맞춰져 있다. |
-| `rollRadius` | `0.5f` | 접지 중 구르는 시각 회전의 반경으로 취급되는 값(`각속도 = Cross(Vector3.up, 이동 velocity) / rollRadius`). 코드 주석대로 오브젝트의 실제 반지름/절반 크기와 맞아야 "미끄러지지 않고 구르는" 것처럼 보인다 — 실제 크기보다 작게 두면 이동 거리에 비해 과하게 빨리 도는 것처럼 보이고, 크게 두면 거의 안 도는 것처럼 보인다. `ScalingSystem`으로 크기가 실시간으로 변하는 오브젝트라면, 이 값은 스케일 변화에 따라 자동으로 조정되지 않으므로(고정값) 크기를 크게 키운 상태에서는 실제 반지름과 어긋나 회전이 부자연스러워질 수 있다. |
+| `moveSpeed` | `5f` | (legacy 경로) 수평 이동 속도. `AccelPad.boostSpeed`(기본 `20f`)와 비교하면 "기본 속도 대비 4배 정도가 부스트 속도"라는 감각으로 맞춰져 있다. 토크 모드에서는 대신 `maxSpeed`가 상한을 정한다. |
+| `rollRadius` | `0.5f` | **legacy(구) 전용.** 접지 중 구르는 시각 회전의 반경(`각속도 = Cross(up, 이동 velocity) / rollRadius`). 오브젝트의 실제 반지름/절반 크기와 맞아야 "미끄러지지 않고 구르는" 것처럼 보인다 — 작게 두면 과하게 빨리 도는 것처럼, 크게 두면 거의 안 도는 것처럼 보인다. 토크 모드(정육면체/정사면체)에서는 사용되지 않는다. |
+| `useTorqueRolling` | `false` | 켜면 velocity/각속도 하드 대입 대신 토크+고마찰 그립으로 물리적으로 굴린다(정육면체/정사면체). 끄면 legacy 방식 유지(구). 생성 메뉴가 도형별로 세팅하므로 보통 직접 만질 일은 없다. |
+| `rollTorque` | `25f` | (토크 모드) 이동 방향과 직교하는 수평축으로 거는 토크 세기. 작으면 다면체가 앞모서리를 못 넘고 제자리에서 떨고, 키우면 잘 뒤집히지만 과하면 튄다. `mass`가 크거나 스케일이 크면 더 필요하다. |
+| `maxSpeed` | `6f` | (토크 모드) 수평 속도 상한. 토크로 계속 가속되므로 이 값에서 클램프한다. 스케일이 커지면 한 바퀴 구르는 거리가 늘어 체감 속도가 달라지므로 함께 조정. |
+| `airControlForce` | `12f` | (토크 모드) 공중에서의 약한 방향 제어 힘. 크게 하면 점프/발사 중 궤도를 더 많이 틀 수 있다. |
+| `steerResponsiveness` | `6f` | (토크 모드) 원하는 구르기 축과 어긋난 각속도 성분을 초당 이 비율로 감쇠해 방향 전환을 돕는다. `0`이면 순수 토크라 한 방향으로 굴러가기 시작하면 틀기 어렵고, 높이면 방향 전환이 빠르지만 구르는 물리감이 옅어진다. |
+| `turnAssist` | `0.35f` (`Range(0,1)`) | (토크 모드) 접지 중 수평 velocity의 방향만 입력 쪽으로 재정렬하는 정도(속력은 유지). `0`이면 재정렬 없음, 크면 조향이 즉각적이지만 관성감이 줄어든다. `steerResponsiveness`와 함께 조향감/물리감의 균형을 잡는다. |
+| `inputYawOffset` | `90f` | **공통(구/정육면체/정사면체).** 입력 방향을 월드 up 축 기준으로 회전시키는 각도(도, 위에서 본 시계방향이 양수). 카메라 시점/월드 축과 방향키가 어긋날 때 보정한다. 앞키가 실제로 "앞"으로 가도록 `90`/`-90` 중에서 맞추며, `PlayerFollowCamera.cameraYawOffset`과 방향을 일치시킨다. |
+| `scaleTorqueCompensation` | `1.5f` | (토크 모드) ScalingSystem으로 커지거나 납작해지면 관성/무게중심이 커져 고정 토크로는 뒤집기 어렵다. 현재 스케일 최댓값의 이 값 제곱만큼 `rollTorque`를 자동 증폭한다. `0`=보정 없음, `1`=크기에 선형 비례, `2`=크기제곱(관성까지 보정). 커진 상태에서도 안 뒤집히면 올리고, 폭주하면 낮춘다. |
+| `uncontrolledDamping` | `15f` | (Tab 전환) 조작권을 잃은 플레이어가 관성/각속도로 계속 굴러가지 않도록 초당 감쇠하는 비율(프레임레이트 무관, 수직=중력은 유지). 크게 하면 즉시 정지에 가까워지고, 작게 하면 한동안 미끄러지듯 굴러간다. |
 | `groundCheckDistance` | `0.15f` | `PlayerShapeController`가 없을 때만 사용되는 자체 접지 판정용 Raycast 거리. |
 | `groundLayer` | `~0`(Everything) | 위와 동일하게 `PlayerShapeController`가 없을 때만 쓰이는 레이어 마스크. |
+
+`IsControlled`은 Inspector에 노출되지 않는 읽기 전용 프로퍼티(기본 `true`)이며, 전환은
+`PlayerControlSwitcher`가 `SetControlled()`로만 수행한다.
+
+#### PlayerFollowCamera.cs
+
+씬의 기존 카메라(보통 Main Camera)에 부착한다. 생성 메뉴가 카메라가 있으면 자동으로 붙여준다.
+
+| 필드 | 기본값 | 설명 |
+|---|---|---|
+| `target` | `null` | 따라갈 대상. 비워두면 `PlayerControlSwitcher`가 활성 플레이어를 자동으로 넣어준다(스위처 없는 단독 씬에서만 직접 지정). Tab 전환 시 스위처가 이 값을 갱신한다. |
+| `offset` | `(0, 6, -10)` | 타깃 기준 카메라 위치 오프셋(월드 공간). `cameraYawOffset`만큼 회전해 적용된다. 회전은 `cameraYawOffset`이 전담하므로 이 값은 사실상 "거리감/높이"만 정한다고 보면 된다. 타깃의 회전은 쓰지 않아 플레이어가 굴러도 시점이 휩쓸리지 않는다. |
+| `cameraYawOffset` | `90f` | `offset`을 월드 up 축 기준으로 회전시키는 시점 각도(도, 위에서 본 시계방향이 양수). `PlayerMover.inputYawOffset`과 방향을 맞춰 "앞키=화면 앞"이 되게 한다. 시점이 반대로 돌면 `-90`으로 뒤집는다. 타깃 회전과 무관하게 고정 시점 각도만 바꾸므로 멀미 방지 특성은 유지된다. |
+| `followSmoothness` | `0.2f` | 위치 추적 부드러움(`SmoothDamp` 시간, 초). 작을수록 즉각적으로 붙고, 크면 부드럽지만 느리게 따라온다. |
+| `lookHeightOffset` | `1f` | 시선이 향하는 지점을 타깃 위치에서 이만큼 위로 올린다(발밑이 아니라 몸통을 보게). 타깃이 화면에서 너무 아래/위로 치우치면 이 값이나 `offset` 높이로 조정한다. |
 
 ## 검증 방법
 
@@ -261,11 +346,22 @@ Unity 에디터가 없는 환경에서 작업했기 때문에 자동 실행 검�
    깨지지 않아야 정상입니다).
 2. **플레이어 생성**: `Tools > PlayerSystem > Create Player > Sphere / Cube / Tetrahedron`로
    3종을 각각 생성.
-3. **기본 조작**: Play 모드에서 WASD로 이동, Space로 점프, 이동 중 시각 메쉬가 굴러가듯
-   회전하는지 확인.
-4. **Tab 전환**: 플레이어 오브젝트를 2개 이상 씬에 둔 상태로 Tab을 눌러 조작 대상이
-   바뀌는지, 조작 중이 아닌 오브젝트는 WASD/Space에 반응하지 않는지 확인.
-5. **기믹 호환성**: 새로 만든 플레이어 오브젝트로 기존 `AccelPad`, `JumpPad`, DoorSystem의
+3. **기본 조작 / 구르기**: Play 모드에서 WASD로 이동, Space로 점프. 정육면체/정사면체가 토크로
+   실제 모서리를 넘어 굴러가는지(미끄러지지 않는지), 구는 legacy 방식대로 매끄럽게 굴러가는지
+   확인. 방향키 앞이 실제로 "앞"으로 가는지 확인하고, 어긋나면 `PlayerMover.inputYawOffset`
+   (세 도형 공통)을 `90`/`-90`으로 맞춘다. 순수 토크라 방향 전환이 굼뜨면 `steerResponsiveness`/
+   `turnAssist`를, 앞모서리를 못 넘고 떨면 `rollTorque`를 조정한다.
+4. **스케일 뒤집힘**: `ScalePad`로 정육면체/정사면체를 크게/납작하게 만든 뒤에도 굴러 뒤집히는지
+   확인. 안 뒤집히면 `PlayerMover.scaleTorqueCompensation`을 올린다(구는 legacy라 해당 없음).
+5. **Tab 전환**: 플레이어 오브젝트를 2개 이상 둔 상태로 Tab을 눌러 조작 대상이 이름 알파벳 순
+   (`Cube → Sphere → Tetrahedron`)으로 순환하는지, 조작권을 잃은 오브젝트가 곧 멈추는지
+   (`uncontrolledDamping`), 전환 직후 이전 오브젝트가 뒤늦게 점프하지 않는지, 씬을 다시 열어도
+   순환 순서가 동일한지 확인.
+6. **팔로우 카메라**: Main Camera에 `PlayerFollowCamera`가 붙어 있는지(생성 시 자동, 없으면 수동
+   부착) 확인. 카메라가 활성 플레이어 위치를 부드럽게 따라가되, 도형이 굴러도 **화면이 회전하지
+   않는지**(멀미 방지) 확인. Tab 전환 시 타깃이 새 플레이어로 넘어가는지, 시점 방향이 방향키와
+   맞는지(`cameraYawOffset`) 확인.
+7. **기믹 호환성**: 새로 만든 플레이어 오브젝트로 기존 `AccelPad`, `JumpPad`, DoorSystem의
    레버/문/발판, `ScalePad` 위를 지나가며 4개 기믹이 이전과 동일하게 동작하는지 확인.
-6. **비조작 중 물리**: Tab으로 조작권을 다른 오브젝트로 넘긴 뒤, 방치된 오브젝트가 JumpPad나
+8. **비조작 중 물리**: Tab으로 조작권을 다른 오브젝트로 넘긴 뒤, 방치된 오브젝트가 JumpPad나
    AccelPad 위에 있었다면 입력 없이도 물리적으로는 계속 튕기거나 가속되는지 확인.
