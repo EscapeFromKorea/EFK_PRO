@@ -10,6 +10,11 @@ public class PadTrigger : MonoBehaviour
     private Vector3 padPressedPosition;     //pad 상호작용시 내려갈 정도
     private bool isPressed = false;          // door가 player 오브젝트와 충돌했는지의 여부(얘는 door의 두번째 rigidbody를 이용해서 설정)
 
+    // 플레이어 오브젝트가 트리거(Player_Mesh)와 솔리드(Player_Collider) 등 여러 콜라이더를
+    // 가질 수 있어 Enter/Exit가 중복 호출될 수 있다. 카운터로 실제 겹침 개수를 추적해
+    // 하나만 먼저 빠져나가도 눌림이 풀리지 않게 한다.
+    private int overlapCount = 0;
+
     public doorPhysics doorPhysicsScript;
 
     void Start()
@@ -31,13 +36,18 @@ public class PadTrigger : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
-            isPressed = true;
+        if (!other.CompareTag("Player")) return;
+
+        overlapCount++;
+        isPressed = true;
     }
 
     private void OnTriggerExit(Collider other)
     {
-        if (other.CompareTag("Player"))
+        if (!other.CompareTag("Player")) return;
+
+        overlapCount = Mathf.Max(0, overlapCount - 1);
+        if (overlapCount == 0)
             isPressed = false;
     }
 }

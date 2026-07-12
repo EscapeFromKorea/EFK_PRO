@@ -18,3 +18,9 @@ UserSettings/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Internal planning docs / agent config (not for GitHub)
+PRD.md
+CLAUDE.md
+CLAUDE.md.meta
+.claude/
