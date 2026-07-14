@@ -63,7 +63,7 @@ public class PlayerAccelReceiver : MonoBehaviour
         float currentY = rb.velocity.y; // 중력/점프는 건드리지 않음
 
         Vector3 inputVel = Vector3.zero;
-        if (mover != null)
+        if (mover != null && mover.IsControlled)
         {
             float h = Input.GetAxis("Horizontal");
             float v = Input.GetAxis("Vertical");
