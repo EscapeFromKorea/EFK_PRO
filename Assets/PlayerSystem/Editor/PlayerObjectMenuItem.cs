@@ -104,10 +104,13 @@ public static class PlayerObjectMenuItem
     ///   기준 5/0.5=10 rad/s)가 쉽게 잘린다. 세 도형 모두 넉넉하게 올려둔다.
     /// - interpolation: 물리 스텝 사이 시각적 끊김/떨림을 보간해 부드럽게 보이게 한다.
     /// - solverIterations/solverVelocityIterations, collisionDetectionMode: 구는 접촉점이
-    ///   항상 1개뿐이라 문제가 없지만, 정육면체/정사면체는 접지 중 여러 접촉점(코너/컴파운드
-    ///   구)이 동시에 상충하는 방향으로 움직이려 한다 — solver iteration을 늘려 이 다중 접촉
-    ///   제약을 더 정확히(덜 튀게) 풀고, ContinuousDynamic으로 회전 중 얇은 지오메트리를
-    ///   파고드는 것도 방지한다.
+    ///   항상 1개뿐이라 문제가 없지만, 정육면체(평평한 면 전체로 접지)는 여러 접촉점이 동시에
+    ///   상충하는 방향으로 움직이려 한다 — solver iteration을 늘려 이 다중 접촉 제약을 더
+    ///   정확히(덜 튀게) 풀고, ContinuousDynamic으로 회전 중 얇은 지오메트리를 파고드는 것도
+    ///   방지한다. 정사면체는 예전에 꼭짓점/변마다 겹치는 SphereCollider 컴파운드를 썼을 때
+    ///   바로 이 다중 접촉 충돌 때문에 버벅임+파고듦이 함께 났었는데, 지금은 살짝 깎인
+    ///   단일 Convex MeshCollider라 콜라이더 자체는 구와 마찬가지로 접촉이 한 벌뿐이지만,
+    ///   그래도 회전 중 접촉 형태가 자주 바뀌므로 안전하게 정육면체와 같은 설정을 공유한다.
     /// </summary>
     private static void ConfigureContinuousRollPhysics(Rigidbody rb, PlayerShapeType shape)
     {
@@ -189,25 +192,27 @@ public static class PlayerObjectMenuItem
                 return;
             }
 
-            // Unity에는 정사면체에 대응하는 기본 Primitive Collider가 없다. Convex MeshCollider를
-            // 솔리드에도 그대로 쓰면 실제 뾰족한 꼭짓점/모서리로 접지하는데, 회전 중 그 뾰족한
-            // 점이 바닥을 파고들려 하는 정도가 매 순간 불연속적으로 바뀌어(각/모서리가 바뀔
-            // 때마다 접촉 형태 자체가 급변) 솔버가 가장 격하게 반응한다. 대신 실제 꼭짓점
-            // 4개 각각에 작은 SphereCollider를 배치한 컴파운드로 근사한다 — 구는 어느 방향으로
-            // 회전해도 중심에서 표면까지 거리가 항상 반지름으로 일정하므로, 회전하며 바닥에
-            // 파고드는 정도가 완만하고 연속적으로 바뀐다(뾰족한 점보다 솔버가 다루기 쉽다).
-            // 각 구의 중심은 실제 꼭짓점에서 무게중심 방향으로 반지름만큼 당겨서, 구 표면이
-            // 원본 메쉬의 꼭짓점 위치와 거의 겹치도록 했다(모양 왜곡을 최소화).
-            foreach (Vector3 vertex in TetrahedronMeshGenerator.GetVertices(0.5f))
-            {
-                SphereCollider vertexSphere = go.AddComponent<SphereCollider>();
-                vertexSphere.radius = TetrahedronVertexColliderRadius;
-                Vector3 inwardDir = vertex.normalized; // 무게중심(원점) -> 꼭짓점 방향
-                vertexSphere.center = vertex - inwardDir * TetrahedronVertexColliderRadius;
-                // 토크+마찰 구르기: 접촉 모서리가 미끄러지지 않고 피벗 역할을 하도록 그립 마찰.
-                // (기존 저마찰은 '각속도 강제' 방식의 접촉 충돌 완화용이라 여기선 정반대로 부적합.)
-                vertexSphere.material = GetTetrahedronGripMaterial();
-            }
+            // Unity에는 정사면체에 대응하는 기본 Primitive Collider가 없다.
+            //
+            // [시행착오] 처음엔 꼭짓점 4개에 작은 SphereCollider를 배치한 컴파운드로 근사했었다.
+            // 그런데 변 길이(약 1.41)에 비해 구 반지름(0.12)이 작아 변/면 중간이 뚫려 있어 그
+            // 틈으로 메쉬가 파고드는 문제가 있었고, 변 중점에도 구를 추가해 틈을 메우자 이번엔
+            // 하나의 강체에 딸린 여러 개의 독립된 볼록 프리미티브가 동시에 접촉하면서(예: 변
+            // 하나에 꼭짓점 2개 + 중점 1개가 거의 동시에 닿음) PhysX 솔버가 서로 다른 분리 방향을
+            // 요구하는 접촉점들 사이에서 버벅였다 — 틈을 메우는 것과 접촉 개수를 줄이는 것이
+            // 서로 상충하는 목표였다.
+            //
+            // 그래서 컴파운드를 걷어내고, 각 꼭짓점을 이웃 꼭짓점 쪽으로 살짝(truncateFactor) 깎아
+            // 뾰족한 점 대신 작은 평평한 면으로 만든 뒤 그 점들을 "단 하나의" Convex MeshCollider로
+            // 쿠킹한다. 콜라이더가 하나뿐이라 PhysX가 표준적인 단일 볼록체 접촉으로 다뤄 컴파운드
+            // 방식의 접촉 충돌이 근본적으로 사라지고, 깎인 평평한 면 덕에 완전히 뾰족한 점으로
+            // 접지할 때 생기던 접촉 불연속(매 순간 접촉 형태 급변)도 함께 줄어든다. 빈틈도 없다 —
+            // 하나의 통짜 볼록 껍질이라 SphereCollider 사이 같은 미접촉 구간 자체가 없다.
+            MeshCollider solidCollider = go.AddComponent<MeshCollider>();
+            solidCollider.sharedMesh = TetrahedronMeshGenerator.CreateChamferedColliderMesh(0.5f);
+            solidCollider.convex = true;
+            // 토크+마찰 구르기: 접촉면이 미끄러지지 않고 피벗 역할을 하도록 그립 마찰.
+            solidCollider.material = GetTetrahedronGripMaterial();
             return;
         }
 
@@ -223,10 +228,6 @@ public static class PlayerObjectMenuItem
             // 그립(마찰)을 줘야 앞모서리를 피벗 삼아 미끄러지지 않고 넘어간다.
             box.material = GetCubeGripMaterial();
     }
-
-    /// <summary>정사면체 컴파운드 콜라이더의 꼭짓점 구 반지름. 너무 크면 형태가 뭉툭해지고,
-    /// 너무 작으면 뾰족한 점에 가까워져 접촉이 다시 불안정해진다.</summary>
-    private const float TetrahedronVertexColliderRadius = 0.12f;
 
     private static PhysicMaterial tetrahedronGripMaterial;
     private static PhysicMaterial cubeGripMaterial;
