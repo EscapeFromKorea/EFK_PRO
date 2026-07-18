@@ -7,44 +7,22 @@ using UnityEditor;
 using System.IO;
 
 /// <summary>
-/// 에디터 메뉴에서 씬에 플레이어 + 패드 세트를 자동으로 생성해주는 헬퍼입니다.
-/// Unity 상단 메뉴 → Tools → ShapeGimmick → Create Full Setup 을 클릭하세요.
+/// 에디터 메뉴에서 씬에 ScalePad 5종을 자동으로 생성해주는 헬퍼입니다.
+/// Unity 상단 메뉴 → Tools → ShapeGimmick → Create Pads Only 를 클릭하세요.
+///
+/// 플레이어 오브젝트 생성은 PlayerSystem/Editor/PlayerObjectMenuItem.cs
+/// (Tools → PlayerSystem → Create Player)가 전담합니다 — 구/정육면체/정사면체 3단 계층,
+/// 자유 회전 물리 구르기, 접지·Tab 전환 기믹과 호환되는 유일한 정식 생성 경로입니다.
+/// (예전에는 이 파일에도 CreateFullSetup으로 플레이어를 만들었으나, FreezeRotation 고정·
+/// 정사면체 Sphere 대체 등 구식 결과물이라 현행 기믹과 맞지 않아 제거했습니다.)
 /// </summary>
 public static class ShapeGimmickSetup
 {
     // ① 머티리얼을 저장할 에셋 경로
     private const string MaterialSavePath = "Assets/ScalingSystem/Materials";
 
-    [MenuItem("Tools/ShapeGimmick/Create Full Setup")]
-    public static void CreateFullSetup()
-    {
-        // ① 머티리얼 저장 폴더가 없으면 생성
-        EnsureMaterialFolder();
-
-        // ── 루트 그룹 ──────────────────────────────────────────
-        GameObject root = new GameObject("ShapeGimmick_Root");
-        // ② Undo 등록은 오브젝트 생성 직후 즉시 호출
-        Undo.RegisterCreatedObjectUndo(root, "Create ShapeGimmick");
-
-        // ── 플레이어 오브젝트 3종 ──────────────────────────────
-        CreatePlayer(root, "Player_Sphere",      PrimitiveType.Sphere, new Vector3(-4, 0.5f, 0));
-        CreatePlayer(root, "Player_Cube",        PrimitiveType.Cube,   new Vector3( 0, 0.5f, 0));
-        CreatePlayer(root, "Player_Tetrahedron", PrimitiveType.Sphere, new Vector3( 4, 0.5f, 0));
-        // ※ 정사면체는 Unity 기본 Primitive에 없으므로 Sphere로 대체합니다.
-        //   실제 사용 시 직접 메시를 교체하거나 커스텀 메시를 임포트하세요.
-
-        // ── 패드 5종 ──────────────────────────────────────────
-        CreatePadsUnder(root);
-
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-
-        Debug.Log("[ShapeGimmick] 씬 셋업 완료! 정사면체 플레이어는 별도 메시로 교체하세요.");
-        Selection.activeGameObject = root;
-    }
-
     /// <summary>
-    /// 패드 5개만 생성합니다. 이미 플레이어 오브젝트가 씬에 있을 때 사용하세요.
+    /// 패드 5개를 생성합니다. 플레이어 오브젝트는 Tools → PlayerSystem → Create Player로 따로 만드세요.
     /// Tools → ShapeGimmick → Create Pads Only
     /// </summary>
     [MenuItem("Tools/ShapeGimmick/Create Pads Only")]
@@ -87,23 +65,6 @@ public static class ShapeGimmickSetup
         CreatePad(parent, "Pad_IncreaseHorizontal", ScalePad.EPadType.IncreaseHorizontal, new Vector3( 0, padY, 6), new Color(0.2f, 0.4f, 1.0f));
         CreatePad(parent, "Pad_DecreaseHorizontal", ScalePad.EPadType.DecreaseHorizontal, new Vector3( 2, padY, 6), new Color(1.0f, 0.6f, 0.0f));
         CreatePad(parent, "Pad_Reset",              ScalePad.EPadType.Reset,              new Vector3( 4, padY, 6), new Color(0.9f, 0.9f, 0.0f));
-    }
-
-    private static void CreatePlayer(GameObject parent, string name, PrimitiveType type, Vector3 pos)
-    {
-        GameObject go = GameObject.CreatePrimitive(type);
-        // ② Undo 등록: SetParent·AddComponent 등 이후 변경사항이 Undo에 포함되도록 생성 직후 바로 등록
-        Undo.RegisterCreatedObjectUndo(go, "Create Player");
-
-        go.name = name;
-        go.transform.SetParent(parent.transform);
-        go.transform.position = pos;
-        go.tag = "Player";
-
-        Rigidbody rb = go.AddComponent<Rigidbody>();
-        rb.constraints = RigidbodyConstraints.FreezeRotation;
-
-        go.AddComponent<PlayerShapeController>();
     }
 
     private static void CreatePad(GameObject parent, string name, ScalePad.EPadType padType, Vector3 pos, Color color)

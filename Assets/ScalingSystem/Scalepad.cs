@@ -141,24 +141,13 @@ public class ScalePad : MonoBehaviour
         }
     }
 
-    /// <summary>PlayerShapeController를 Collider 기준으로 탐색합니다.</summary>
+    /// <summary>PlayerShapeController를 Collider 기준으로 탐색합니다.
+    /// GetComponentInParent가 자신+상위를 모두 훑으므로(Player_Mesh/Player_Collider → Player_Root),
+    /// 그래도 없으면 하위까지 본다.</summary>
     private PlayerShapeController FindShapeController(Collider other)
     {
-        // 1) 자기 자신
-        PlayerShapeController sc = other.GetComponent<PlayerShapeController>();
-        if (sc != null) return sc;
-
-        // 2) 부모 방향 탐색 (자신 제외)
-        Transform p = other.transform.parent;
-        while (p != null)
-        {
-            sc = p.GetComponent<PlayerShapeController>();
-            if (sc != null) return sc;
-            p = p.parent;
-        }
-
-        // 3) 자식 탐색
-        return other.GetComponentInChildren<PlayerShapeController>();
+        return other.GetComponentInParent<PlayerShapeController>()
+            ?? other.GetComponentInChildren<PlayerShapeController>();
     }
 
     /// <summary>머티리얼 인스턴스 색상 변경 (null 안전)</summary>

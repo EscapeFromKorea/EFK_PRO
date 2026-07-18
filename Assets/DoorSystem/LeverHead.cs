@@ -157,6 +157,5 @@ public class LeverHead : MonoBehaviour
 
         float pushDirection = localDir.z > 0 ? 1f : -1f;
         targetAngle = Mathf.Clamp(pushDirection * maxAngle, -maxAngle, maxAngle);
-        Debug.Log($"[Normal] x={localDir.x:F2}, y={localDir.y:F2}, z={localDir.z:F2}");
     }
 }
