@@ -4,7 +4,7 @@ using UnityEngine;
 /// 플레이어의 점프를 담당한다. "Jump" 입력 축(기본 Space)을 사용한다.
 /// 같은 오브젝트에 ScalingSystem의 PlayerShapeController가 있으면 그쪽의 접지 판정을 재사용하고,
 /// 없으면 자체 레이캐스트로 접지 여부를 판단한다.
-/// JumpSystem/JumpPad.cs가 직접 호출하는 LaunchFromPad()도 제공한다.
+/// JumpSystem/JumpPad.cs 등 외부 발사 기믹이 호출하는 LaunchToHeight(H)도 제공한다.
 /// PlayerShapeController(기본 실행 순서 0)가 이번 프레임의 IsGrounded()를 먼저 갱신한
 /// 뒤에 이 컴포넌트가 그 값을 읽도록, Project Settings의 Script Execution Order 수동
 /// 설정 여부와 무관하게 코드로 순서를 보장한다.
@@ -14,7 +14,9 @@ using UnityEngine;
 public class PlayerJump : MonoBehaviour
 {
     [Header("점프 설정")]
-    public float jumpForce = 7f;
+    [Tooltip("목표 점프 높이 H(Unit). velocity.y = √(2·g·H)로 역산해 대입한다(AddForce·가산 아님). " +
+             "질량이 개입하지 않아 도형 질량과 무관하게 정확히 이 높이까지 오른다.")]
+    public float jumpHeight = 1.6f;
 
     [Header("자체 접지 판정 (PlayerShapeController가 없을 때만 사용)")]
     [Tooltip("바닥 감지 Raycast 거리")]
@@ -59,7 +61,7 @@ public class PlayerJump : MonoBehaviour
 
         if (!IsGrounded()) return;
 
-        LaunchFromPad(jumpForce);
+        LaunchToHeight(jumpHeight);
     }
 
     private bool IsGrounded()
@@ -71,10 +73,16 @@ public class PlayerJump : MonoBehaviour
         return Physics.Raycast(rayOrigin, Vector3.down, groundCheckDistance, groundLayer, QueryTriggerInteraction.Ignore);
     }
 
-    /// <summary>JumpPad 등 외부 기믹이 직접 발사시킬 때 호출하는 진입점.</summary>
-    public void LaunchFromPad(float force)
+    /// <summary>목표 높이 H(Unit)에 도달하도록 수직 속도를 역산해 "대입"한다(가산·AddForce 아님).
+    /// 질량이 개입하지 않아 도형 질량과 무관하게 항상 정확히 H까지 오른다(레벨 도달 규격표의 전제).
+    /// 기본 점프·점프대·시소·강제 점프 등 모든 발사원이 이 진입점 하나로 수렴한다.
+    /// 수평 속도는 보존한다 — 이동 중 점프의 가로 도달(D = 지상속도 × 0.6 × 체공)이 성립하도록.
+    /// g는 Physics.gravity에서 읽어, 프로젝트 중력을 바꿔도 "정확히 H까지"라는 계약은 유지된다.</summary>
+    public void LaunchToHeight(float heightUnits)
     {
-        rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
-        rb.AddForce(Vector3.up * force, ForceMode.Impulse);
+        if (heightUnits <= 0f) return;
+        float g = Mathf.Abs(Physics.gravity.y);
+        float vy = Mathf.Sqrt(2f * g * heightUnits);
+        rb.velocity = new Vector3(rb.velocity.x, vy, rb.velocity.z);
     }
 }

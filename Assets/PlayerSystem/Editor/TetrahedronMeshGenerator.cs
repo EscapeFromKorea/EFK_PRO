@@ -18,14 +18,24 @@ public static class TetrahedronMeshGenerator
     /// </summary>
     public static Vector3[] GetVertices(float scale = 0.5f)
     {
-        // 정육면체에 내접하는 정사면체의 네 꼭짓점
-        return new[]
+        // 정육면체에 내접하는 정사면체의 네 꼭짓점(무게중심은 원점).
+        Vector3[] raw =
         {
             new Vector3(1, 1, 1) * scale,
             new Vector3(1, -1, -1) * scale,
             new Vector3(-1, 1, -1) * scale,
             new Vector3(-1, -1, 1) * scale,
         };
+
+        // 위 좌표 그대로면 (1,1,1) 축이 세로가 되어 위아래가 모두 "모서리"로 놓인다(면이 바닥에
+        // 안 닿음). 한 면이 바닥에 평평히 닿고 반대 꼭짓점이 위를 향하도록, (1,1,1) 방향을 월드
+        // up으로 정렬한다. 원점 기준 회전이라 무게중심은 그대로 원점에 유지되고, 시각 메쉬와
+        // 콜라이더 메쉬 모두 이 메서드를 거치므로 한 번에 정합하게 재정렬된다.
+        Quaternion faceDown = Quaternion.FromToRotation(new Vector3(1f, 1f, 1f), Vector3.up);
+        for (int i = 0; i < raw.Length; i++)
+            raw[i] = faceDown * raw[i];
+
+        return raw;
     }
 
     /// <summary>

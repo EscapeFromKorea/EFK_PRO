@@ -45,23 +45,25 @@ public static class PlayerObjectMenuItem
         root.tag = "Player";
 
         Rigidbody rb = root.AddComponent<Rigidbody>();
-        // 회전을 자유롭게 둬서 실제 물리로 모서리에 걸려 통통 튀며 구르게 한다.
-        // 이동 입력(PlayerMover)은 월드 축 velocity를 직접 지정하므로 회전과 무관하게
-        // 항상 의도한 방향으로 이동한다 — 방향 조작감에는 영향이 없다.
-        rb.constraints = RigidbodyConstraints.None;
+        // 정육면체/정사면체는 물리 회전을 고정한다 — 콜라이더/무게중심 축이 고정돼 점프 도달
+        // 궤적과 착지가 결정론적으로 유지되고(레벨 도달 규격표·LD-01의 전제), "평평한 면 접촉 +
+        // 각속도/토크"가 PhysX 접촉 솔버와 충돌하던 구조적 문제 자체가 사라진다. 구르는 연출은
+        // PlayerVisualRoll이 시각 메쉬만 굴려서 낸다. 구(Sphere)는 회전이 자유로워도 도달에
+        // 영향이 없고(무게중심 포물선은 스핀과 무관) 실제 물리 구르기가 자연스러워 자유회전으로 둔다.
+        rb.constraints = shape == PlayerShapeType.Sphere
+            ? RigidbodyConstraints.None
+            : RigidbodyConstraints.FreezeRotation;
         rb.angularDrag = 0.5f;
         ConfigureContinuousRollPhysics(rb, shape);
-        // 토크+마찰 물리 구르기에 맞춘 오버라이드. 정육면체/정사면체 공통으로 적용하고 구에는 적용하지 않는다.
-        if (shape != PlayerShapeType.Sphere)
-            ConfigureTorqueRollPhysics(rb);
+        // 토크+마찰 물리 구르기(ConfigureTorqueRollPhysics / useTorqueRolling)는 더 이상 켜지 않는다.
+        // 코드는 PlayerMover에 플래그(useTorqueRolling=false 기본) 뒤로 남겨둬, 추후 "착지까지 실제
+        // 물리로 구르는" 방식으로 되돌리고 싶을 때 플래그만 켜면 복원할 수 있게 한다.
 
-        PlayerMover mover = root.AddComponent<PlayerMover>();
-        // 정육면체/정사면체는 토크+마찰 물리 구르기로 통일한다. 구(Sphere)만 기존 velocity/각속도
-        // 대입 방식(useTorqueRolling=false 기본값)을 그대로 유지해 동작이 변하지 않는다.
-        if (shape != PlayerShapeType.Sphere)
-            mover.useTorqueRolling = true;
+        root.AddComponent<PlayerMover>();
         root.AddComponent<PlayerJump>();
         root.AddComponent<PlayerAccelReceiver>();
+        // 이속/점프높이/질량/마찰은 PlayerShapeIdentity가 도형 스탯 에셋(PlayerShapeStats)에서 읽어
+        // 아래(콜라이더 생성 후) Start 시점에 적용한다 — 값은 코드가 아니라 데이터 에셋에 있다(#2).
         PlayerShapeController shapeController = root.AddComponent<PlayerShapeController>();
         // SphereCollider는 비균일(X/Y) 스케일에서 반지름이 두 축 중 큰 쪽 기준으로만 커지므로,
         // 구 모양일 때만 PlayerShapeController가 X/Y 평균으로 world scale을 보정하게 한다.
@@ -91,6 +93,20 @@ public static class PlayerObjectMenuItem
 
         shapeController.meshTransform = meshHolder.transform;
         shapeController.colliderTransform = colliderHolder.transform;
+
+        // 정육면체/정사면체는 물리 회전을 고정했으므로, 시각 메쉬(Player_MeshVisual)만 굴려
+        // 구르는 연출을 낸다. 공중에서만 이동 방향으로 굴리고 착지 시 똑바로 복귀한다.
+        if (shape != PlayerShapeType.Sphere)
+        {
+            PlayerVisualRoll visualRoll = root.AddComponent<PlayerVisualRoll>();
+            visualRoll.visual = visual.transform;
+            visualRoll.groundContact = shapeController.groundContact;
+        }
+
+        // 도형 스탯 에셋을 로드(없으면 요구사항 기본값으로 생성)해 부착한다. 실제 적용은 Start에서.
+        PlayerShapeIdentity identity = root.AddComponent<PlayerShapeIdentity>();
+        identity.stats = LoadOrCreateStats(shape);
+        identity.solidCollider = colliderHolder.GetComponent<Collider>();
 
         Selection.activeGameObject = root;
         Debug.Log($"[PlayerSystem] Player_{shape} 생성 완료");
@@ -137,6 +153,45 @@ public static class PlayerObjectMenuItem
         rb.centerOfMass = new Vector3(0f, 0.5f, 0f);
         rb.angularDrag = 0.1f;
         rb.maxAngularVelocity = 20f;
+    }
+
+    /// <summary>
+    /// 도형 스탯 에셋(PlayerShapeStats)을 로드한다. 없으면 요구사항 #2 기본값으로 생성해
+    /// Assets/PlayerSystem/ShapeStats/에 저장한다. 이후 디자이너가 이 에셋을 직접 수정하면
+    /// 재컴파일 없이 반영된다(값이 코드가 아니라 데이터에 있음).
+    /// </summary>
+    private static PlayerShapeStats LoadOrCreateStats(PlayerShapeType shape)
+    {
+        const string dir = "Assets/PlayerSystem/ShapeStats";
+        string path = $"{dir}/{shape}Stats.asset";
+
+        PlayerShapeStats stats = AssetDatabase.LoadAssetAtPath<PlayerShapeStats>(path);
+        if (stats != null) return stats;
+
+        if (!AssetDatabase.IsValidFolder(dir))
+            AssetDatabase.CreateFolder("Assets/PlayerSystem", "ShapeStats");
+
+        stats = ScriptableObject.CreateInstance<PlayerShapeStats>();
+        switch (shape)
+        {
+            case PlayerShapeType.Sphere:
+                stats.kind = PlayerShapeStats.ShapeKind.Sphere;
+                stats.moveSpeed = 7.0f; stats.jumpHeight = 1.6f; stats.mass = 1.5f; stats.friction = 0.1f;
+                break;
+            case PlayerShapeType.Tetrahedron:
+                stats.kind = PlayerShapeStats.ShapeKind.Tetrahedron;
+                stats.moveSpeed = 5.0f; stats.jumpHeight = 2.0f; stats.mass = 1.0f; stats.friction = 0.8f;
+                break;
+            case PlayerShapeType.Cube:
+                stats.kind = PlayerShapeStats.ShapeKind.Cube;
+                stats.moveSpeed = 3.5f; stats.jumpHeight = 1.2f; stats.mass = 3.0f; stats.friction = 0.5f;
+                break;
+        }
+        stats.bounciness = 0f;
+
+        AssetDatabase.CreateAsset(stats, path);
+        AssetDatabase.SaveAssets();
+        return stats;
     }
 
     private static GameObject CreateVisual(PlayerShapeType shape, Mesh tetraMesh)
@@ -211,60 +266,16 @@ public static class PlayerObjectMenuItem
             MeshCollider solidCollider = go.AddComponent<MeshCollider>();
             solidCollider.sharedMesh = TetrahedronMeshGenerator.CreateChamferedColliderMesh(0.5f);
             solidCollider.convex = true;
-            // 토크+마찰 구르기: 접촉면이 미끄러지지 않고 피벗 역할을 하도록 그립 마찰.
-            solidCollider.material = GetTetrahedronGripMaterial();
+            // 물리 머티리얼(마찰/반발)은 PlayerShapeIdentity가 도형 스탯에서 읽어 Start에 적용한다(#6).
             return;
         }
 
-        // 정육면체 솔리드/트리거 콜라이더. BoxCollider가 곧 실제 정육면체 모양 그 자체이므로
-        // 형태를 바꿀 이유는 없다. 정육면체도 토크+마찰 물리 구르기로 통일했으므로, 솔리드
-        // 콜라이더에는 고마찰 그립 재질(GetCubeGripMaterial)을 씌워 넓은 접촉면이 미끄러지지
-        // 않고 앞모서리를 피벗 삼아 넘어가게 한다.
+        // 정육면체 솔리드/트리거 콜라이더. BoxCollider가 곧 실제 정육면체 모양 그 자체이므로 형태를
+        // 바꿀 이유가 없다. 물리 머티리얼(마찰/반발)은 PlayerShapeIdentity가 도형 스탯에서 읽어
+        // Start에 적용한다(#6).
         BoxCollider box = go.AddComponent<BoxCollider>();
         box.size = Vector3.one;
         box.isTrigger = isTrigger;
-        if (!isTrigger)
-            // 정육면체도 토크+마찰 구르기로 통일. 넓은 평면으로 접지하므로 정사면체보다 강한
-            // 그립(마찰)을 줘야 앞모서리를 피벗 삼아 미끄러지지 않고 넘어간다.
-            box.material = GetCubeGripMaterial();
-    }
-
-    private static PhysicMaterial tetrahedronGripMaterial;
-    private static PhysicMaterial cubeGripMaterial;
-
-    /// <summary>
-    /// 정사면체 토크+마찰 구르기 그립 재질. 꼭짓점 컴파운드 구가 접촉 모서리를 붙잡아 토크를 실제
-    /// 구르기로 변환하게 한다. 씬 테스트 결과 그립이 과해 마찰을 낮췄다(static 1.0→0.7, dynamic
-    /// 0.8→0.55). 정육면체보다 접촉 면적이 작아 더 낮은 마찰로도 충분히 굴러간다.
-    /// </summary>
-    private static PhysicMaterial GetTetrahedronGripMaterial()
-    {
-        if (tetrahedronGripMaterial == null)
-            tetrahedronGripMaterial = CreateGripMaterial("PlayerTetrahedron_RollGrip", 0.7f, 0.55f);
-        return tetrahedronGripMaterial;
-    }
-
-    /// <summary>
-    /// 정육면체 토크+마찰 구르기 그립 재질. 넓은 평면으로 접지해 미끄러지기 쉬우므로 정사면체보다
-    /// 강한 그립(static 1.0 / dynamic 0.8)을 줘 앞모서리 피벗이 안정적으로 걸리게 한다.
-    /// </summary>
-    private static PhysicMaterial GetCubeGripMaterial()
-    {
-        if (cubeGripMaterial == null)
-            cubeGripMaterial = CreateGripMaterial("PlayerCube_RollGrip", 1.0f, 0.8f);
-        return cubeGripMaterial;
-    }
-
-    private static PhysicMaterial CreateGripMaterial(string name, float staticFriction, float dynamicFriction)
-    {
-        return new PhysicMaterial(name)
-        {
-            staticFriction = staticFriction,
-            dynamicFriction = dynamicFriction,
-            frictionCombine = PhysicMaterialCombine.Maximum,
-            bounciness = 0f,
-            bounceCombine = PhysicMaterialCombine.Minimum
-        };
     }
 
     private static Material CreateDefaultMaterial()

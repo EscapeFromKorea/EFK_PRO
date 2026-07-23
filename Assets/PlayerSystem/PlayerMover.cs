@@ -49,6 +49,12 @@ public class PlayerMover : MonoBehaviour
 {
     public float moveSpeed = 5f;
 
+    [Header("공중 이동 제어")]
+    [Tooltip("공중에서의 수평 이동 속도 = 지상 속도 × 이 값. 요구사항 기준 0.6 고정. " +
+             "도달 규격표(가로 거리 D = 지상속도 × 0.6 × 체공)가 이 값에 직접 의존하므로 " +
+             "바꾸면 레벨 배치 수치가 어긋난다.")]
+    public float airControlMultiplier = 0.6f;
+
     [Header("구르는 회전 연출 (접지 중에만 적용)")]
     [Tooltip("굴렀을 때의 반경으로 취급할 값(대략 오브젝트 반지름/절반 크기). " +
              "매 프레임 각속도 = Cross(Vector3.up, 이동 velocity) / rollRadius로 하드 설정한다. " +
@@ -160,9 +166,11 @@ public class PlayerMover : MonoBehaviour
 
         if (!IsGrounded())
         {
-            rb.velocity = new Vector3(move.x, rb.velocity.y, move.z);
-            // 공중에서는 회전을 건드리지 않는다 — 점프대 등에서 자유 회전(통통 튀는 불규칙함)을
-            // 그대로 보존한다.
+            // 공중 수평 속도 = 지상 속도 × airControlMultiplier(0.6). 도달 규격표의 가로 거리가
+            // 이 계수에 맞춰 계산돼 있다. velocity를 "대입"하므로 입력을 유지하면 즉시 0.6배
+            // 속도가 되어(가속이 아니라) 체공 내내 그 속도를 유지 → D가 정확히 성립한다.
+            rb.velocity = new Vector3(move.x * airControlMultiplier, rb.velocity.y, move.z * airControlMultiplier);
+            // 회전은 건드리지 않는다(구는 자유 물리 회전 보존, 다면체는 PlayerVisualRoll이 시각만 처리).
             return;
         }
 
