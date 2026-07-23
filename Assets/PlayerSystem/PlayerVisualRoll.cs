@@ -54,7 +54,12 @@ public class PlayerVisualRoll : MonoBehaviour
             {
                 Vector3 axis = Vector3.Cross(Vector3.up, horiz.normalized);
                 float t = speedForMaxTumble > 0.01f ? Mathf.Clamp01(speed / speedForMaxTumble) : 1f;
-                target = Quaternion.AngleAxis(maxTumbleAngle * t, axis);
+                // ScalingSystem으로 커지면 같은 각도라도 메쉬가 커진 만큼 모서리가 더 크게 휘둘려
+                // 기울임이 과장돼 보인다. 스케일이 1보다 클 때 각도를 스케일로 나눠, 모서리의 실제
+                // 처짐량(각도×크기)을 대략 일정하게 유지한다. 작아졌을 때(스케일<1)는 건드리지 않는다.
+                float scale = Mathf.Max(transform.localScale.x, transform.localScale.y, transform.localScale.z);
+                float effectiveAngle = scale > 1f ? maxTumbleAngle / scale : maxTumbleAngle;
+                target = Quaternion.AngleAxis(effectiveAngle * t, axis);
             }
         }
 
