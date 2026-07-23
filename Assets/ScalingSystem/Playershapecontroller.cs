@@ -1,8 +1,12 @@
 using UnityEngine;
 
 /// <summary>
-/// 플레이어 모델의 상/하(Y축) 및 좌/우(X축) 비율을 관리합니다.
+/// 플레이어 모델의 크기를 1:1:1 균일 배율로 관리합니다.
 /// 구, 정사면체, 정육면체 등 기본 형태의 플레이어 오브젝트에 부착하세요.
+///
+/// 커지기/작아지기 패드를 밟을 때마다 해당 배율로 "토글"됩니다 —
+/// 한 번 밟으면 정해진 배율로 커지고(또는 작아지고), 같은 종류를 다시 밟으면 원래 크기로 복귀.
+/// 커진 상태에서 작아지기 패드를 밟으면 곧바로 작아진 상태로 전환됩니다.
 ///
 /// PlayerJump(10), PlayerGroundContact(20)가 이 컴포넌트(기본 순서 0)보다 나중에
 /// 실행되도록 각자 [DefaultExecutionOrder]로 코드 차원에서 순서를 보장하므로,
@@ -11,21 +15,17 @@ using UnityEngine;
 public class PlayerShapeController : MonoBehaviour
 {
     [Header("스케일 설정")]
-    [Tooltip("발판을 밟고 있는 동안 초당 변화하는 상/하(Y축) 스케일 속도")]
-    public float verticalScaleSpeed = 0.5f;
+    [Tooltip("커지기 패드를 밟았을 때 초기 크기에 곱할 배율 (예: 2 → 2배)")]
+    public float growMultiplier = 2f;
 
-    [Tooltip("발판을 밟고 있는 동안 초당 변화하는 좌/우(X축) 스케일 속도")]
-    public float horizontalScaleSpeed = 0.5f;
+    [Tooltip("작아지기 패드를 밟았을 때 초기 크기에 곱할 배율 (예: 0.5 → 절반)")]
+    public float shrinkMultiplier = 0.5f;
 
-    [Tooltip("스케일 최솟값 (각 축)")]
+    [Tooltip("스케일 최솟값 (각 축, 배율 적용 후 클램프)")]
     public float minScale = 0.2f;
 
-    [Tooltip("스케일 최댓값 (각 축)")]
+    [Tooltip("스케일 최댓값 (각 축, 배율 적용 후 클램프)")]
     public float maxScale = 5.0f;
-
-    [Header("Reset 설정")]
-    [Tooltip("Reset 발판을 밟았을 때 초기 스케일로 돌아오는 속도")]
-    public float resetSpeed = 2f;
 
     [Header("스케일 변환 부드럽게 처리")]
     [Tooltip("스케일이 목표값으로 변하는 속도 (0이면 즉시 변경)")]
@@ -67,8 +67,8 @@ public class PlayerShapeController : MonoBehaviour
     // 현재 목표 스케일
     private Vector3 targetScale;
 
-    // 현재 활성화된 패드 동작
-    private EPadAction currentAction = EPadAction.None;
+    // 현재 크기 상태 (Normal이면 초기 크기)
+    private EScaleState currentState = EScaleState.Normal;
 
     // 접지 여부 (Raycast로 매 FixedUpdate마다 갱신)
     private bool isGrounded = false;
@@ -79,14 +79,11 @@ public class PlayerShapeController : MonoBehaviour
     private Collider[] ownColliders;
     private readonly RaycastHit[] groundHitBuffer = new RaycastHit[8];
 
-    public enum EPadAction
+    public enum EScaleState
     {
-        None,
-        IncreaseVertical,
-        DecreaseVertical,
-        IncreaseHorizontal,
-        DecreaseHorizontal,
-        Reset
+        Normal,  // 초기 크기
+        Grown,   // 커진 상태 (growMultiplier)
+        Shrunk   // 작아진 상태 (shrinkMultiplier)
     }
 
     void Start()
@@ -110,8 +107,7 @@ public class PlayerShapeController : MonoBehaviour
 
     void Update()
     {
-        // 밟고 있는 패드 동작을 매 프레임 적용
-        ApplyCurrentAction();
+        // targetScale은 패드를 밟는 순간(ToggleScale)에만 바뀌므로 여기서는 갱신하지 않는다.
 
         // 현재 localScale을 목표 스케일로 부드럽게 이동
         if (lerpSpeed > 0f)
@@ -130,42 +126,20 @@ public class PlayerShapeController : MonoBehaviour
         // Player_Collider의 로컬 스케일은 (1,1,1)로 고정해, Root의 스케일을 그대로
         // 물려받아 월드 스케일이 실시간 크기와 항상 일치하도록 한다(부모-자식 계층에서
         // 자식의 로컬 위치·스케일은 부모 스케일만큼 자동으로 곱해져 반영된다).
-        // 이전에는 역수를 곱해 월드 스케일을 항상 (1,1,1)로 고정해 히트박스 크기가
-        // 절대 변하지 않게 했지만, 실시간 크기에 맞춰 물리 판정도 함께 커지고 작아지도록
-        // 요청받아 변경했다. 콜라이더가 커지는 도중 주변 물체와 겹치면 물리적으로
-        // 튕겨나갈 수 있으니 verticalScaleSpeed/horizontalScaleSpeed를 너무 급격하게
-        // 두지 않는 편이 안전하다.
+        // 스케일이 1:1:1 균일 배율로만 변하도록 바뀐 뒤로는 SphereCollider의 비균일
+        // 왜곡(반지름이 두 축 중 큰 쪽 기준으로만 커지는 문제)이 발생하지 않으므로,
+        // 예전의 useAverageColliderScale X/Y 평균 보정 분기는 더 이상 필요 없다.
+        // (해당 public 필드는 PlayerSystem/Editor의 생성기가 참조하고 있어 남겨두지만
+        //  런타임 동작에는 관여하지 않는다.)
         if (colliderTransform != null)
         {
-            if (useAverageColliderScale)
-            {
-                // SphereCollider는 X/Y가 다르게 스케일링될 때 반지름을 두 축 중 큰 쪽
-                // 기준으로만 키워 실시간 형태와 어긋난다. 두 축의 평균으로 world scale을
-                // 강제로 균일화해(=완벽한 구는 아니지만 코너 없는 둥근 형태 유지) 이 문제를
-                // 피한다. Z는 스케일 패드가 건드리지 않으므로 1로 고정한다.
-                float avg = (transform.localScale.x + transform.localScale.y) * 0.5f;
-                colliderTransform.localScale = new Vector3(
-                    avg / transform.localScale.x,
-                    avg / transform.localScale.y,
-                    1f / transform.localScale.z
-                );
+            colliderTransform.localScale = Vector3.one;
 
-                colliderTransform.localPosition = new Vector3(
-                    colliderTransform.localPosition.x,
-                    (avg * 0.5f) / transform.localScale.y,
-                    colliderTransform.localPosition.z
-                );
-            }
-            else
-            {
-                colliderTransform.localScale = Vector3.one;
-
-                colliderTransform.localPosition = new Vector3(
-                    colliderTransform.localPosition.x,
-                    0.5f,
-                    colliderTransform.localPosition.z
-                );
-            }
+            colliderTransform.localPosition = new Vector3(
+                colliderTransform.localPosition.x,
+                0.5f,
+                colliderTransform.localPosition.z
+            );
         }
     }
 
@@ -221,48 +195,31 @@ public class PlayerShapeController : MonoBehaviour
     }
 
     /// <summary>현재 활성 동작을 매 프레임 targetScale에 반영합니다.</summary>
-    private void ApplyCurrentAction()
+    /// <summary>currentState에 맞춰 targetScale을 초기 크기 × 배율로 다시 계산합니다.
+    /// X/Y/Z 모두 같은 배율을 곱하므로 형태 비율(1:1:1)이 유지됩니다.</summary>
+    private void RecomputeTargetScale()
     {
-        switch (currentAction)
+        float m;
+        switch (currentState)
         {
-            case EPadAction.IncreaseVertical:
-                targetScale.y = Mathf.Clamp(targetScale.y + verticalScaleSpeed * Time.deltaTime, minScale, maxScale);
-                break;
-
-            case EPadAction.DecreaseVertical:
-                targetScale.y = Mathf.Clamp(targetScale.y - verticalScaleSpeed * Time.deltaTime, minScale, maxScale);
-                break;
-
-            case EPadAction.IncreaseHorizontal:
-                targetScale.x = Mathf.Clamp(targetScale.x + horizontalScaleSpeed * Time.deltaTime, minScale, maxScale);
-                break;
-
-            case EPadAction.DecreaseHorizontal:
-                targetScale.x = Mathf.Clamp(targetScale.x - horizontalScaleSpeed * Time.deltaTime, minScale, maxScale);
-                break;
-
-            case EPadAction.Reset:
-                targetScale = Vector3.MoveTowards(targetScale, initialScale, resetSpeed * Time.deltaTime);
-                if (targetScale == initialScale)
-                    currentAction = EPadAction.None;
-                break;
-
-            case EPadAction.None:
-                break;
+            case EScaleState.Grown:  m = growMultiplier;   break;
+            case EScaleState.Shrunk: m = shrinkMultiplier; break;
+            default:                 m = 1f;               break;
         }
+
+        targetScale = new Vector3(
+            Mathf.Clamp(initialScale.x * m, minScale, maxScale),
+            Mathf.Clamp(initialScale.y * m, minScale, maxScale),
+            Mathf.Clamp(initialScale.z * m, minScale, maxScale)
+        );
     }
 
-    /// <summary>패드를 밟기 시작할 때 ScalePad에서 호출합니다.</summary>
-    public void SetAction(EPadAction action)
+    /// <summary>패드를 밟을 때 ScalePad에서 호출합니다. 같은 상태를 다시 밟으면
+    /// 초기 크기(Normal)로 돌아가고, 다른 상태면 그 상태로 전환합니다(토글).</summary>
+    public void ToggleScale(EScaleState state)
     {
-        currentAction = action;
-    }
-
-    /// <summary>패드에서 발을 뗄 때 ScalePad에서 호출합니다.</summary>
-    public void ClearAction(EPadAction action)
-    {
-        if (currentAction == action)
-            currentAction = EPadAction.None;
+        currentState = (currentState == state) ? EScaleState.Normal : state;
+        RecomputeTargetScale();
     }
 
     /// <summary>현재 접지 여부 반환 (외부 참조용)</summary>

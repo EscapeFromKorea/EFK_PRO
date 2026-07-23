@@ -7,7 +7,7 @@ using UnityEditor;
 using System.IO;
 
 /// <summary>
-/// 에디터 메뉴에서 씬에 ScalePad 5종을 자동으로 생성해주는 헬퍼입니다.
+/// 에디터 메뉴에서 씬에 ScalePad 2종(커지기/작아지기)을 자동으로 생성해주는 헬퍼입니다.
 /// Unity 상단 메뉴 → Tools → ShapeGimmick → Create Pads Only 를 클릭하세요.
 ///
 /// 플레이어 오브젝트 생성은 PlayerSystem/Editor/PlayerObjectMenuItem.cs
@@ -22,7 +22,7 @@ public static class ShapeGimmickSetup
     private const string MaterialSavePath = "Assets/ScalingSystem/Materials";
 
     /// <summary>
-    /// 패드 5개를 생성합니다. 플레이어 오브젝트는 Tools → PlayerSystem → Create Player로 따로 만드세요.
+    /// 패드 2개(커지기/작아지기)를 생성합니다. 플레이어 오브젝트는 Tools → PlayerSystem → Create Player로 따로 만드세요.
     /// Tools → ShapeGimmick → Create Pads Only
     /// </summary>
     [MenuItem("Tools/ShapeGimmick/Create Pads Only")]
@@ -39,7 +39,7 @@ public static class ShapeGimmickSetup
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        Debug.Log("[ShapeGimmick] 패드 5개 생성 완료!");
+        Debug.Log("[ShapeGimmick] 패드 2개 생성 완료!");
         Selection.activeGameObject = padRoot;
     }
 
@@ -56,15 +56,12 @@ public static class ShapeGimmickSetup
             AssetDatabase.CreateFolder("Assets/ScalingSystem", "Materials");
     }
 
-    /// <summary>패드 5개를 지정한 부모 오브젝트 아래에 생성합니다.</summary>
+    /// <summary>패드 2개(커지기/작아지기)를 지정한 부모 오브젝트 아래에 생성합니다.</summary>
     private static void CreatePadsUnder(GameObject parent)
     {
         float padY = 0.05f;
-        CreatePad(parent, "Pad_IncreaseVertical",   ScalePad.EPadType.IncreaseVertical,   new Vector3(-4, padY, 6), new Color(0.2f, 0.8f, 0.2f));
-        CreatePad(parent, "Pad_DecreaseVertical",   ScalePad.EPadType.DecreaseVertical,   new Vector3(-2, padY, 6), new Color(0.8f, 0.2f, 0.2f));
-        CreatePad(parent, "Pad_IncreaseHorizontal", ScalePad.EPadType.IncreaseHorizontal, new Vector3( 0, padY, 6), new Color(0.2f, 0.4f, 1.0f));
-        CreatePad(parent, "Pad_DecreaseHorizontal", ScalePad.EPadType.DecreaseHorizontal, new Vector3( 2, padY, 6), new Color(1.0f, 0.6f, 0.0f));
-        CreatePad(parent, "Pad_Reset",              ScalePad.EPadType.Reset,              new Vector3( 4, padY, 6), new Color(0.9f, 0.9f, 0.0f));
+        CreatePad(parent, "Pad_Grow",   ScalePad.EPadType.Grow,   new Vector3(-1, padY, 6), new Color(0.2f, 0.8f, 0.2f));
+        CreatePad(parent, "Pad_Shrink", ScalePad.EPadType.Shrink, new Vector3( 1, padY, 6), new Color(0.8f, 0.2f, 0.2f));
     }
 
     private static void CreatePad(GameObject parent, string name, ScalePad.EPadType padType, Vector3 pos, Color color)
