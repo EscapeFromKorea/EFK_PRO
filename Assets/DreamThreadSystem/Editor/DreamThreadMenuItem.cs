@@ -6,10 +6,11 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Tools > DreamThread 메뉴로 실타래 Phase 1 테스트 세팅을 만든다.
+/// Tools > DreamThread 메뉴로 실타래 테스트 세팅을 만든다.
 /// - Create Anchor: ThreadAnchor 하나(빛나는 작은 구 마커, 콜라이더 없음)를 SceneView 중앙에 생성한다.
-/// - 씬에 DreamThreadController가 없으면 함께 만들어(LineRenderer 포함) 앵커+컨트롤러로 바로
-///   테스트할 수 있게 보장한다.
+///   씬에 DreamThreadController가 없으면 함께 만들어(LineRenderer 포함) 바로 테스트할 수 있게 보장한다.
+/// - Create Pin Placer (Phase 2): 씬에 ThreadPinPlacer가 없으면 하나 만든다. 세모가 G로 벽에 핀을
+///   박아 런타임 앵커를 만드는 컴포넌트(레벨 C용). 핀은 일반 ThreadAnchor라 컨트롤러가 자동 인식한다.
 ///
 /// 앵커는 물리 마커라 콜라이더를 붙이지 않는다(연결은 거리 판정 — ThreadAnchor 주석 참고).
 /// 기존 에디터 세팅 패턴(CloudTrampoline/RainbowBridge)을 따른다: SceneView 중앙 스폰, Undo 등록,
@@ -47,6 +48,25 @@ public static class DreamThreadMenuItem
         Selection.activeGameObject = anchorObj;
         Debug.Log("[DreamThread] 앵커 생성 완료. 구/세모 플레이어로 앵커 근처(connectRange 안)에서 F를 눌러 매달리고, " +
                   "좌우로 흔들어 진폭을 키운 뒤 F로 놓으세요. 마우스 휠로 실 길이를 조절합니다.");
+    }
+
+    [MenuItem("Tools/DreamThread/Create Pin Placer")]
+    private static void CreatePinPlacer()
+    {
+        if (Object.FindObjectOfType<ThreadPinPlacer>() != null)
+        {
+            Debug.Log("[DreamThread] 씬에 이미 ThreadPinPlacer가 있습니다.");
+            return;
+        }
+
+        GameObject obj = new GameObject("DreamThreadPinPlacer");
+        obj.AddComponent<ThreadPinPlacer>();
+        Undo.RegisterCreatedObjectUndo(obj, "Create DreamThread Pin Placer");
+        Selection.activeGameObject = obj;
+        Debug.Log("[DreamThread] ThreadPinPlacer 생성 완료. 세모를 조작하며 벽을 향해 이동한 뒤 G로 핀을 박으세요. " +
+                  "G는 고리 생성 + 세모 벽부착(그 자리에 완전 고정)을 함께 합니다 — 점프로 위로 도약하며 탈착 후 공중 이동, " +
+                  "더 높은 벽에서 G 재입력으로 재부착(클라이밍 루프). 고리는 동시 2개까지(3번째는 가장 오래된 것 자동 회수), " +
+                  "수동 회수는 전용 키 T(박은 고리 전부 제거). 박은 고리엔 구·세모가 F로 매달립니다.");
     }
 
     // 씬에 컨트롤러가 없으면 LineRenderer를 포함해 하나 만든다. 이미 있으면 아무 것도 하지 않는다.

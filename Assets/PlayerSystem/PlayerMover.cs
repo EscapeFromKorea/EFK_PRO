@@ -54,6 +54,10 @@ public class PlayerMover : MonoBehaviour
              "도달 규격표(가로 거리 D = 지상속도 × 0.6 × 체공)가 이 값에 직접 의존하므로 " +
              "바꾸면 레벨 배치 수치가 어긋난다.")]
     public float airControlMultiplier = 0.6f;
+    [Tooltip("공중에서 벽으로 미는 입력 성분을 제거해, 지면 구르기용 그립 마찰이 몸을 벽에 붙들어 " +
+             "안 떨어지는 문제를 막는 벽 감지 거리(Unit). 몸 중심에서 이동 방향으로 이만큼 안에 벽(수직면)이 " +
+             "있으면 그 벽으로 미는 성분을 지워, 벽면을 따라만 움직이고 중력으로 미끄러져 내려오게 한다. 0이면 비활성.")]
+    public float airWallCheckDistance = 0.7f;
 
     [Header("구르는 회전 연출 (접지 중에만 적용)")]
     [Tooltip("굴렀을 때의 반경으로 취급할 값(대략 오브젝트 반지름/절반 크기). " +
@@ -169,7 +173,9 @@ public class PlayerMover : MonoBehaviour
             // 공중 수평 속도 = 지상 속도 × airControlMultiplier(0.6). 도달 규격표의 가로 거리가
             // 이 계수에 맞춰 계산돼 있다. velocity를 "대입"하므로 입력을 유지하면 즉시 0.6배
             // 속도가 되어(가속이 아니라) 체공 내내 그 속도를 유지 → D가 정확히 성립한다.
-            rb.velocity = new Vector3(move.x * airControlMultiplier, rb.velocity.y, move.z * airControlMultiplier);
+            // 벽으로 미는 성분은 제거해(벽면 따라만) 그립 마찰이 몸을 벽에 붙들어 안 떨어지는 걸 막는다.
+            Vector3 airMove = DeflectAirMoveFromWall(move);
+            rb.velocity = new Vector3(airMove.x * airControlMultiplier, rb.velocity.y, airMove.z * airControlMultiplier);
             // 회전은 건드리지 않는다(구는 자유 물리 회전 보존, 다면체는 PlayerVisualRoll이 시각만 처리).
             return;
         }
@@ -216,7 +222,9 @@ public class PlayerMover : MonoBehaviour
         else
         {
             // 공중: 약한 방향 제어만. 회전은 건드리지 않아 통통 튀는 불규칙함을 보존.
-            rb.AddForce(moveDir * airControlForce, ForceMode.Acceleration);
+            // 벽으로 미는 성분은 제거해(벽면 따라만) 그립 마찰이 몸을 벽에 붙들어 안 떨어지는 걸 막는다.
+            Vector3 airDir = DeflectAirMoveFromWall(moveDir);
+            rb.AddForce(airDir * airControlForce, ForceMode.Acceleration);
         }
 
         // 수평 속도 상한 (토크로 무한 가속되는 것 방지).
@@ -283,6 +291,33 @@ public class PlayerMover : MonoBehaviour
         Vector3 newDir = Vector3.Slerp(horiz.normalized, moveDir.normalized, k);
         Vector3 newHoriz = newDir * speed;
         rb.velocity = new Vector3(newHoriz.x, rb.velocity.y, newHoriz.z);
+    }
+
+    // 공중에서 이동 입력이 벽을 향하면 그 '벽 쪽 성분'을 제거해 벽면을 따라만 미끄러지게 한다.
+    // 지면 구르기용 고마찰 그립 PhysicMaterial이 벽 접촉 법선력과 만나면 정지 마찰이 중력을 이겨
+    // 몸을 벽에 매달아 둔다(벽에 밀며 점프하면 안 내려오는 문제). 벽으로 미는 힘을 주지 않으면
+    // 법선력이 사라져 마찰이 못 잡고 중력이 이긴다. 접지 중엔 적용하지 않는다(정상 이동/구르기 유지).
+    // 레이어가 아니라 계층(PlayerMover 보유)으로 자신·타 플레이어를 걸러, 벽이 플레이어와 같은
+    // Default 레이어여도 벽만 감지한다.
+    private Vector3 DeflectAirMoveFromWall(Vector3 horizontalMove)
+    {
+        if (airWallCheckDistance <= 0f || horizontalMove.sqrMagnitude < 1e-4f) return horizontalMove;
+
+        Vector3 dir = horizontalMove.normalized;
+        RaycastHit[] hits = Physics.RaycastAll(rb.position, dir, airWallCheckDistance, ~0, QueryTriggerInteraction.Ignore);
+        float bestDist = float.PositiveInfinity;
+        Vector3 wallNormal = Vector3.zero;
+        foreach (RaycastHit h in hits)
+        {
+            if (h.collider.GetComponentInParent<PlayerMover>() != null) continue; // 자신·타 플레이어 제외
+            if (Mathf.Abs(h.normal.y) >= 0.5f) continue;                          // 바닥/천장 제외 — '벽(수직면)'만
+            if (h.distance < bestDist) { bestDist = h.distance; wallNormal = h.normal; }
+        }
+        if (wallNormal == Vector3.zero) return horizontalMove;
+
+        float into = Vector3.Dot(horizontalMove, wallNormal); // 벽으로 미는 성분이면 음수(법선 반대 방향)
+        if (into < 0f) horizontalMove -= into * wallNormal;   // 그 성분만 제거 → 벽면에 평행하게
+        return horizontalMove;
     }
 
     private bool IsGrounded()

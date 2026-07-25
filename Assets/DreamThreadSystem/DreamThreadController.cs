@@ -58,6 +58,11 @@ public class DreamThreadController : MonoBehaviour
     public float pumpAcceleration = 6f;
     [Tooltip("좌우 입력 방향이 의도와 반대로 느껴지면 켠다(옆모습 카메라 방향에 따라 다름).")]
     public bool invertSwing = false;
+    [Tooltip("매달린 채 바닥에 닿았을 때 평소처럼 걷는 속도(Unit/s). 접선 펌핑은 지면 그립 마찰에 짓밟혀 " +
+             "안 움직이므로, 접지 중엔 FreezePositionX(평면 고정)를 풀고 PlayerMover와 같은 규약" +
+             "(inputYawOffset 회전 + 전후좌우 2D 입력)으로 velocity를 직접 대입해 걷는다(마찰 무시). " +
+             "공중에선 다시 평면 고정 + 접선 펌핑으로 스윙한다.")]
+    public float groundMoveSpeed = 4f;
 
     [Header("발사 후 조작 복구")]
     [Tooltip("놓은 뒤 이 시간(초) 안에 착지하지 못해도 강제로 PlayerMover를 다시 켠다(허공 낙하 안전망). " +
@@ -160,6 +165,27 @@ public class DreamThreadController : MonoBehaviour
             currentLength = Mathf.MoveTowards(currentLength, targetLength, reelSpeed * Time.fixedDeltaTime);
             joint.linearLimit = new SoftJointLimit { limit = currentLength, bounciness = 0f, contactDistance = 0.02f };
         }
+
+        // 접지 중: 로프에 매달린 채라도 바닥에선 평소처럼 걸어 이동하게 한다(자리잡기/반동 생성).
+        // 접선 펌핑은 지면 그립 마찰에 짓밟혀 안 움직이고, X를 잠그면(FreezePositionX) 앞뒤로 못 움직이며
+        // A/D 방향도 카메라와 어긋난다(월드 Z 직결). 그래서 접지 중엔 평면 고정을 풀고, PlayerMover와
+        // 같은 규약(inputYawOffset 회전 + 전후좌우 2D)으로 월드 velocity를 직접 대입한다 → 방향이
+        // 카메라와 일치하고 앞뒤로도 움직인다. 공중에선 다시 평면(FreezePositionX)으로 잠그고 펌핑한다.
+        if (activeShape != null && activeShape.IsGrounded())
+        {
+            activeBody.constraints = savedConstraints; // 평면 고정 해제 → 앞뒤(X)로도 이동 가능
+            Vector3 move = new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical"));
+            if (move.sqrMagnitude > 1f) move.Normalize();
+            move *= groundMoveSpeed;
+            float yaw = activeMover != null ? activeMover.inputYawOffset : 0f;
+            if (Mathf.Abs(yaw) > 0.0001f)
+                move = Quaternion.AngleAxis(yaw, Vector3.up) * move;
+            activeBody.velocity = new Vector3(move.x, activeBody.velocity.y, move.z);
+            return;
+        }
+
+        // 공중: 스윙 평면(Y-Z)으로 다시 잠근다(접지 중 풀었을 수 있으므로 매 프레임 보장).
+        activeBody.constraints = savedConstraints | RigidbodyConstraints.FreezePositionX;
 
         // 접선 방향 펌핑: 실 방향(앵커→몸)에 수직인 Y-Z 평면 벡터로 힘을 준다. 직접 각도 조종이 아니라
         // 힘으로 진폭을 키우는 방식이라, 스윙 방향에 맞춰 입력해야(펌핑) 진폭이 는다.
