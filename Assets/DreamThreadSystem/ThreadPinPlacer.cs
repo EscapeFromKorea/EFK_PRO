@@ -22,7 +22,8 @@ using UnityEngine;
 /// 세모를 벽에 고정하려면 mover가 매 FixedUpdate에 하는 velocity 하드 대입을 막아야 한다. 그런데
 /// DreamThreadController가 Phase 1에서 겪었듯 mover.enabled=false로 끄면 PlayerMover.OnDisable →
 /// PlayerControlSwitcher.UnregisterPlayer가 이 세모를 Tab 로스터에서 빼, 조작권·카메라가 딴 데로
-/// 튀고 stale IsControlled로 동시입력이 생긴다(컨트롤러는 이걸 GrantControl 되붙잡기로 상쇄했다).
+/// 튀고 stale IsControlled로 동시입력이 생긴다(그 트랩 때문에 컨트롤러도 결국 mover를 끄는 대신
+/// PlayerMover.ExternallyDriven 플래그로 바꿨다 — 여기 선택이 먼저 옳았던 셈이다).
 /// 여기서는 그 복잡성을 아예 피한다: **Rigidbody.isKinematic=true**로 부착한다. 키네마틱 바디는
 /// 중력·힘·mover의 velocity 대입을 전부 무시하므로(PhysX가 키네마틱 velocity를 적분하지 않음)
 /// mover.enabled를 끌 필요가 없다 → 로스터가 그대로라 조작권/카메라가 튀지 않는다. 부착 중엔 그
@@ -132,9 +133,10 @@ public class ThreadPinPlacer : MonoBehaviour
             return;
         }
 
-        // G = 항상 박기+부착. 컨트롤러가 로프로 매달거나 발사 중인 세모(mover.enabled==false로 소유)면
-        // 무시 — 그 세모에 키네마틱을 걸면 조인트/스윙과 충돌한다.
-        if (!controlled.enabled) return;
+        // G = 항상 박기+부착. 컨트롤러가 로프로 매달거나 발사 중인 세모면 무시 — 그 세모에 키네마틱을
+        // 걸면 조인트/스윙과 충돌한다. 판별은 `ExternallyDriven`으로 한다(예전엔 컨트롤러가 mover를
+        // 아예 꺼서 `!enabled`가 신호였는데, 이제는 로스터를 유지하려고 끄지 않고 플래그만 세운다).
+        if (controlled.ExternallyDriven) return;
         TryPlacePinAndAttach(controlled, body);
     }
 

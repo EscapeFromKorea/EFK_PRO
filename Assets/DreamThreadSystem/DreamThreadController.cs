@@ -13,7 +13,7 @@ using UnityEngine;
 /// 매달림은 결국 플레이어 Root의 Rigidbody에 조인트를 붙였다 떼는 일이다. 플레이어에 상시
 /// 리시버 컴포넌트를 심으려면 PlayerSystem의 생성 메뉴를 고쳐야 하고, 이는 교차 폴더 하드룰에
 /// 걸린다. 그래서 입력·조인트 부착을 전부 이 컨트롤러가 런타임에 처리한다 — PlayerSystem은
-/// IsControlled/Kind를 "읽기만" 하고 mover.enabled를 "런타임 토글"할 뿐, 파일을 수정하지 않는다.
+/// IsControlled/Kind를 "읽기만" 하고 mover의 `ExternallyDriven` 플래그만 런타임에 세운다.
 ///
 /// [왜 ConfigurableJoint인가 (HingeJoint/SpringJoint 아님)]
 /// - SpringJoint는 탄력이라 채택 안 함(1차 설계 확정). HingeJoint는 고정 길이 진자엔 맞지만
@@ -28,11 +28,16 @@ using UnityEngine;
 ///   FreezePositionX(월드 공간)로 준다 — 위와 같은 이유로 조인트 축은 몸과 함께 돌기 때문이다.
 ///   연결 시 플레이어 X를 앵커 X에 맞춰 같은 평면에 올린 뒤 X를 얼린다.
 ///
-/// [왜 매달림 중 PlayerMover를 끄나]
-/// PlayerMover는 조작 중 매 FixedUpdate에 수평 velocity를 입력값으로 하드 대입(공중 0.6배)한다.
-/// 이 대입이 진자 스윙을 매 스텝 덮어써 짓밟으므로, 매달림 진입 시 mover.enabled=false로 끄고
-/// 좌우 스윙은 이 컨트롤러가 전담한다. 놓을 때 다시 켜되 — 공중에서 켜면 mover가 접선 속도를
-/// 즉시 입력값으로 덮어써 발사 자체가 사라지므로 — "착지할 때까지" 켜지 않고 미룬다(아래 Launching).
+/// [왜 매달림 중 PlayerMover의 간섭을 멈추나 — 컴포넌트를 끄지 않고 플래그로]
+/// PlayerMover는 조작 중 매 FixedUpdate에 수평 velocity를 하드 대입(공중 0.6배)하고, 비조작 중엔
+/// 감쇠시킨다. 둘 다 진자 스윙을 매 스텝 짓밟으므로 멈춰야 한다. 예전에는 `mover.enabled=false`로
+/// 껐는데, 그러면 OnDisable이 PlayerControlSwitcher 로스터에서 이 플레이어를 빼 조작권이 튀고
+/// **Tab으로 매달린 플레이어에게 돌아갈 수 없어**, 매달림 중 Tab을 감지해 실을 강제로 끊어야 했다.
+/// 지금은 `mover.ExternallyDriven = true`로 간섭만 멈춘다 → 로스터가 유지돼 **매달린 채 Tab으로
+/// 오갈 수 있고**, 실은 그대로 붙어 있다. 조작 대상이 아닌 동안에는 이 컨트롤러가 입력을 읽지 않아
+/// 새로 조작하는 플레이어와 같은 키에 동시 반응하지 않는다.
+/// 되돌리는 시점은 여전히 "착지할 때까지" 미룬다 — 공중에서 되돌리면 mover가 접선 발사 속도를
+/// 입력값으로 덮어써 발사 자체가 사라지기 때문이다(아래 Launching).
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
 public class DreamThreadController : MonoBehaviour
@@ -107,12 +112,6 @@ public class DreamThreadController : MonoBehaviour
     private float launchTimer;
     private float overweightTimer; // 무게가 임계를 넘긴 채 흐른 시간. snapGraceSec에 도달하면 실이 끊긴다.
 
-    // 매달림 진입 시 mover.enabled=false가 PlayerControlSwitcher 로스터에서 매달린 플레이어를 빼며
-    // 다른 플레이어에게 조작권을 조기 이양한다. 그 이양 대상을 여기 스냅샷해 두고, 매달림/발사 도중
-    // 이 값이 바뀌면(=사용자가 Tab을 눌러 진짜로 조작권을 넘김) 그때만 우리 우회를 풀어 준다.
-    // 스위처가 없는 씬에서는 항상 null → "이양 없음"으로 취급된다.
-    private Transform handoffTarget;
-
     private LineRenderer line;
     private Color baseLineColor;               // 뜯김 연출이 물들이기 전의 원래 실 색(복구 기준).
     private const int FraySegments = 12;       // 뜯길 때 실을 쪼개는 마디 수(정점 13개).
@@ -154,11 +153,11 @@ public class DreamThreadController : MonoBehaviour
 
         if (state == ThreadState.Hanging)
         {
-            // 대상이 사라졌거나, 사용자가 Tab을 눌러 조작권을 다른 플레이어로 넘기면 즉시 떼어낸다.
-            // 결정: 매달림 중 Tab → 자동으로 놓는다(스윙 유지 아님). 발사 없이 그냥 떨어뜨린다.
-            // (activeMover.IsControlled는 우리가 GrantControl로 계속 true로 붙잡고 있어 신호로 못 쓴다.
-            //  대신 스위처의 활성 타깃 변화로 진짜 Tab을 감지한다 — ControlSwitchedAway 참고.)
-            if (activeMover == null || anchor == null || ControlSwitchedAway())
+            // 대상이나 고리가 사라진 경우에만 강제로 떼어낸다. **Tab으로 조작권이 넘어가도 실은
+            // 유지한다** — 매달린 플레이어는 그대로 매달린 채 중력으로 흔들리고, 조작 대상이 아닌
+            // 동안만 입력을 안 읽는다(아래 IsControlled 게이트). mover를 끄지 않아 로스터에 남아 있으므로
+            // Tab으로 다시 돌아오면 스윙 조작이 그대로 살아난다.
+            if (activeMover == null || anchor == null)
             {
                 Release(intoLaunch: false);
                 return;
@@ -171,7 +170,7 @@ public class DreamThreadController : MonoBehaviour
                 Release(intoLaunch: true);
                 return;
             }
-            HandleWheel();
+            if (activeMover.IsControlled) HandleWheel(); // 조작 대상일 때만 휠로 길이 조절
         }
         else if (state == ThreadState.Launching)
         {
@@ -185,17 +184,17 @@ public class DreamThreadController : MonoBehaviour
     void FixedUpdate()
     {
         if (state != ThreadState.Hanging || joint == null || activeBody == null || anchor == null) return;
-        // Tab으로 조작권이 넘어간 프레임엔 펌핑하지 않는다(Update가 곧 Release). IsControlled는
-        // GrantControl로 항상 true라 게이트로 못 쓰므로, 스위처 활성 타깃 변화로 판정한다.
-        if (activeMover == null || ControlSwitchedAway()) return;
 
-        // 길이 릴: 조인트 리밋을 목표 길이로 reelSpeed(Unit/s)만큼만 이동시킨다. 줄일 때 한 스텝에 확
-        // 당기지 않고 물리 스텝에 걸쳐 나눠 당겨(하드 리밋 임펄스 분산) 스냅 없이 부드럽게 만든다.
+        // 길이 릴은 조작 여부와 무관하게 계속 수렴시킨다(조인트 리밋의 물리적 상태이므로).
         if (!Mathf.Approximately(currentLength, targetLength))
         {
             currentLength = Mathf.MoveTowards(currentLength, targetLength, reelSpeed * Time.fixedDeltaTime);
             joint.linearLimit = new SoftJointLimit { limit = currentLength, bounciness = 0f, contactDistance = 0.02f };
         }
+
+        // 조작 대상이 아니면(Tab으로 다른 플레이어를 조작 중) 여기서 멈춘다 — 실은 그대로 붙어 있고
+        // 중력으로 흔들리지만, 입력은 읽지 않는다. 안 그러면 조작 중인 플레이어와 같은 키에 동시 반응한다.
+        if (activeMover == null || !activeMover.IsControlled) return;
 
         // 접지 중: 로프에 매달린 채라도 바닥에선 평소처럼 걸어 이동하게 한다(자리잡기/반동 생성).
         // 접선 펌핑은 지면 그립 마찰에 짓밟혀 안 움직이고, X를 잠그면(FreezePositionX) 앞뒤로 못 움직이며
@@ -216,7 +215,7 @@ public class DreamThreadController : MonoBehaviour
         }
 
         // 공중: 자유 스윙이 아니면 스윙 평면(Y-Z)으로 다시 잠근다(접지 중 풀었을 수 있으므로 매 프레임 보장).
-        bool free = anchor.freeSwing;
+        bool free = !anchor.lockToSidePlane;
         activeBody.constraints = free
             ? savedConstraints
             : savedConstraints | RigidbodyConstraints.FreezePositionX;
@@ -322,12 +321,12 @@ public class DreamThreadController : MonoBehaviour
         line.endColor = c;
     }
 
-    // 매단 채 컨트롤러가 꺼지거나 파괴되면 플레이어를 영구 비활성/구속 상태로 남기지 않도록 원복한다.
+    // 매단 채 컨트롤러가 꺼지거나 파괴되면 플레이어를 영구 구속/외부주도 상태로 남기지 않도록 원복한다.
     void OnDisable()
     {
         if (joint != null) Destroy(joint);
         if (activeBody != null) activeBody.constraints = savedConstraints;
-        if (activeMover != null) activeMover.enabled = true;
+        ReturnBodyToMover();
         ClearActive();
         state = ThreadState.Idle;
         if (line != null) line.enabled = false;
@@ -390,10 +389,10 @@ public class DreamThreadController : MonoBehaviour
         // Launching 상태였다면 그때 이미 원래 constraints로 되돌려 뒀으므로, 지금 읽으면 원본이다.
         savedConstraints = body.constraints;
 
-        if (near.freeSwing)
+        if (!near.lockToSidePlane)
         {
-            // 자유 스윙(네모 닻 등): 평면으로 끌어당기지 않는다. 다가간 위치·속도를 그대로 두고
-            // 조인트의 구 구속만으로 매단다 — 어느 방향에서 걸든 그 방향으로 흔들 수 있다.
+            // 자유 스윙(기본): 평면으로 끌어당기지 않는다. 다가간 위치·속도를 그대로 두고 조인트의
+            // 구 구속만으로 매단다 — 어느 방향에서 걸든 그 방향으로 흔들 수 있다.
             body.constraints = savedConstraints;
         }
         else
@@ -408,14 +407,10 @@ public class DreamThreadController : MonoBehaviour
             body.constraints = savedConstraints | RigidbodyConstraints.FreezePositionX;
         }
 
-        mover.enabled = false; // 진자 스윙을 mover의 velocity 하드 대입이 덮어쓰지 못하게.
-
-        // mover.enabled=false는 PlayerMover.OnDisable → PlayerControlSwitcher.UnregisterPlayer를 태워
-        // 매달린 플레이어를 로스터에서 빼고, 남은 다른 플레이어에게 조작권/카메라를 즉시 넘긴다(조기 이양).
-        // 그 이양 대상을 스냅샷해 두고(=진짜 Tab 감지 기준), GrantControl로 조기 이양을 되돌려 매달린
-        // 플레이어를 유일한 조작 대상으로 다시 붙잡는다.
-        handoffTarget = PlayerControlSwitcher.ActiveTarget;
-        GrantControl(mover);
+        // 진자 스윙을 mover의 velocity 하드 대입/감쇠가 덮어쓰지 못하게 멈춘다. 컴포넌트를 끄지 않고
+        // 플래그만 세우므로 PlayerControlSwitcher 로스터에 그대로 남는다 → 매달린 채 Tab으로 오갈 수 있고,
+        // 예전의 조기 이양 상쇄(GrantControl/handoffTarget) 우회가 전부 불필요해졌다.
+        mover.ExternallyDriven = true;
 
         currentLength = Mathf.Clamp(
             Vector3.Distance(body.position, near.transform.position), minLength, maxLength);
@@ -461,11 +456,12 @@ public class DreamThreadController : MonoBehaviour
         {
             state = ThreadState.Launching;
             launchTimer = launchReenableTimeout;
-            // activeMover/activeBody/activeShape는 착지 감지를 위해 유지. mover는 계속 꺼둔다.
+            // activeMover/activeBody/activeShape는 착지 감지를 위해 유지. mover는 계속 외부 주도로 둔다
+            // (공중에서 되돌리면 mover가 접선 발사 속도를 입력값으로 덮어써 발사가 사라진다).
         }
         else
         {
-            if (activeMover != null) EndControl(activeMover);
+            ReturnBodyToMover();
             ClearActive();
             state = ThreadState.Idle;
         }
@@ -473,41 +469,16 @@ public class DreamThreadController : MonoBehaviour
 
     private void FinishLaunch()
     {
-        if (activeMover != null) EndControl(activeMover);
+        ReturnBodyToMover();
         ClearActive();
         state = ThreadState.Idle;
     }
 
-    // 매달림/발사를 끝내며 mover를 다시 켠다. 다시 켜지면 PlayerMover.OnEnable이 스위처에 재등록되고
-    // ApplyActive가 (진입 때 이양받은) 다른 플레이어를 조작 중으로 되돌린다. 그동안 사용자가 실제로
-    // Tab을 눌러 조작권을 넘긴 게 아니라면(handoffTarget 그대로) 그 조기 이양을 취소하고 원래
-    // 플레이어에게 조작권/카메라를 되돌린다. 진짜 Tab이었으면 사용자의 선택(다른 플레이어)을 존중한다.
-    private void EndControl(PlayerMover mover)
+    /// <summary>몸의 주도권을 PlayerMover에 되돌린다. 로스터를 건드리지 않으므로 조작권·카메라는
+    /// 스위처가 관리하는 그대로 유지된다 — 예전처럼 조기 이양을 상쇄할 필요가 없다.</summary>
+    private void ReturnBodyToMover()
     {
-        mover.enabled = true;
-        if (!ControlSwitchedAway())
-            GrantControl(mover);
-    }
-
-    // 지정 플레이어를 유일한 조작 대상으로 못박고 카메라를 그쪽으로 되돌린다. mover.enabled=false가
-    // 유발한 조기 조작권 이양을 상쇄한다. 다른 플레이어는 모두 조작권을 내려 같은 입력에 동시 반응하지
-    // 않게 한다. 스위처가 없는 씬에서는 SetControlled/SetActiveTarget이 각각 무해하게 동작한다.
-    // ponytail: 스위처 내부 activePlayer는 public API로 되돌릴 수 없어 잠시 어긋난 채 남는다 —
-    // 발사 착지 후 첫 Tab이 순환 순서에서 한 명을 건너뛸 수 있고, 그 Tab에서 스위처가 스스로 정합을
-    // 회복한다. 스위처에 SetActive(mover) public API가 생기면 이 우회를 없앨 수 있다(PlayerSystem 변경 필요).
-    private static void GrantControl(PlayerMover target)
-    {
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
-            m.SetControlled(m == target);
-        if (target != null)
-            PlayerFollowCamera.SetActiveTarget(target.transform);
-    }
-
-    // 매달림 진입 시 조기 이양받았던 플레이어(handoffTarget)가 지금 스위처의 활성 타깃과 다르면,
-    // 그 사이 사용자가 Tab을 눌러 조작권을 진짜로 넘긴 것이다. 스위처가 없으면 둘 다 null → false.
-    private bool ControlSwitchedAway()
-    {
-        return handoffTarget != PlayerControlSwitcher.ActiveTarget;
+        if (activeMover != null) activeMover.ExternallyDriven = false;
     }
 
     private void ClearActive()

@@ -46,10 +46,10 @@ public class ThreadCubeAnchor : MonoBehaviour
     public bool requireGrounded = true;
 
     [Header("스윙 방식")]
-    [Tooltip("이 닻에 매달렸을 때 앞뒤(X)로도 흔들 수 있게 한다(자유 스윙, 기본 켜짐).\n" +
-             "고정 고리는 옆모습 진자라 평면에 가두는 게 맞지만, 닻은 '네모를 중심으로 돈다'는 그림이라 " +
-             "어느 방향에서 접근하든 그쪽으로 흔들려야 자연스럽다. 옆모습 구도로 고정하고 싶으면 끈다.")]
-    public bool freeSwing = true;
+    [Tooltip("이 닻에 매달린 스윙을 Y-Z 평면(옆모습)에 가둬 좌우로만 흔들리게 한다(기본 꺼짐 = 앞뒤로도 " +
+             "흔들리는 자유 스윙). 닻은 '네모를 중심으로 돈다'는 그림이라 어느 방향에서 접근하든 그쪽으로 " +
+             "흔들려야 자연스러워서, 특별한 이유가 없으면 끈 채로 둔다.")]
+    public bool lockToSidePlane = false;
 
     private const string RingName = "DreamThread_CubeAnchorRing";
 
@@ -69,7 +69,7 @@ public class ThreadCubeAnchor : MonoBehaviour
 
             ThreadAnchor a = ring.GetComponent<ThreadAnchor>();
             a.connectRange = armed ? connectRange : 0f; // 0이면 컨트롤러의 거리 판정에 절대 안 걸린다
-            a.freeSwing = freeSwing;
+            a.lockToSidePlane = lockToSidePlane;
             ring.GetComponent<Renderer>().sharedMaterial = armed ? GetArmedMaterial() : GetIdleMaterial();
         }
     }
