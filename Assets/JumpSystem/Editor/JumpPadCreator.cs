@@ -1,3 +1,7 @@
+// 이 파일은 반드시 "Editor" 폴더 안에 있어야 한다. UnityEditor를 참조하므로 밖에 두면 플레이어
+// 빌드에서 컴파일 에러가 난다(에디터에서는 멀쩡해 보여 빌드할 때까지 안 드러난다). 원래
+// JumpSystem 루트에 있던 것을 2026-07-26에 옮겼다 — 다른 기믹의 에디터 도구와 같은 배치다.
+
 using UnityEngine;
 using UnityEditor;
 
