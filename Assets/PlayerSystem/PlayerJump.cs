@@ -77,12 +77,23 @@ public class PlayerJump : MonoBehaviour
     /// 질량이 개입하지 않아 도형 질량과 무관하게 항상 정확히 H까지 오른다(레벨 도달 규격표의 전제).
     /// 기본 점프·점프대·시소·강제 점프 등 모든 발사원이 이 진입점 하나로 수렴한다.
     /// 수평 속도는 보존한다 — 이동 중 점프의 가로 도달(D = 지상속도 × 0.6 × 체공)이 성립하도록.
-    /// g는 Physics.gravity에서 읽어, 프로젝트 중력을 바꿔도 "정확히 H까지"라는 계약은 유지된다.</summary>
+    /// g는 Physics.gravity에서 읽어, 프로젝트 중력을 바꿔도 "정확히 H까지"라는 계약은 유지된다.
+    /// 무중력 버블처럼 이 바디의 중력만 개별로 낮추는 기믹 안에서는 전역 중력이 실제 g가 아니므로,
+    /// PlayerGravityOverride가 있으면 거기서 실효 중력을 읽는다 — 안 그러면 배율의 역수만큼 초과한다.
+    /// 같은 이유로 "그 구역에서 더 높이 뛴다"는 연출도 중력을 낮추는 부작용에 맡기지 않고
+    /// JumpHeightMultiplier라는 명시적 배율로만 H를 키운다 — 도달 높이는 항상 예측 가능해야 한다.</summary>
     public void LaunchToHeight(float heightUnits)
     {
         if (heightUnits <= 0f) return;
-        float g = Mathf.Abs(Physics.gravity.y);
-        float vy = Mathf.Sqrt(2f * g * heightUnits);
+        // 런타임에 기믹이 AddComponent로 붙이는 컴포넌트라 Start에 캐시할 수 없다(발사 시점에 조회).
+        PlayerGravityOverride gravityOverride = GetComponent<PlayerGravityOverride>();
+        float g = gravityOverride != null
+            ? gravityOverride.EffectiveGravityMagnitude
+            : Mathf.Abs(Physics.gravity.y);
+        float h = gravityOverride != null
+            ? heightUnits * gravityOverride.JumpHeightMultiplier
+            : heightUnits;
+        float vy = Mathf.Sqrt(2f * g * h);
         rb.velocity = new Vector3(rb.velocity.x, vy, rb.velocity.z);
     }
 }

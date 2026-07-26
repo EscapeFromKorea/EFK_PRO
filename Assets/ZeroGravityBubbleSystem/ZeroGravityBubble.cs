@@ -16,6 +16,15 @@ public class ZeroGravityBubble : MonoBehaviour
     public float tetrahedronGravityScale = 0.16f;
     public float cubeGravityScale = 0.60f;
 
+    [Header("점프 강화")]
+    [Tooltip("구역 안에 있는 동안 점프 목표 높이에 곱하는 배율. 1 = 평소와 같은 높이, 1.5 = 1.5배 높이.\n" +
+             "중력 배율(체공이 길어짐)과는 별개 축이다 — 중력만 낮추면 오래 떠 있을 뿐 도달 높이는 그대로라, " +
+             "'버블 안에서 더 높이 뛴다'는 체감은 이 값으로 낸다.\n" +
+             "기본 점프뿐 아니라 구역 안의 점프대/구름 트램펄린 발사에도 같이 적용된다(모든 발사가 " +
+             "PlayerJump.LaunchToHeight 하나로 수렴하기 때문). 기믹 발사는 원래 높이를 유지하고 싶으면 " +
+             "그 기믹을 구역 밖에 두거나 이 값을 1로 둬라.")]
+    public float jumpHeightMultiplier = 1.5f;
+
     [Header("공통 파라미터")]
     [Tooltip("구역 안에서 늘어나는 저항(drag) 배율. 기본값 x 이 값.")]
     public float dragMultiplier = 2f;
@@ -65,8 +74,8 @@ public class ZeroGravityBubble : MonoBehaviour
 
         entryHeightY[rb] = rb.position.y;
         float scale = ResolveGravityScale(other);
-        body.SetGravityScale(scale, dragMultiplier, upliftAcceleration, transitionTime);
-        Debug.Log($"[ZeroGravityBubble] '{rb.name}' 진입 - 중력 배율 {scale} 적용 시작 (전이 {transitionTime}s)");
+        body.SetGravityScale(scale, dragMultiplier, upliftAcceleration, transitionTime, jumpHeightMultiplier);
+        Debug.Log($"[ZeroGravityBubble] '{rb.name}' 진입 - 중력 배율 {scale}, 점프 배율 {jumpHeightMultiplier} 적용 시작 (전이 {transitionTime}s)");
     }
 
     private void OnTriggerExit(Collider other)
@@ -95,7 +104,8 @@ public class ZeroGravityBubble : MonoBehaviour
     {
         if (maxRiseHeight <= 0f) return;
         Rigidbody rb = other.attachedRigidbody;
-        if (rb == null || !entryHeightY.TryGetValue(rb, out float baseY)) return;
+        if (rb == null || rb.isKinematic) return; // 벽 부착 중(ThreadPinPlacer)이면 velocity 대입 금지.
+        if (!entryHeightY.TryGetValue(rb, out float baseY)) return;
 
         if (rb.position.y - baseY >= maxRiseHeight && rb.velocity.y > 0f)
         {

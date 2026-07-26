@@ -3,7 +3,9 @@ using UnityEditor;
 
 public class JumpPadCreator
 {
-    [MenuItem("Tools/Create JumpPad")]
+    // 다른 기믹과 같은 "Tools/<기믹>/<동작>" 형태로 맞춘다. 리프 항목("Tools/Create JumpPad")으로 두면
+    // 같은 이름 아래 항목이 하나라도 생기는 순간 경고 없이 사라진다(ZeroGravityBubble에서 실제로 겪음).
+    [MenuItem("Tools/JumpPad/Create Jump Pad")]
     static void CreateJumpPad()
     {
         GameObject pad = GameObject.CreatePrimitive(PrimitiveType.Cube);

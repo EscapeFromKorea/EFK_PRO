@@ -183,6 +183,21 @@ public class ThreadPinPlacer : MonoBehaviour
             lastMoveDir = v.normalized;
     }
 
+    /// <summary>지금 박혀 있는 핀들을 삽입 순서대로 into에 담는다(가장 오래된 것이 앞). 줄다리가
+    /// 어느 핀과 이을지 스스로 고르도록 목록만 넘긴다 — "2개짜리 짝"이나 "가장 가까운 하나" 같은
+    /// 선택 규칙을 여기 두면 줄다리가 규칙을 바꿀 때마다 이 파일을 같이 고쳐야 한다.
+    /// 호출자가 재사용하는 버퍼를 넘기므로 매 프레임 불러도 할당이 없다.</summary>
+    public void CollectPins(List<ThreadAnchor> into)
+    {
+        into.Clear();
+        pins.RemoveAll(p => p == null);
+        foreach (GameObject p in pins)
+        {
+            ThreadAnchor a = p.GetComponent<ThreadAnchor>();
+            if (a != null) into.Add(a);
+        }
+    }
+
     // T = 박은 핀을 전부 회수(범위 제한 없음). 제거한 개수를 반환한다.
     private int RetrieveAllPins()
     {

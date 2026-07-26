@@ -64,6 +64,25 @@ public class DreamThreadController : MonoBehaviour
              "공중에선 다시 평면 고정 + 접선 펌핑으로 스윙한다.")]
     public float groundMoveSpeed = 4f;
 
+    [Header("매달림 무게 게이트")]
+    [Tooltip("이 '무게'(질량 × 그 바디의 실효 중력 배율) 이상이면 실에 매달릴 수 없다.\n" +
+             "에셋 질량이 네모3.0 / 구1.5 / 세모1.0이라 기본값 3.0은 평소엔 네모만 거부한다 " +
+             "(기존 Kind 게이트와 결과 동일).\n" +
+             "무중력 버블처럼 개별 중력을 낮추는 구역 안에서는 네모도 1.8까지 가벼워져 매달릴 수 있고, " +
+             "매달린 채 구역을 벗어나 이 값을 다시 넘으면 실이 끊어진다.")]
+    public float hangWeightThreshold = 3.0f;
+
+    [Tooltip("무게가 임계를 넘긴 뒤 실이 버텨 주는 유예 시간(초). 이 시간 동안 실이 점점 뜯기다가 끊어진다.\n" +
+             "유예 중 다시 임계 아래로 내려오면(버블 안으로 복귀) 타이머가 초기화되고 실이 원상복구된다.\n" +
+             "0이면 임계를 넘는 즉시 끊긴다(뜯김 연출 없음).")]
+    public float snapGraceSec = 0.7f;
+
+    [Header("실 뜯김 연출")]
+    [Tooltip("뜯길 때 실이 흔들리는 최대 폭(Unit). 0이면 흔들림 없이 굵기·색만 변한다.")]
+    public float frayAmplitude = 0.18f;
+    [Tooltip("끊어지기 직전(유예 소진 시점)의 실 색. 평소 색에서 이 색으로 서서히 물든다.")]
+    public Color frayColor = new Color(1f, 0.35f, 0.3f, 0.5f);
+
     [Header("발사 후 조작 복구")]
     [Tooltip("놓은 뒤 이 시간(초) 안에 착지하지 못해도 강제로 PlayerMover를 다시 켠다(허공 낙하 안전망). " +
              "PlayerShapeController가 없어 접지 판정을 못 하는 플레이어의 폴백이기도 하다.")]
@@ -86,6 +105,7 @@ public class DreamThreadController : MonoBehaviour
     private float currentLength;   // 현재 조인트 리밋(실제 실 길이). 매 FixedUpdate targetLength로 릴된다.
     private float targetLength;     // 휠이 조절하는 목표 길이. currentLength가 reelSpeed로 여기에 수렴한다.
     private float launchTimer;
+    private float overweightTimer; // 무게가 임계를 넘긴 채 흐른 시간. snapGraceSec에 도달하면 실이 끊긴다.
 
     // 매달림 진입 시 mover.enabled=false가 PlayerControlSwitcher 로스터에서 매달린 플레이어를 빼며
     // 다른 플레이어에게 조작권을 조기 이양한다. 그 이양 대상을 여기 스냅샷해 두고, 매달림/발사 도중
@@ -94,10 +114,13 @@ public class DreamThreadController : MonoBehaviour
     private Transform handoffTarget;
 
     private LineRenderer line;
+    private Color baseLineColor;               // 뜯김 연출이 물들이기 전의 원래 실 색(복구 기준).
+    private const int FraySegments = 12;       // 뜯길 때 실을 쪼개는 마디 수(정점 13개).
 
     void Awake()
     {
         line = GetComponent<LineRenderer>();
+        baseLineColor = line.startColor;
         line.positionCount = 2;
         line.useWorldSpace = true;
         line.enabled = false;
@@ -138,6 +161,14 @@ public class DreamThreadController : MonoBehaviour
             if (activeMover == null || anchor == null || ControlSwitchedAway())
             {
                 Release(intoLaunch: false);
+                return;
+            }
+            // 무게 초과(버블 이탈 등)가 유예 시간을 다 쓰면 실이 끊어진다. 끊김은 "로프가 뜯겨 나간" 것이라
+            // F로 놓은 것과 같이 접선 속도를 보존한 채 날려 보낸다(intoLaunch: true).
+            if (UpdateOverweight())
+            {
+                Debug.Log($"[DreamThread] 무게를 못 버티고 실이 끊어졌습니다 (무게 {PlayerWeight.Of(activeBody):0.##} ≥ {hangWeightThreshold}).");
+                Release(intoLaunch: true);
                 return;
             }
             HandleWheel();
@@ -184,25 +215,111 @@ public class DreamThreadController : MonoBehaviour
             return;
         }
 
-        // 공중: 스윙 평면(Y-Z)으로 다시 잠근다(접지 중 풀었을 수 있으므로 매 프레임 보장).
-        activeBody.constraints = savedConstraints | RigidbodyConstraints.FreezePositionX;
+        // 공중: 자유 스윙이 아니면 스윙 평면(Y-Z)으로 다시 잠근다(접지 중 풀었을 수 있으므로 매 프레임 보장).
+        bool free = anchor.freeSwing;
+        activeBody.constraints = free
+            ? savedConstraints
+            : savedConstraints | RigidbodyConstraints.FreezePositionX;
 
-        // 접선 방향 펌핑: 실 방향(앵커→몸)에 수직인 Y-Z 평면 벡터로 힘을 준다. 직접 각도 조종이 아니라
-        // 힘으로 진폭을 키우는 방식이라, 스윙 방향에 맞춰 입력해야(펌핑) 진폭이 는다.
         Vector3 rope = activeBody.position - anchor.transform.position;
         if (rope.sqrMagnitude < 1e-4f) return;
         Vector3 ropeDir = rope.normalized;
-        Vector3 tangent = Vector3.Cross(Vector3.right, ropeDir); // (0,-z,y): Y-Z 평면 내, ropeDir에 수직
-        float input = Input.GetAxis("Horizontal");
-        if (invertSwing) input = -input;
-        activeBody.AddForce(tangent * (input * pumpAcceleration), ForceMode.Acceleration);
+
+        // 접선 방향 펌핑: 실 방향에 수직인 성분으로만 힘을 준다. 직접 각도 조종이 아니라 힘으로 진폭을
+        // 키우는 방식이라, 스윙 방향에 맞춰 입력해야(펌핑) 진폭이 는다.
+        Vector3 push;
+        if (free)
+        {
+            // 자유 스윙: 전후좌우 2D 입력을 접지 이동과 **같은 규약**(inputYawOffset 회전)으로 월드
+            // 방향으로 바꾼 뒤, 실 방향 성분을 빼 접선 성분만 남긴다 → 미는 쪽으로 흔들린다.
+            Vector3 wish = new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical"));
+            if (wish.sqrMagnitude > 1f) wish.Normalize();
+            if (invertSwing) wish = -wish;
+            float yaw = activeMover != null ? activeMover.inputYawOffset : 0f;
+            if (Mathf.Abs(yaw) > 0.0001f) wish = Quaternion.AngleAxis(yaw, Vector3.up) * wish;
+            push = Vector3.ProjectOnPlane(wish, ropeDir);
+        }
+        else
+        {
+            Vector3 tangent = Vector3.Cross(Vector3.right, ropeDir); // (0,-z,y): Y-Z 평면 내, ropeDir에 수직
+            float input = Input.GetAxis("Horizontal");
+            if (invertSwing) input = -input;
+            push = tangent * input;
+        }
+        activeBody.AddForce(push * pumpAcceleration, ForceMode.Acceleration);
+    }
+
+    /// <summary>무게가 임계 이상인 채로 흐른 시간을 누적하고, 유예를 다 썼으면 true(끊어야 함)를 준다.
+    /// 유예 중 다시 가벼워지면(버블로 복귀) 타이머를 0으로 되돌려 실이 원상복구되게 한다 —
+    /// 한 번 넘었다고 확정 끊김이 아니라 "버티는 동안 돌아오면 산다"가 더 조작 여지가 있다.</summary>
+    private bool UpdateOverweight()
+    {
+        if (activeBody == null) return false;
+
+        if (PlayerWeight.Of(activeBody) < hangWeightThreshold)
+        {
+            overweightTimer = 0f;
+            return false;
+        }
+
+        overweightTimer += Time.deltaTime;
+        return overweightTimer >= snapGraceSec;
     }
 
     void LateUpdate()
     {
         if (state != ThreadState.Hanging || activeBody == null || anchor == null) return;
-        line.SetPosition(0, anchor.transform.position);
-        line.SetPosition(1, activeBody.position);
+
+        Vector3 top = anchor.transform.position;
+        Vector3 bottom = activeBody.position;
+        // 0 = 멀쩡함, 1 = 끊기 직전. 유예 시간의 경과 비율이 그대로 뜯김 정도가 된다.
+        float strain = snapGraceSec > 0f ? Mathf.Clamp01(overweightTimer / snapGraceSec)
+                                         : (overweightTimer > 0f ? 1f : 0f);
+
+        if (strain <= 0f)
+        {
+            if (line.positionCount != 2) line.positionCount = 2;
+            line.SetPosition(0, top);
+            line.SetPosition(1, bottom);
+            line.widthMultiplier = lineWidth;
+            SetLineTint(baseLineColor);
+            return;
+        }
+
+        DrawFrayedThread(top, bottom, strain);
+    }
+
+    /// <summary>무게를 못 버티는 동안의 연출. 실을 여러 마디로 쪼개 실 방향과 수직으로 흔들고, 굵기를
+    /// 줄이고, frayColor로 물들인다 — "올이 풀리며 뜯긴다"는 인상. 흔들림은 양 끝(앵커·몸)이 붙어 있고
+    /// 가운데가 가장 크게 벌어지는 sin 프로파일이라, 실이 매달린 채 뜯기는 것처럼 보인다.
+    /// strain이 유예 경과라 끊기기 직전에 가장 심하게 뜯긴다.</summary>
+    private void DrawFrayedThread(Vector3 top, Vector3 bottom, float strain)
+    {
+        if (line.positionCount != FraySegments + 1) line.positionCount = FraySegments + 1;
+
+        Vector3 rope = bottom - top;
+        // 스윙이 Y-Z 평면(옆모습)이라 그 평면 안에서 흔들어야 카메라에 제대로 보인다.
+        Vector3 perp = Vector3.Cross(Vector3.right, rope.sqrMagnitude > 1e-6f ? rope.normalized : Vector3.down);
+        perp = perp.sqrMagnitude > 1e-6f ? perp.normalized : Vector3.up;
+
+        for (int i = 0; i <= FraySegments; i++)
+        {
+            float t = (float)i / FraySegments;
+            float profile = Mathf.Sin(t * Mathf.PI); // 양 끝 0, 가운데 1
+            Vector3 p = Vector3.Lerp(top, bottom, t)
+                        + perp * (Random.Range(-1f, 1f) * frayAmplitude * strain * profile);
+            line.SetPosition(i, p);
+        }
+
+        line.widthMultiplier = lineWidth * (1f - 0.6f * strain); // 뜯길수록 가늘어진다
+        SetLineTint(Color.Lerp(baseLineColor, frayColor, strain));
+    }
+
+    // 머티리얼 색은 건드리지 않는다(공유 에셋 오염 방지) — LineRenderer의 정점 색으로만 물들인다.
+    private void SetLineTint(Color c)
+    {
+        line.startColor = c;
+        line.endColor = c;
     }
 
     // 매단 채 컨트롤러가 꺼지거나 파괴되면 플레이어를 영구 비활성/구속 상태로 남기지 않도록 원복한다.
@@ -240,16 +357,18 @@ public class DreamThreadController : MonoBehaviour
             return;
         }
 
-        // 게이트는 도형 종류(Kind)로 판정한다 — 네모 거부, 구·세모 허용(질량/태그 하드코딩 금지).
-        PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
-        if (identity != null && identity.Kind == PlayerShapeStats.ShapeKind.Cube)
-        {
-            Debug.Log("[DreamThread] 네모는 무거워 실에 매달릴 수 없습니다(Kind 게이트).");
-            return;
-        }
-
         Rigidbody body = mover.GetComponent<Rigidbody>();
         if (body == null) return;
+
+        // 게이트는 도형 종류(Kind)가 아니라 "무게"로 판정한다 — 실이 버티는 물리량이 질량이 아니라
+        // 무게라, 무중력 버블 안에서는 네모(3.0 → 1.8)도 매달릴 수 있게 하려는 것이다.
+        // 버블 밖 무게는 에셋 질량 그대로라 기존 Kind 게이트(네모만 거부)와 결과가 같다.
+        float weight = PlayerWeight.Of(body);
+        if (weight >= hangWeightThreshold)
+        {
+            Debug.Log($"[DreamThread] 무거워서 실에 매달릴 수 없습니다 (무게 {weight:0.##} ≥ {hangWeightThreshold}).");
+            return;
+        }
 
         ThreadAnchor near = FindNearestAnchorInRange(body.position);
         if (near == null)
@@ -271,14 +390,23 @@ public class DreamThreadController : MonoBehaviour
         // Launching 상태였다면 그때 이미 원래 constraints로 되돌려 뒀으므로, 지금 읽으면 원본이다.
         savedConstraints = body.constraints;
 
-        // 앵커와 같은 Y-Z 평면(X = 앵커 X)으로 스냅하고 X를 얼린다 → 깔끔한 옆모습 진자.
-        Vector3 p = body.position;
-        p.x = near.transform.position.x;
-        body.position = p;
-        Vector3 v = body.velocity;
-        v.x = 0f;
-        body.velocity = v;
-        body.constraints = savedConstraints | RigidbodyConstraints.FreezePositionX;
+        if (near.freeSwing)
+        {
+            // 자유 스윙(네모 닻 등): 평면으로 끌어당기지 않는다. 다가간 위치·속도를 그대로 두고
+            // 조인트의 구 구속만으로 매단다 — 어느 방향에서 걸든 그 방향으로 흔들 수 있다.
+            body.constraints = savedConstraints;
+        }
+        else
+        {
+            // 앵커와 같은 Y-Z 평면(X = 앵커 X)으로 스냅하고 X를 얼린다 → 깔끔한 옆모습 진자.
+            Vector3 p = body.position;
+            p.x = near.transform.position.x;
+            body.position = p;
+            Vector3 v = body.velocity;
+            v.x = 0f;
+            body.velocity = v;
+            body.constraints = savedConstraints | RigidbodyConstraints.FreezePositionX;
+        }
 
         mover.enabled = false; // 진자 스윙을 mover의 velocity 하드 대입이 덮어쓰지 못하게.
 
@@ -297,6 +425,7 @@ public class DreamThreadController : MonoBehaviour
         line.enabled = true;
         state = ThreadState.Hanging;
         launchTimer = 0f;
+        overweightTimer = 0f; // 이전 매달림의 뜯김 상태를 물려받지 않게(LateUpdate가 실 시각도 원복한다).
     }
 
     private void CreateJoint()
