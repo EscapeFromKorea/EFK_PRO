@@ -7,9 +7,10 @@ using UnityEngine.Rendering;
 /// <summary>
 /// Tools > Hourglass 메뉴로 씬에 몽환의 모래시계 테스트 세트 하나를 생성한다.
 /// SlowZone(감속 구역, 반투명 시각 포함) + FallingRockFlip이 붙은 낙석(모래시계 대역) 하나를
-/// SceneView 중앙에 배치한다. 낙석에 도형(플레이어)이 몸으로 부딪히면 뒤집히고 감속 구역이
-/// 켜진다. includePlayer는 요구사항 기본값(false, 낙석만 감속)을 그대로 따른다 - SlowZone
-/// 컴포넌트 자체 기본값을 건드리지 않는다.
+/// SceneView 중앙에 배치한다. 세모/네모가 낙석에 몸으로 부딪히면 뒤집히고 감속 구역이 켜진다
+/// (구는 FallingRockFlip의 도형 게이트가 막는다 - 사양 2장의 도형 분담). includePlayer는
+/// 요구사항 기본값(false, 낙석만 감속)을 그대로 따른다 - SlowZone 컴포넌트 자체 기본값을
+/// 건드리지 않는다.
 ///
 /// 기존 에디터 세팅 패턴(CloudTrampolineSystem/ZeroGravityBubbleSystem)을 따른다.
 /// </summary>
@@ -60,6 +61,9 @@ public static class HourglassMenuItem
 
         Rigidbody debrisRb = debris.AddComponent<Rigidbody>();
         debrisRb.mass = 1f;
+        // drag는 0(Unity 기본) 그대로 둔다. 감속의 낙하 속도 제한은 SlowZone.maxFallSpeed가 직접
+        // 자르므로 대상의 authored drag에 의존하지 않는다 - 씬에 이미 놓인 파편(drag 0)에서도
+        // 그대로 동작해야 하기 때문에 일부러 배율 방식을 쓰지 않는다.
 
         RespawningFallingDebris debrisFall = debris.AddComponent<RespawningFallingDebris>();
         // 구역 상단에서 바닥 살짝 위까지의 낙하 거리. 절대 높이가 아니라 거리로 주므로
@@ -85,10 +89,12 @@ public static class HourglassMenuItem
         AssetDatabase.Refresh();
 
         Selection.activeGameObject = rock;
-        Debug.Log("[Hourglass] 생성 완료. Player 태그 도형으로 'Hourglass_Rock'에 몸으로 부딪혀보세요. " +
-                  "운동량(질량x상대속도) 4.0 이상이면 뒤집히고 감속 구역이 켜집니다. 효과 확인은 " +
-                  "'FallingDebris'(계속 떨어지는 파편)의 낙하 속도로 - 멈춰있는 낙석은 감속 여부가 " +
-                  "눈에 안 보입니다.");
+        Debug.Log("[Hourglass] 생성 완료. 세모/네모로 'Hourglass_Rock'에 몸으로 부딪혀보세요 - 구(Sphere)는 " +
+                  "도형 게이트에 막혀 발동되지 않습니다(사양 2장: 세모/네모가 시간을 늦추고 그 틈으로 구가 통과). " +
+                  "운동량(질량x상대속도)이 3.0 이상이면 뒤집히고 감속 구역이 켜집니다. 효과 확인은 " +
+                  "'FallingDebris'(계속 떨어지는 파편)의 낙하 속도로 - 구역 안에서는 중력 0.5배 + 하강 속도 " +
+                  "상한 2 U/s로 일정한 속도로 천천히 내려옵니다(구역 밖 자유낙하는 약 10 U/s). 멈춰있는 " +
+                  "낙석은 감속 여부가 눈에 안 보입니다.");
     }
 
     private static void EnsureMaterialFolder()

@@ -36,6 +36,13 @@ public class RespawningFallingDebris : MonoBehaviour
         {
             rb.position = startPosition;
             rb.velocity = Vector3.zero;
+
+            // 순간이동은 SlowZone의 트리거 Exit 통보에 의존할 수 없는 경로다(구역 안 -> 구역 밖으로
+            // 한 프레임에 건너뛴다). 통보가 늦거나 누락되면 구역 밖에서도 감속이 걸린 채 남아
+            // "왜 밖에서도 느리지"가 조용히 생긴다. 되돌릴 때 스스로 원복해두면, 시작 위치가 아직
+            // 구역 안이면 다음 OnTriggerStay가 즉시 다시 걸어주므로 감속이 필요한 경우도 안 깨진다.
+            PlayerGravityOverride gravity = GetComponent<PlayerGravityOverride>();
+            if (gravity != null) gravity.RestoreDefault(0f);
         }
     }
 }
