@@ -62,8 +62,9 @@ public static class HourglassMenuItem
         debrisRb.mass = 1f;
 
         RespawningFallingDebris debrisFall = debris.AddComponent<RespawningFallingDebris>();
-        debrisFall.respawnHeight = zone.transform.position.y + debrisTopLocalY;
-        debrisFall.despawnHeight = zone.transform.position.y - zoneCol.size.y / 2f + 0.5f;
+        // 구역 상단에서 바닥 살짝 위까지의 낙하 거리. 절대 높이가 아니라 거리로 주므로
+        // 나중에 구역을 옮겨도 어긋나지 않는다(시작 위치는 컴포넌트가 Awake에 스스로 읽는다).
+        debrisFall.fallDistance = debrisTopLocalY + zoneCol.size.y / 2f - 0.5f;
 
         // 낙석(모래시계 대역) - 부딪히면 뒤집히고 위 감속 구역을 켠다.
         GameObject rock = GameObject.CreatePrimitive(PrimitiveType.Cube);
