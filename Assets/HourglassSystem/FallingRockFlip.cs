@@ -23,12 +23,10 @@ public class FallingRockFlip : MonoBehaviour
     [Tooltip("있으면 \"Flip\" 트리거로 애니메이션 재생. 없으면 코드로 180도 회전.")]
     public Animator animator;
 
-    private Rigidbody rb;
     private float nextAllowedTime;
 
     private void Awake()
     {
-        rb = GetComponent<Rigidbody>();
         if (targetSlowZone == null)
             Debug.LogError("[FallingRockFlip] targetSlowZone이 비어있다. Inspector에서 연결해라.", this);
     }
@@ -37,8 +35,12 @@ public class FallingRockFlip : MonoBehaviour
     {
         if (Time.time < nextAllowedTime) return;
 
-        float impactMass = collision.rigidbody != null ? collision.rigidbody.mass : rb.mass;
-        float momentum = impactMass * collision.relativeVelocity.magnitude;
+        // 때린 쪽에 Rigidbody가 없으면(정적 바닥·벽) 발동 조건 자체가 아니다. 자기 질량으로 대체하면
+        // 낙석이 바닥에 떨어지는 것만으로 판정을 통과해(mass 2 x 2m/s = 4.0) 아무도 안 건드렸는데
+        // 감속 구역이 켜진다. "때린 쪽의 운동량"은 때린 쪽이 있을 때만 성립하는 값이다.
+        if (collision.rigidbody == null) return;
+
+        float momentum = collision.rigidbody.mass * collision.relativeVelocity.magnitude;
         if (momentum < requiredMomentum) return;
 
         nextAllowedTime = Time.time + cooldown;

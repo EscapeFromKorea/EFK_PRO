@@ -17,10 +17,11 @@ public class SlowZone : MonoBehaviour
 {
     [Header("감속 파라미터")]
     public float slowMultiplier = 0.5f;
-    [Tooltip("0이면 자동 원복 없이 재타격 전까지 무한 지속.")]
+    [Tooltip("0이면 자동 원복이 없다 - 한 번 켜지면 영구 지속(Activate는 토글이 아니라 재타격해도 안 꺼진다).")]
     public float duration = 10f;
     public float transitionTime = 0.5f;
-    [Tooltip("기본은 낙석 레이어만. 플레이어 포함 여부는 아래 별도 옵션으로 판단한다.")]
+    [Tooltip("감속 대상 레이어. 기본값은 전체 레이어이므로, 낙석만 감속하려면 여기서 좁혀라. " +
+             "플레이어 포함 여부는 레이어와 별개로 아래 includePlayer가 판단한다.")]
     public LayerMask targetMask = ~0;
     [Tooltip("플레이어도 감속 대상에 포함할지 (기본 제외 - 낙석만).")]
     public bool includePlayer = false;
@@ -93,7 +94,8 @@ public class SlowZone : MonoBehaviour
             bool isNewlyAffected = affected.Add(body);
             stillInside.Add(body);
 
-            body.SetGravityScale(slowMultiplier, 1f, 0f, transitionTime);
+            // 마지막 1f는 점프 높이 배율 — 감속 구역은 점프를 강화하지 않는다(무중력 버블과 다른 축).
+            body.SetGravityScale(slowMultiplier, 1f, 0f, transitionTime, 1f);
 
             if (isNewlyAffected)
             {
