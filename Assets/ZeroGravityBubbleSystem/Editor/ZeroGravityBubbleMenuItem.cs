@@ -5,18 +5,24 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Tools > ZeroGravityBubble 메뉴로 씬에 무중력 기류 버블 하나를 생성한다.
+/// Tools > ZeroGravityBubble > Create Bubble 메뉴로 씬에 무중력 기류 버블 하나를 생성한다.
 /// SphereCollider(트리거) + ZeroGravityBubble 컴포넌트 + rim-light 경계 시각 + 상승 파티클을 만든다.
 /// 외부 에셋 없이 내장 리소스(기본 파티클 머티리얼, 커스텀 rim 셰이더)만 사용한다.
 ///
 /// 기존 에디터 세팅 패턴(CloudTrampolineSystem/RainbowBridgeSystem)을 따른다: SceneView 중앙 스폰,
 /// Undo 등록, Selection 설정.
+///
+/// [경로가 왜 서브메뉴인가 — 예전엔 "Tools/ZeroGravityBubble" 리프였다]
+/// 같은 이름을 **리프 항목이면서 동시에 서브메뉴**로 쓸 수 없다. 나중에 추가된
+/// "Tools/ZeroGravityBubble/Fix Missing PlayerShapeIdentity"가 같은 이름의 서브메뉴를 만들면서
+/// 리프였던 생성 항목이 통째로 가려져 **메뉴에서 사라졌다.** 그래서 생성도 같은 서브메뉴 아래로
+/// 내렸다. 이 폴더에 메뉴를 더 추가할 때도 반드시 "Tools/ZeroGravityBubble/<이름>" 형태로 둘 것.
 /// </summary>
 public static class ZeroGravityBubbleMenuItem
 {
     private const string MaterialSavePath = "Assets/ZeroGravityBubbleSystem/Materials";
 
-    [MenuItem("Tools/ZeroGravityBubble")]
+    [MenuItem("Tools/ZeroGravityBubble/Create Bubble")]
     private static void CreateZeroGravityBubble()
     {
         EnsureMaterialFolder();

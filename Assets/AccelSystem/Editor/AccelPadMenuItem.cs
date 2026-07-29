@@ -6,7 +6,10 @@ using UnityEngine;
 /// </summary>
 public static class AccelPadMenuItem
 {
-    [MenuItem("Tools/AccelPad")]
+    // 리프가 아니라 서브메뉴 아래에 둔다. 같은 이름을 리프 항목이면서 서브메뉴로 동시에 쓸 수 없어서,
+    // 나중에 "Tools/AccelPad/무엇" 항목이 하나라도 추가되면 리프였던 이 항목이 경고 없이 사라진다
+    // (ZeroGravityBubble에서 실제로 겪음).
+    [MenuItem("Tools/AccelPad/Create Accel Pad")]
     private static void CreateAccelPad()
     {
         GameObject pad = new GameObject("AccelPad", typeof(BoxCollider), typeof(AccelPad));

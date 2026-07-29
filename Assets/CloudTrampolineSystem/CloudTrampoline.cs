@@ -6,7 +6,8 @@ using UnityEngine;
 /// 발사는 신규 로직 없이 PlayerSystem의 PlayerJump.LaunchToHeight(H)에 위임한다(질량 무관 결정론).
 ///
 /// 무게 과부하 붕괴(협동 축):
-/// 구름 위 도형들의 합산 질량(Rigidbody.mass — 세트 B: 구1.0/세모1.5/네모3.0)으로 동작이 갈린다.
+/// 구름 위 도형들의 합산 "무게"(Rigidbody.mass × 그 바디의 실효 중력 배율 — 에셋 실제 질량은
+/// 구1.5/세모1.0/네모3.0)로 동작이 갈린다. 질량이 아니라 무게인 이유는 TotalLoad() 주석 참고.
 /// - load &lt; restMassThreshold                         : 가벼워서 튕겨 오름(트램펄린).
 /// - restMassThreshold ≤ load &lt; collapseMassThreshold : 무거워 못 튕기고 눌러앉음(구름이 버팀).
 /// - load ≥ collapseMassThreshold                       : 과부하 — 구름이 서서히 사라져 콜라이더가
@@ -116,11 +117,16 @@ public class CloudTrampoline : MonoBehaviour
         if (rb != null) riders.Remove(rb);
     }
 
+    /// <summary>구름이 견디는 하중. 질량이 아니라 "무게"를 잰다 — 무중력 버블처럼 개별 중력을 낮추는
+    /// 구역 안에서는 같은 도형도 가벼워져야 하기 때문이다. 덕분에 네모(3.0)가 버블 안(×0.60)에서 1.8이
+    /// 되어 눌러앉기 밴드 아래로 내려가 튕긴다 — 도형별 특수 분기 없이 물리로 성립하고, 버블 밖에서는
+    /// 배율이 1이라 기존 동작 그대로다.
+    /// 기준식은 PlayerSystem의 `PlayerWeight.Of` 하나뿐이다(저장소 공통 규칙, `Assets/CLAUDE.md`).</summary>
     private float TotalLoad()
     {
         riders.RemoveWhere(r => r == null);
         float sum = 0f;
-        foreach (Rigidbody r in riders) sum += r.mass;
+        foreach (Rigidbody r in riders) sum += PlayerWeight.Of(r);
         return sum;
     }
 

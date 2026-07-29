@@ -55,7 +55,10 @@ public static class CloudTrampolineMenuItem
         (new Vector3(-0.5f, -0.22f, -0.66f), new Vector3(0.5f, 0.5f, 0.5f)),
     };
 
-    [MenuItem("Tools/CloudTrampoline")]
+    // 리프가 아니라 서브메뉴 아래에 둔다. 같은 이름을 리프 항목이면서 서브메뉴로 동시에 쓸 수 없어서,
+    // 나중에 "Tools/CloudTrampoline/무엇" 항목이 하나라도 추가되면 리프였던 이 항목이 경고 없이
+    // 사라진다(ZeroGravityBubble에서 실제로 겪음).
+    [MenuItem("Tools/CloudTrampoline/Create Cloud Trampoline")]
     private static void CreateCloudTrampoline()
     {
         EnsureMaterialFolder();

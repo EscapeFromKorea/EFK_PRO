@@ -11,6 +11,10 @@ using UnityEngine.Rendering;
 ///   씬에 DreamThreadController가 없으면 함께 만들어(LineRenderer 포함) 바로 테스트할 수 있게 보장한다.
 /// - Create Pin Placer (Phase 2): 씬에 ThreadPinPlacer가 없으면 하나 만든다. 세모가 G로 벽에 핀을
 ///   박아 런타임 앵커를 만드는 컴포넌트(레벨 C용). 핀은 일반 ThreadAnchor라 컨트롤러가 자동 인식한다.
+/// - Create Rope Bridge (Phase 3): 고리 2개 + 그 둘을 잇는 ThreadBridge를 만든다(레벨 D 줄다리 구간).
+/// - Create Cube Anchor (Phase 3): 씬의 네모에 닻 고리를 달아 주는 ThreadCubeAnchor를 하나 만든다.
+/// (출구 무게판은 실타래 종속 로직이 없어 DoorSystem으로 옮겼다 —
+///  `Tools > DoorSystem > Create Exit Weight Plate`.)
 ///
 /// 앵커는 물리 마커라 콜라이더를 붙이지 않는다(연결은 거리 판정 — ThreadAnchor 주석 참고).
 /// 기존 에디터 세팅 패턴(CloudTrampoline/RainbowBridge)을 따른다: SceneView 중앙 스폰, Undo 등록,
@@ -31,14 +35,7 @@ public static class DreamThreadMenuItem
         if (SceneView.lastActiveSceneView != null)
             origin = SceneView.lastActiveSceneView.pivot;
 
-        GameObject anchorObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        anchorObj.name = "DreamThread_Anchor";
-        Object.DestroyImmediate(anchorObj.GetComponent<Collider>()); // 마커일 뿐 — 물리 접촉 없음
-        anchorObj.transform.position = origin;
-        anchorObj.transform.localScale = Vector3.one * 0.35f;
-        anchorObj.GetComponent<Renderer>().sharedMaterial =
-            LoadOrCreateMaterial("Anchor", new Color(0.5f, 0.85f, 1f, 1f));
-        anchorObj.AddComponent<ThreadAnchor>();
+        GameObject anchorObj = SpawnAnchor(origin);
 
         Undo.RegisterCreatedObjectUndo(anchorObj, "Create DreamThread Anchor");
 
@@ -67,6 +64,117 @@ public static class DreamThreadMenuItem
                   "G는 고리 생성 + 세모 벽부착(그 자리에 완전 고정)을 함께 합니다 — 점프로 위로 도약하며 탈착 후 공중 이동, " +
                   "더 높은 벽에서 G 재입력으로 재부착(클라이밍 루프). 고리는 동시 2개까지(3번째는 가장 오래된 것 자동 회수), " +
                   "수동 회수는 전용 키 T(박은 고리 전부 제거). 박은 고리엔 구·세모가 F로 매달립니다.");
+    }
+
+    [MenuItem("Tools/DreamThread/Create Rope Bridge")]
+    private static void CreateRopeBridge()
+    {
+        EnsureMaterialFolder();
+        EnsureController();
+
+        Vector3 origin = Vector3.zero;
+        if (SceneView.lastActiveSceneView != null)
+            origin = SceneView.lastActiveSceneView.pivot;
+
+        // 레벨 배치용 고정 줄다리: 양 끝 고리를 10 Unit 떨어뜨려 만들고 서로 연결해 둔다(레벨 D 틈 = 10).
+        GameObject a = SpawnAnchor(origin + Vector3.left * 5f);
+        GameObject b = SpawnAnchor(origin + Vector3.right * 5f);
+        a.name = "DreamThread_BridgeAnchor_A";
+        b.name = "DreamThread_BridgeAnchor_B";
+
+        GameObject bridgeObj = SpawnBridge("DreamThreadBridge", origin);
+        ThreadBridge bridge = bridgeObj.GetComponent<ThreadBridge>();
+        bridge.anchorA = a.GetComponent<ThreadAnchor>();
+        bridge.anchorB = b.GetComponent<ThreadAnchor>();
+
+        Undo.RegisterCreatedObjectUndo(a, "Create DreamThread Rope Bridge");
+        Undo.RegisterCreatedObjectUndo(b, "Create DreamThread Rope Bridge");
+        Undo.RegisterCreatedObjectUndo(bridgeObj, "Create DreamThread Rope Bridge");
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        Selection.activeGameObject = bridgeObj;
+        Debug.Log("[DreamThread] 고정 줄다리 생성 완료(고리 2개 + 다리). 네모로 한쪽 끝에서 올라타 평소처럼 " +
+                  "걸어 건너세요 — 무게로 줄이 처져 낮은 경로가 생깁니다. 두 고리를 씬에서 옮기면 다리도 " +
+                  "따라옵니다. 세모 핀으로 잇는 다리가 따로 필요하면 Create Pin Rope Bridge를 쓰세요 " +
+                  "(이 다리를 지우거나 필드를 비울 필요 없이 함께 놓을 수 있습니다).");
+    }
+
+    [MenuItem("Tools/DreamThread/Create Pin Rope Bridge")]
+    private static void CreatePinRopeBridge()
+    {
+        EnsureMaterialFolder();
+        EnsureController();
+
+        if (Object.FindObjectOfType<ThreadPinPlacer>() == null)
+            CreatePinPlacer(); // 핀이 있어야 이어지는 다리라 placer가 없으면 같이 만들어 준다.
+
+        Vector3 origin = Vector3.zero;
+        if (SceneView.lastActiveSceneView != null)
+            origin = SceneView.lastActiveSceneView.pivot;
+
+        // 고리를 지정하지 않은 줄다리. 양 끝을 비워 두면 ThreadBridge가 세모의 핀 2개를 따라간다.
+        // 고정 줄다리와 별개 오브젝트라 한 씬에 둘 다 놓을 수 있다(각 인스턴스가 제 세그먼트를 가진다).
+        GameObject bridgeObj = SpawnBridge("DreamThreadBridge_Pin", origin);
+
+        Undo.RegisterCreatedObjectUndo(bridgeObj, "Create DreamThread Pin Rope Bridge");
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        Selection.activeGameObject = bridgeObj;
+        Debug.Log("[DreamThread] 핀 줄다리 생성 완료(고리 미지정). 세모로 벽 두 군데에 G로 핀을 박으면 " +
+                  "그 둘을 잇는 다리가 생깁니다. T로 회수하거나 3번째를 박으면 다리가 사라지거나 옮겨갑니다. " +
+                  "고정 줄다리와 함께 놓아도 서로 간섭하지 않습니다.");
+    }
+
+    // 줄다리 오브젝트 하나(ThreadBridge + 실 LineRenderer)를 만든다. 고정/핀 두 메뉴가 공유한다.
+    private static GameObject SpawnBridge(string name, Vector3 origin)
+    {
+        GameObject bridgeObj = new GameObject(name);
+        bridgeObj.transform.position = origin;
+        ThreadBridge bridge = bridgeObj.AddComponent<ThreadBridge>();
+
+        LineRenderer line = bridgeObj.GetComponent<LineRenderer>(); // RequireComponent가 이미 추가함
+        line.useWorldSpace = true;
+        line.widthMultiplier = bridge.lineWidth;
+        line.numCapVertices = 2;
+        line.textureMode = LineTextureMode.Stretch;
+        line.sharedMaterial = LoadOrCreateLineMaterial();
+        line.enabled = false;
+        return bridgeObj;
+    }
+
+    [MenuItem("Tools/DreamThread/Create Cube Anchor")]
+    private static void CreateCubeAnchor()
+    {
+        if (Object.FindObjectOfType<ThreadCubeAnchor>() != null)
+        {
+            Debug.Log("[DreamThread] 씬에 이미 ThreadCubeAnchor가 있습니다.");
+            return;
+        }
+
+        GameObject obj = new GameObject("DreamThreadCubeAnchor");
+        obj.AddComponent<ThreadCubeAnchor>();
+        Undo.RegisterCreatedObjectUndo(obj, "Create DreamThread Cube Anchor");
+        Selection.activeGameObject = obj;
+        Debug.Log("[DreamThread] 네모 닻 생성 완료. 씬의 네모 머리 위에 고리가 달립니다 — 네모가 접지해 " +
+                  "거의 멈춰 있을 때만 금색으로 켜지고(닻 성립), 그때 Tab으로 구/세모를 조작해 F로 매달릴 수 있습니다.");
+    }
+
+    // 고리(앵커) 마커 하나를 만든다. 콜라이더 없는 순수 마커 — 연결은 거리 판정이다(ThreadAnchor 주석).
+    private static GameObject SpawnAnchor(Vector3 position)
+    {
+        GameObject anchorObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        anchorObj.name = "DreamThread_Anchor";
+        Object.DestroyImmediate(anchorObj.GetComponent<Collider>());
+        anchorObj.transform.position = position;
+        anchorObj.transform.localScale = Vector3.one * 0.35f;
+        anchorObj.GetComponent<Renderer>().sharedMaterial =
+            LoadOrCreateMaterial("Anchor", new Color(0.5f, 0.85f, 1f, 1f));
+        anchorObj.AddComponent<ThreadAnchor>();
+        return anchorObj;
     }
 
     // 씬에 컨트롤러가 없으면 LineRenderer를 포함해 하나 만든다. 이미 있으면 아무 것도 하지 않는다.

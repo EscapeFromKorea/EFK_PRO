@@ -117,6 +117,19 @@ public class PlayerMover : MonoBehaviour
         IsControlled = controlled;
     }
 
+    /// <summary>외부 시스템이 이 바디의 물리를 직접 소유하는 동안 true로 둔다(예: 실타래 스윙 —
+    /// DreamThreadController가 조인트와 접선 힘으로 몸을 굴리는 구간). true인 동안 이 컴포넌트는
+    /// 이동 대입도, 비조작 감쇠도 하지 않는다.
+    ///
+    /// [왜 컴포넌트를 끄는 대신 이 플래그인가]
+    /// 스윙을 살리려면 PlayerMover의 velocity 간섭을 멈춰야 한다. 예전에는 `enabled = false`로 껐는데,
+    /// 그러면 OnDisable이 PlayerControlSwitcher 로스터에서 이 플레이어를 **빼버려** 부작용이 줄줄이
+    /// 생겼다: 조작권이 다른 플레이어로 튀고, Tab 순환에 다시 안 들어와 **매달린 플레이어로 돌아갈
+    /// 수 없고**, 그래서 실타래는 Tab을 감지해 매달림을 강제로 해제해야 했다.
+    /// 플래그로 간섭만 멈추면 컴포넌트가 켜진 채라 **로스터가 그대로 유지**돼, 매달린 채 Tab으로
+    /// 오가는 것이 자연스럽게 성립한다.</summary>
+    public bool ExternallyDriven { get; set; }
+
     private Rigidbody rb;
     private PlayerShapeController shapeController;
 
@@ -141,6 +154,9 @@ public class PlayerMover : MonoBehaviour
 
     void FixedUpdate()
     {
+        // 외부 시스템이 몸을 굴리는 동안은 이동도 감쇠도 하지 않는다(둘 다 그 물리를 짓밟는다).
+        if (ExternallyDriven) return;
+
         if (useTorqueRolling)
         {
             TorqueRollingFixedUpdate();
