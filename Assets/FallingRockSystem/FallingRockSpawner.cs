@@ -8,7 +8,7 @@ using UnityEngine.Events;
 /// 스폰 타이밍·규격·피격 집계만 담당한다.
 ///
 /// [존재 이유 — 모래시계 슬로우와 짝을 이루는 타이밍 퍼즐 (사양 §2)]
-/// 세모/네모가 몽환의 모래시계를 쳐서 감속 구역(HourglassSystem/SlowZone)을 켜면 낙하 중인 낙석이
+/// 세모가 몽환의 모래시계를 쳐서 감속 구역(HourglassSystem/SlowZone)을 켜면 낙하 중인 낙석이
 /// 느려지고, 그 틈으로 이동속도 7 U/s인 구가 낙석 구간을 뚫고 통과한다. 낙석은 단독으로 완결되는
 /// 기믹이 아니라 감속 구역 안에 배치해야 의미가 있는 종속 기믹이다.
 ///
@@ -116,7 +116,8 @@ public class FallingRockSpawner : MonoBehaviour
     [Tooltip("짝을 이루는 감속 구역. ★ 연결하지 않으면 사양 §2가 성립하지 않는다 ★ — " +
              "구역이 켜졌는지(IsActive)를 읽어 spawnIntervalWhileSlowed로 전환하는 데 쓰고, " +
              "스폰/소멸 지점이 구역과 올바르게 맞물렸는지도 Start에서 검사한다. " +
-             "읽기만 한다 — 구역을 켜는 것은 세모/네모가 모래시계(FallingRockFlip)를 치는 것뿐이다.")]
+             "읽기만 한다 — 구역을 켜는 것은 세모가 모래시계(FallingRockFlip)를 치는 것뿐이다" +
+             "(네모는 모래시계를 밀어 옮기는 역할이라 발동시키지 못한다).")]
     public SlowZone referenceSlowZone;
 
     [Header("피격 (사양 §4 onHitBehavior — Q2: 지금은 물리 넉백만)")]
@@ -313,15 +314,27 @@ public class FallingRockSpawner : MonoBehaviour
                 return $"스폰 지점 '{point.name}'이 감속 구역 밖이다. 구역 안에서 떨어져야 모래시계 " +
                        "슬로우가 낙하에 걸린다(사양 §3).";
 
-            float despawnY = point.position.y - despawnFallDistance + rockSize * 0.5f;
-            if (despawnY > zone.bounds.min.y)
-                return $"소멸 지점이 감속 구역 안이다(소멸 y {despawnY:F2} > 구역 바닥 " +
-                       $"{zone.bounds.min.y:F2}). 구역 안에서 낙석이 파괴되면 SlowZone 내부 목록에 " +
-                       $"죽은 참조가 스폰마다 누적된다. despawnFallDistance를 " +
-                       $"{point.position.y - zone.bounds.min.y + rockSize:F1} 이상으로 올려라.";
+            string despawnProblem = DespawnInsideZoneProblem(point.position.y, rockSize,
+                                                            despawnFallDistance, zone.bounds);
+            if (despawnProblem != null) return despawnProblem;
         }
 
         return null;
+    }
+
+    /// <summary>소멸 지점이 감속 구역 볼륨 안이면 문제 문구, 정상이면 null.
+    /// 에디터 커스텀 창이 <b>생성 전 미리보기</b>로도 같은 판정을 써야 해서 static으로 빼두었다 —
+    /// 판정식이 갈라지면 창에서 정상으로 본 세팅이 런타임에 경고를 뱉는(또는 그 반대) 일이 생긴다.</summary>
+    public static string DespawnInsideZoneProblem(float spawnY, float rockSize,
+                                                  float despawnFallDistance, Bounds zoneBounds)
+    {
+        float despawnY = spawnY - despawnFallDistance + rockSize * 0.5f;
+        if (despawnY <= zoneBounds.min.y) return null;
+
+        return $"소멸 지점이 감속 구역 안이다(소멸 y {despawnY:F2} > 구역 바닥 " +
+               $"{zoneBounds.min.y:F2}). 구역 안에서 낙석이 파괴되면 SlowZone 내부 목록에 " +
+               $"죽은 참조가 스폰마다 누적된다. despawnFallDistance를 " +
+               $"{spawnY - zoneBounds.min.y + rockSize:F1} 이상으로 올려라.";
     }
 
     // 스폰 지점, 낙하 경로, 소멸 지점, 그리고 구가 지나갈 틈을 씬 뷰에 그린다(배치·확인용).
