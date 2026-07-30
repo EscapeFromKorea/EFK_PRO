@@ -23,6 +23,19 @@ using UnityEngine.Events;
 /// 그래서 drag 대신 maxFallSpeed로 하강 속도를 직접 자른다: 대상이 authored drag를 올바르게
 /// 갖고 있어야 한다는 전제가 사라지고, 종단속도를 근사하는 대신 정확한 값을 얻는다.
 ///
+/// [진입 램프 — 상한을 즉시 걸지 않고 transitionTime에 걸쳐 내린다]
+/// 하강 상한을 진입 첫 프레임에 그대로 걸면 구역 밖 자유낙하(약 10 U/s)가 한 스텝(0.02초) 만에
+/// 2 U/s로 꺾여, 감속이 아니라 <b>보이지 않는 벽에 부딪혀 급정지</b>한 것처럼 보인다. 요구는
+/// "순간적으로 느려지는 것이 보인 뒤 느려진 속도로 내려간다"이므로, 상한 자체를 진입 시 하강 속도
+/// → maxFallSpeed로 transitionTime 동안 선형 보간한다(바디별로 진입 시각·진입 속도를 기록).
+/// 중력이 매 스텝 속도를 상한까지 밀어붙이므로 실제 낙하 속도는 이 상한을 그대로 따라 내려간다 -
+/// 즉 상한을 보간하는 것만으로 "눈에 보이는 감속 과정"이 생긴다. PlayerGravityOverride의
+/// 중력 배율 전환도 같은 transitionTime을 쓰므로 두 감속이 같은 리듬으로 맞물린다.
+/// 진입 1회 속도 감쇠는 <b>수평 성분에만</b> 남겼다. 세로까지 곱하면 램프와 이중으로 겹쳐 진입
+/// 순간 10 → 5 U/s로 한 번 더 꺾이고(없애려던 그 급정지다) 램프 초반이 무의미해진다. 수평 감쇠는
+/// "구역에 들어서면 관성이 눌린다"는 원래 의도라 유지한다 - 하강은 램프가, 수평은 이 1회 감쇠가
+/// 담당하는 식으로 역할을 갈라 두었다.
+///
 /// [대상 추적은 폴링이 아니라 트리거 이벤트]
 /// 예전에는 매 FixedUpdate Physics.OverlapBox로 구역을 다시 스캔했다. (1) Collider.bounds는 이미
 /// 월드 AABB인데 거기에 transform.rotation을 또 먹여서, 구역을 회전 배치하면 감속 볼륨이 실제
@@ -49,10 +62,15 @@ public class SlowZone : MonoBehaviour
     [Tooltip("구역 안에서 허용할 최대 하강 속도(U/s). 이 값이 낙석 타이밍 퍼즐의 핵심 수치다 - " +
              "6칸 구역을 지나가는 시간이 (구역 높이 / 이 값)으로 바로 나온다. 기본 2는 6칸을 3초에 " +
              "통과시켜, 이속 7 U/s인 구가 낙석 사이를 뚫을 창을 만든다(구역 밖 자유낙하는 약 10 U/s). " +
-             "0으로 두면 상한 없음 - 중력 배율만 적용된다.")]
+             "0으로 두면 상한 없음 - 중력 배율만 적용된다. 진입 순간 이 값으로 바로 꺾이지 않고 " +
+             "아래 transitionTime에 걸쳐 진입 속도에서 이 값까지 내려온다(급정지처럼 보이지 않게).")]
     public float maxFallSpeed = 2f;
     [Tooltip("0이면 자동 원복이 없다 - 한 번 켜지면 영구 지속(Activate는 토글이 아니라 재타격해도 안 꺼진다).")]
     public float duration = 10f;
+    [Tooltip("감속이 걸리고/풀리는 데 걸리는 시간(초). 중력 배율 전환과 하강 상한 램프가 같이 이 " +
+             "값을 쓴다. 0으로 두면 진입 즉시 상한이 걸려 급정지처럼 보인다 - '느려지는 것이 보여야 " +
+             "한다'는 요구를 지키려면 0으로 두지 마라. 크게 두면 감속이 늦게 완성되므로 낙석 통과 창 " +
+             "계산(FallingRockSpawner 클래스 주석)에 오차로 들어온다.")]
     public float transitionTime = 0.5f;
     [Tooltip("감속 대상 레이어. 기본값은 전체 레이어이므로, 낙석만 감속하려면 여기서 좁혀라. " +
              "플레이어 포함 여부는 레이어와 별개로 아래 includePlayer가 판단한다.")]
@@ -67,8 +85,17 @@ public class SlowZone : MonoBehaviour
     public UnityEvent OnDeactivated;
 
     private Collider zoneCollider;
-    private readonly HashSet<PlayerGravityOverride> affected = new HashSet<PlayerGravityOverride>();
+    // 감속 중인 바디 + 바디별 램프 상태(진입 시각·진입 하강 속도). 상한 램프는 바디마다 진입
+    // 시점이 다르므로 구역 단위 값 하나로는 표현할 수 없다.
+    private readonly Dictionary<PlayerGravityOverride, FallRamp> affected =
+        new Dictionary<PlayerGravityOverride, FallRamp>();
     private float deactivateAt;
+
+    private struct FallRamp
+    {
+        public float startTime;
+        public float startFallSpeed; // 진입 순간의 하강 속도(양수). 램프의 시작 상한이 된다.
+    }
 
     public bool IsActive { get; private set; }
 
@@ -129,16 +156,43 @@ public class SlowZone : MonoBehaviour
         // 점프를 강화하지 않는다(무중력 버블과 다른 축).
         body.SetGravityScale(slowMultiplier, 1f, 0f, transitionTime, 1f);
 
+        if (!affected.TryGetValue(body, out FallRamp ramp))
+        {
+            ramp = new FallRamp
+            {
+                startTime = Time.time,
+                startFallSpeed = Mathf.Max(0f, -rb.velocity.y)
+            };
+            affected[body] = ramp;
+
+            // 진입 순간에만 수평 속도를 한 번 깎는다(매 프레임 곱하면 기하급수적으로 감쇠해 멈춘다).
+            // 세로는 일부러 건드리지 않는다 - 하강은 아래 램프가 담당하고, 여기서 같이 곱하면
+            // 진입 프레임에 하강 속도가 한 번 더 꺾여 없애려던 급정지가 되살아난다(클래스 주석 참고).
+            rb.velocity = new Vector3(rb.velocity.x * slowMultiplier, rb.velocity.y,
+                                      rb.velocity.z * slowMultiplier);
+            Debug.Log($"[SlowZone] '{rb.name}' 진입 - 감속 시작 (중력 x{slowMultiplier}, 하강 " +
+                      $"{ramp.startFallSpeed:F1} → {maxFallSpeed} U/s를 {transitionTime}초에 걸쳐)");
+        }
+
         // 상한은 매 스텝 적용해야 의미가 있다(중력이 계속 가속시키므로). 곱셈이 아니라 clamp라서
         // 매 프레임 걸어도 기하급수적으로 감쇠해 멈춰버리는 문제가 없다.
-        if (maxFallSpeed > 0f && rb.velocity.y < -maxFallSpeed)
-            rb.velocity = new Vector3(rb.velocity.x, -maxFallSpeed, rb.velocity.z);
+        if (maxFallSpeed <= 0f) return; // 0 = 상한 없음(중력 배율만).
 
-        if (!affected.Add(body)) return;
+        float ceiling = FallSpeedCeiling(ramp);
+        if (rb.velocity.y < -ceiling)
+            rb.velocity = new Vector3(rb.velocity.x, -ceiling, rb.velocity.z);
+    }
 
-        // 진입 순간에만 수평/전체 속도를 한 번 깎는다. 매 프레임 곱하면 기하급수적으로 감쇠해 멈춘다.
-        rb.velocity *= slowMultiplier;
-        Debug.Log($"[SlowZone] '{rb.name}' 진입 - 감속 적용 (중력 x{slowMultiplier}, 하강 상한 {maxFallSpeed} U/s)");
+    /// <summary>지금 이 순간 허용할 하강 속도 상한(양수). 진입 속도에서 maxFallSpeed까지
+    /// transitionTime 동안 선형으로 내려온다 - 진입 첫 프레임에 상한을 그대로 걸면 급정지로 보인다.
+    /// 진입 속도가 이미 상한보다 느리면 램프 없이 상한을 그대로 쓴다(느린 물체를 가속시키지 않는다).</summary>
+    private float FallSpeedCeiling(FallRamp ramp)
+    {
+        float from = Mathf.Max(ramp.startFallSpeed, maxFallSpeed);
+        if (transitionTime <= 0f || from <= maxFallSpeed) return maxFallSpeed;
+
+        float t = Mathf.Clamp01((Time.time - ramp.startTime) / transitionTime);
+        return Mathf.Lerp(from, maxFallSpeed, t);
     }
 
     private void OnTriggerExit(Collider other)
@@ -151,7 +205,7 @@ public class SlowZone : MonoBehaviour
         if (rb == null) return;
 
         PlayerGravityOverride body = rb.GetComponent<PlayerGravityOverride>();
-        if (body == null || !affected.Contains(body)) return;
+        if (body == null || !affected.ContainsKey(body)) return;
 
         // 같은 Rigidbody에 자식 콜라이더가 둘(Player_Mesh/Player_Collider) 붙어 있어, 한쪽만 경계를
         // 벗어나도 Exit이 온다. 그때 복원해버리면 아직 안에 있는 쪽의 다음 OnTriggerStay가 다시
@@ -169,7 +223,7 @@ public class SlowZone : MonoBehaviour
     private void Deactivate()
     {
         IsActive = false;
-        foreach (PlayerGravityOverride body in affected)
+        foreach (PlayerGravityOverride body in affected.Keys)
             RestoreOne(body);
         affected.Clear();
         OnDeactivated?.Invoke();
