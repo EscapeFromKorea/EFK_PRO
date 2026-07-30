@@ -2,8 +2,9 @@ using UnityEngine;
 
 /// <summary>
 /// 낙석 하나(무너져 내리는 꿈의 파편). FallingRockSpawner가 생성하고 이 컴포넌트를 붙인다.
-/// 하는 일은 두 가지뿐이다 — (1) 스폰 위치에서 일정 거리 내려가면 스스로 소멸, (2) 플레이어에
-/// 부딪히면 스포너에 피격을 보고. 낙하 자체는 코드가 관여하지 않는다.
+/// 하는 일은 세 가지뿐이다 — (1) 스폰 위치에서 일정 거리 내려가면 스스로 소멸, (2) 플레이어에
+/// 부딪히면 스포너에 피격을 보고, (3) 바닥·벽 같은 솔리드에 부딪히면 파편으로 부서지며 소멸.
+/// 낙하 자체는 코드가 관여하지 않는다.
 ///
 /// ★ 낙하는 "평범한 dynamic Rigidbody + 중력"이다. 절대 velocity를 매 프레임 대입하지 마라. ★
 /// 이 기믹의 존재 이유는 몽환의 모래시계(HourglassSystem/SlowZone)가 낙석을 느리게 만들어
@@ -25,6 +26,21 @@ using UnityEngine;
 /// 스폰마다 항목이 하나씩 누적된다. SlowZone은 수정 금지 대상이라 이쪽에서 회피해야 한다 —
 /// 구역을 완전히 통과한 뒤 소멸하면 OnTriggerExit이 정상적으로 정리해준다.
 /// 위반 검사는 스포너(FallingRockSpawner.Validate)가 담당한다.
+///
+/// [바닥 충돌 = 부서짐. 쌓이지 않는다는 사양 §5 Q5를 물리로 성립시킨다]
+/// 예전에는 바닥에 닿아도 아무 일이 없어서, 낙석이 통로 바닥에 그대로 서 있다가 stuckTimeout
+/// (6초)의 안전장치로 경고와 함께 사라졌다 — 그 6초 동안은 지형이 바뀌어 고정 타이밍 퍼즐이
+/// 깨진다. 이제 솔리드에 닿는 순간 파편으로 부서지며 소멸하므로 쌓이는 구간이 아예 없다.
+/// stuckTimeout은 "바닥이 아닌 무언가에 끼인" 경우를 위한 안전장치로 그대로 남는다.
+///
+/// 파편은 순수 연출이다 — 원본의 머티리얼을 공유하는 작은 큐브라 새 에셋·파티클 시스템·셰이더가
+/// 하나도 들어가지 않는다(RainbowBridge의 알파 페이드, DreamThread의 LineRenderer 뜯김과 같은
+/// 취지). 질량을 원본의 1/파편수로 나눠 주므로 플레이어를 밀어내지 않고, PlayerShapeIdentity가
+/// 없어서 모래시계(FallingRockFlip)의 도형 게이트에도 걸리지 않는다(파편이 감속 구역을 자기
+/// 발동시키는 우회가 생기지 않는다).
+/// 파편이 감속 구역 안에서 소멸하면 위 [하드 제약]의 죽은 참조 문제가 파편 수만큼 배로 생기는데,
+/// 바닥 충돌 지점은 설계상 구역 볼륨보다 아래이므로(despawnFallDistance 주석 참고) 파편은 구역에
+/// 들어가지 않는다. 구역 안에 바닥을 두면 이 전제가 깨진다 — 그 배치는 원래도 금지다.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Collider))]
@@ -51,6 +67,30 @@ public class FallingRock : MonoBehaviour
              "PlayerSystem 쪽 리시버(가칭 PlayerKnockbackReceiver)로 옮겨야 한다 — 저장소 컨벤션인 " +
              "발신자-수신자 분리 패턴. 지금은 그 리시버가 없고 교차 폴더 수정 금지라 여기서 직접 준다.)")]
     public float extraKnockbackImpulse = 0f;
+
+    [Header("부서짐 연출 (바닥·벽 충돌)")]
+    [Tooltip("바닥에 닿을 때 튀어나올 파편 개수. 0이면 부서짐 연출을 끄고 그냥 소멸한다. " +
+             "파편은 원본 머티리얼을 공유하는 작은 큐브라 새 에셋이 들지 않는다.")]
+    public int shardCount = 6;
+
+    [Tooltip("파편 크기 = 원본 크기 x 이 비율. 기본 0.35는 1 U 낙석에서 0.35 U 파편이 나온다 — " +
+             "구 지름(1 U)보다 확실히 작아 '부서진 조각'으로 읽힌다.")]
+    public float shardSizeRatio = 0.35f;
+
+    [Tooltip("파편이 흩어지는 속도(U/s). 질량과 무관하게 속도로 직접 준다 — 이 저장소의 " +
+             "'발사는 질량 무관 결정론'(PlayerJump.LaunchToHeight) 관례와 같다. 실제 적용값은 " +
+             "충돌 속도에 비례해 줄어든다: 감속 구역 안에서 2 U/s로 살살 닿으면 조금만 튀고, " +
+             "구역 밖 자유낙하 10 U/s로 내리치면 최대로 튄다 — 느려진 낙석이 세게 터지면 " +
+             "감속이 걸렸다는 시각 신호와 어긋난다.")]
+    public float shardScatterSpeed = 3f;
+
+    [Tooltip("위 속도가 최대가 되는 충돌 속도(U/s). 기본 10은 감속 구역 밖 자유낙하 도달 속도다. " +
+             "감속 수치를 바꿨으면 이 값도 같이 본다.")]
+    public float shardFullImpactSpeed = 10f;
+
+    [Tooltip("파편 수명(초). 이 시간에 걸쳐 크기가 0으로 줄며 사라진다. 길게 두면 파편이 통로에 " +
+             "남아 다음 낙석 타이밍을 가린다.")]
+    public float shardLifetime = 1.2f;
 
     /// <summary>피격 집계 주체. 스포너가 생성 시 넣어준다(누적 횟수는 낙석보다 오래 살아야 하므로
     /// 스포너가 들고 있다). 손으로 배치한 낙석은 비어 있어 피격을 집계하지 않는다.</summary>
@@ -99,12 +139,23 @@ public class FallingRock : MonoBehaviour
     // 여러 개인 플레이어가 나중에 생기거나, 접촉이 끊겼다 붙어 Enter가 연속으로 오는 경우 대비).
     private void OnCollisionEnter(Collision collision)
     {
-        if (owner == null) return;
+        // 다른 낙석이 남긴 파편에 닿은 것은 착지가 아니다. 파편은 콜라이더가 있어야 바닥에서 튀는데,
+        // 그대로 두면 뒤따라 내려오는 낙석이 **공중에서 파편을 치고 부서진다**(낙석끼리는 스포너가
+        // Physics.IgnoreCollision으로 막지만 파편은 그 목록에 없다). 파편 판별로 걸러낸다.
+        if (collision.collider.GetComponent<FallingRockShard>() != null) return;
 
         // 도형 판별 컨벤션(Assets/CLAUDE.md): CompareTag/이름 하드코딩 대신 부모의 PlayerShapeIdentity.
-        // 플레이어가 아닌 물체(바닥·다른 낙석)는 여기서 걸러진다.
         PlayerShapeIdentity shape = collision.collider.GetComponentInParent<PlayerShapeIdentity>();
-        if (shape == null) return;
+
+        // 플레이어가 아닌 솔리드(바닥·벽·프롭) = 착지. 부서지며 소멸한다. owner 유무와 무관하게
+        // 동작해야 한다 - 손으로 배치한 낙석도 바닥에 그대로 서 있으면 안 된다.
+        if (shape == null)
+        {
+            Shatter(collision.relativeVelocity.magnitude);
+            return;
+        }
+
+        if (owner == null) return;
 
         Rigidbody playerRb = collision.collider.attachedRigidbody;
         if (playerRb == null) return;
@@ -118,5 +169,47 @@ public class FallingRock : MonoBehaviour
             if (away.sqrMagnitude < 0.0001f) away = transform.forward;
             playerRb.AddForce(away.normalized * extraKnockbackImpulse, ForceMode.Impulse);
         }
+    }
+
+    /// <summary>파편을 흩뿌리고 자신은 소멸한다. impactSpeed(충돌 상대속도)가 클수록 세게 튄다.</summary>
+    private void Shatter(float impactSpeed)
+    {
+        if (shardCount > 0 && shardSizeRatio > 0f)
+        {
+            Renderer source = GetComponent<Renderer>();
+            Material shared = source != null ? source.sharedMaterial : null;
+
+            Vector3 shardScale = transform.localScale * shardSizeRatio;
+            // 원본 질량을 파편들이 나눠 갖는다 - 총 질량이 보존되고, 조각 하나는 플레이어(1.5~3.0)에
+            // 비해 가벼워 밀어내지 못한다.
+            float shardMass = Mathf.Max(0.01f, rb.mass / shardCount);
+            float speed = shardScatterSpeed *
+                          (shardFullImpactSpeed > 0f ? Mathf.Clamp01(impactSpeed / shardFullImpactSpeed) : 1f);
+            // 흩뿌리는 반경은 원본 반쪽 - 조각들이 원본이 있던 자리에서 갈라져 나온 것처럼 보인다.
+            float spread = Mathf.Max(transform.localScale.x, transform.localScale.z) * 0.5f;
+
+            for (int i = 0; i < shardCount; i++)
+            {
+                GameObject shard = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                shard.name = $"{name}_Shard{i}";
+                shard.transform.SetPositionAndRotation(
+                    transform.position + Random.insideUnitSphere * spread, Random.rotation);
+                shard.transform.localScale = shardScale;
+
+                if (shared != null) shard.GetComponent<Renderer>().sharedMaterial = shared;
+
+                Rigidbody shardBody = shard.AddComponent<Rigidbody>();
+                shardBody.mass = shardMass;
+                // 위로 치우친 랜덤 방향 - 바닥에서 튀어 오르며 갈라지는 그림이 된다.
+                Vector3 dir = (Random.insideUnitSphere + Vector3.up).normalized;
+                // VelocityChange/Acceleration이라 질량 무관 - shardMass를 바꿔도 튀는 모양이 안 변한다.
+                shardBody.AddForce(dir * speed, ForceMode.VelocityChange);
+                shardBody.AddTorque(Random.insideUnitSphere * speed, ForceMode.VelocityChange);
+
+                shard.AddComponent<FallingRockShard>().lifetime = shardLifetime;
+            }
+        }
+
+        Destroy(gameObject);
     }
 }

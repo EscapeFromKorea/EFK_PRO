@@ -138,6 +138,22 @@ public class FallingRockSpawner : MonoBehaviour
              "지금은 비어 있는 게 정상 — 나중에 리스폰 시스템을 여기에 연결한다.")]
     public PlayerHitEvent OnHitThresholdExceeded;
 
+    [Header("부서짐 연출")]
+    // 낙석은 런타임에 생성되므로 FallingRock의 인스펙터 값을 기획자가 볼 기회가 없다 - 조정이
+    // 필요한 것만 여기로 끌어올려 넘긴다. 나머지(shardSizeRatio, shardFullImpactSpeed)는 거의
+    // 안 건드리는 값이라 노브를 늘리지 않았다. 그 둘까지 바꿔야 하면 rockPrefab에 FallingRock을
+    // 미리 설정해 꽂아라 - 아래 Spawn은 여기 있는 값만 덮는다.
+    [Tooltip("바닥에 닿을 때 튀어나올 파편 개수. 0이면 부서짐 연출을 끄고 그냥 소멸한다.")]
+    public int shardCount = 6;
+
+    [Tooltip("파편이 흩어지는 속도(U/s). 충돌 속도에 비례해 줄어든다 - 감속 구역 안에서 살살 " +
+             "닿으면 조금만 튄다.")]
+    public float shardScatterSpeed = 3f;
+
+    [Tooltip("파편 수명(초). 이 시간에 걸쳐 크기가 줄며 사라진다. 길면 파편이 통로에 남아 " +
+             "다음 낙석 타이밍을 가린다.")]
+    public float shardLifetime = 1.2f;
+
     [Header("선택")]
     [Tooltip("비워두면 기본 큐브(rockSize 크기 + Rigidbody + FallingRock)를 즉석에서 만든다. " +
              "프리팹을 넣으면 스케일은 프리팹 값을 존중하고 질량/소멸 규칙만 이 스포너 값으로 덮는다.")]
@@ -221,6 +237,9 @@ public class FallingRockSpawner : MonoBehaviour
         if (rock == null) rock = go.AddComponent<FallingRock>();
         rock.despawnFallDistance = despawnFallDistance;
         rock.extraKnockbackImpulse = extraKnockbackImpulse;
+        rock.shardCount = shardCount;
+        rock.shardScatterSpeed = shardScatterSpeed;
+        rock.shardLifetime = shardLifetime;
         rock.owner = this;
 
         // 낙석끼리는 부딪히지 않게 한다. 같은 줄에서 위 낙석이 아래 낙석을 따라잡으면(감속 구역
