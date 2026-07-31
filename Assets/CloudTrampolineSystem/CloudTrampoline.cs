@@ -18,6 +18,14 @@ using UnityEngine;
 /// (네모 단독을 다시 튕기게 하려면 restMassThreshold를 collapseMassThreshold와 같게 올리면 된다 —
 ///  그럼 붕괴는 두 도형이 동시에 닿는 순간에만 성립한다.)
 ///
+/// 왕복 이동(선택):
+/// pointA/pointB를 둘 다 꽂으면 구름이 두 지점을 movePeriodSec 주기로 왕복한다(코사인 이징 — 양 끝에서
+/// 감속·반전). 비워두면 기존 고정 구름 그대로다. 위에 얹힌 도형은 position 가산으로 함께 실려 간다.
+/// ponytail: 경로에 서 있는 도형은 키네마틱 스윕에 옆으로 밀린다(doorPhysics의 isBlocked 같은 끼임 방지
+/// 없음). 양 끝에 플레이어가 서 있을 수 있는 레벨을 만들 때 필요하면 그때 추가.
+/// ponytail: 승객 운반은 position 대입이라 보간(Interpolate) 기준 포즈를 매 스텝 갱신한다 — 플레이테스트에서
+/// 판 위 도형이 떠는 지터가 보이면 구름 쪽 interpolation을 None으로 맞춰 표현을 일치시킨다(미확인).
+///
 /// "위에서 착지" 판정·발사 위임은 JumpSystem/JumpPad 패턴을, 알파 페이드+콜라이더 타이밍은
 /// RainbowBridgeSystem 패턴을 이식했다(두 원본 모두 수정하지 않음). 도형별 부스트(2단계)는 TBD.
 /// </summary>
@@ -44,6 +52,18 @@ public class CloudTrampoline : MonoBehaviour
     [Tooltip("사라짐/나타남 알파 페이드 시간(초). 0이면 즉시 전환.")]
     public float fadeDuration = 0.45f;
 
+    [Header("Movement (선택 — 두 지점 왕복)")]
+    [Tooltip("왕복 구간의 한쪽 끝. pointA/pointB 둘 다 지정되면 구름이 두 지점을 주기적으로 왕복한다. " +
+             "비워두면 고정 구름(기존 동작). 씬에서 마커를 집어 옮기면 경로가 바뀐다.")]
+    public Transform pointA;
+
+    [Tooltip("왕복 구간의 반대쪽 끝.")]
+    public Transform pointB;
+
+    [Tooltip("A→B→A 왕복 한 바퀴에 걸리는 시간(초). 작을수록 빠르다. 이 값이 곧 이동 속도 노브다 — " +
+             "양 끝에서는 코사인 곡선으로 자동 감속·반전하므로 승객이 튕겨나가지 않는다.")]
+    public float movePeriodSec = 4f;
+
     public string playerTag = "Player";
 
     private enum State { Active, Collapsing, Hidden, Reappearing }
@@ -63,6 +83,11 @@ public class CloudTrampoline : MonoBehaviour
 
     private static readonly int ColorId = Shader.PropertyToID("_Color");         // Built-in Standard
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"); // URP/HDRP Lit
+
+    // 왕복 이동용. moving이 false면 아래 필드는 전부 쓰이지 않고 FixedUpdate가 즉시 빠진다.
+    private bool moving;
+    private Rigidbody body;
+    private float moveElapsed;
 
     private void Reset()
     {
@@ -86,6 +111,75 @@ public class CloudTrampoline : MonoBehaviour
         }
         alpha = 1f;
         ApplyVisual();
+
+        moving = pointA != null && pointB != null && movePeriodSec > 0.01f;
+        if (moving)
+        {
+            body = GetComponent<Rigidbody>();
+            if (body == null)
+            {
+                // 키네마틱 Rigidbody 없이 transform만 옮기면 PhysX가 스윕하지 않아 위에 선 도형과
+                // 파고들었다 튕긴다(ThreadBridge 주석과 같은 이유). 조용히 대체하지 않고 알린다.
+                Debug.LogWarning($"[CloudTrampoline] {name}: 왕복 이동에는 키네마틱 Rigidbody가 필요합니다. " +
+                                 "Tools > CloudTrampoline > Create Cloud Trampoline (Moving)로 생성하세요. 이동을 끕니다.", this);
+                moving = false;
+            }
+            else
+            {
+                // 씬에 놓인 현재 위치에 해당하는 위상에서 출발한다. A로 스냅해 버리면 "구름 자식만 원하는
+                // 자리로 옮겨 배치했는데 Play 하면 순간이동한다"가 되고, 마커가 빈 오브젝트라 씬 뷰에서
+                // 원인이 눈에 안 보인다(판 위에 미리 얹어 둔 도형 배치도 함께 깨진다).
+                // u = 0.5 - 0.5cos(2πt/T)의 역함수: t = T·acos(1-2u)/2π.
+                Vector3 span = pointB.position - pointA.position;
+                float u0 = span.sqrMagnitude > 0.0001f
+                    ? Mathf.Clamp01(Vector3.Dot(body.position - pointA.position, span) / span.sqrMagnitude)
+                    : 0f;
+                moveElapsed = movePeriodSec * Mathf.Acos(1f - 2f * u0) / (2f * Mathf.PI);
+            }
+        }
+    }
+
+    /// <summary>두 지점 왕복 + 위에 얹힌 도형 운반. pointA/pointB가 비어 있으면 아무 일도 하지 않는다.</summary>
+    private void FixedUpdate()
+    {
+        // 숨어 있는 동안(콜라이더 off)은 제자리에 멈춘다. 계속 움직이면 "5초 뒤 돌아온다"가 "5초 뒤 다른
+        // 자리에 돌아온다"가 되어 떨어진 플레이어가 기다릴 자리가 사라지고, 지형 안에서 콜라이더가 켜져
+        // 디페네트레이션으로 튕길 수도 있다. 시간(moveElapsed)도 함께 멈추므로 같은 위상에서 재개한다.
+        if (!moving || state == State.Hidden) return;
+
+        moveElapsed += Time.fixedDeltaTime;
+
+        // 코사인 이징: elapsed=0 → A, period/2 → B, period → A(왕복 한 바퀴). 양 끝에서 속도가 0이 되어
+        // 반전이 부드럽고, 승객에게 급가속이 걸리지 않는다.
+        float u = 0.5f - 0.5f * Mathf.Cos(2f * Mathf.PI * moveElapsed / movePeriodSec);
+        Vector3 next = Vector3.Lerp(pointA.position, pointB.position, u);
+        Vector3 delta = next - body.position;
+
+        body.MovePosition(next);
+
+        // 위에 얹힌 도형을 같은 만큼 평행이동시켜 함께 실어 나른다. velocity가 아니라 position에 더하는
+        // 이유는 PlayerMover가 매 FixedUpdate 수평 velocity를 입력값으로 통째 대입하기 때문이다 — velocity로
+        // 주면 그 스텝에 지워진다. position 가산은 이동 입력·점프·도약 속도를 하나도 건드리지 않고(수직도
+        // 그대로) 좌표만 옮기므로, 구름 위에서 계속 점프하는 중에도 운반이 성립한다.
+        // 실려 가는 건 사실상 "눌러앉은" 무거운 도형이다 — 가벼운 도형은 닿는 즉시 튕겨 올라 접촉이 끊긴다.
+        // 덕분에 네모가 판 위에 남아 뒤에 얹히는 도형과 합산 무게를 이루는 협동 설계가 이동판에서도 유지된다.
+        foreach (Rigidbody r in riders)
+            if (r != null) r.position += delta;
+    }
+
+    /// <summary>판 위 도형 집계는 Enter가 아니라 Stay로 유지한다. Enter만 쓰면 "접촉이 시작된 순간
+    /// Active가 아니었던" 도형이 영구히 미등록으로 남는다 — 붕괴 후 그 자리에 서 있던 도형은 콜라이더가
+    /// 다시 켜지는 순간(Reappearing) 접촉하는데, 그 뒤로는 새 Enter 이벤트가 없어서 Active로 돌아가도
+    /// 집계에 안 들어간다. 고정 구름에서는 "그 도형만 안 튕긴다" 정도로 눈에 안 띄었지만, 왕복판에서는
+    /// 운반 목록에서도 빠져 판이 발밑에서 빠져나가 떨어진다. Stay는 멱등하므로(HashSet) 매 프레임 갱신해도
+    /// 안전하고, 붕괴 페이드(Collapsing) 중에도 운반이 유지돼 승객이 서 있던 자리에서 지지를 잃는다.</summary>
+    private void OnCollisionStay(Collision collision)
+    {
+        if (!collision.gameObject.CompareTag(playerTag)) return;
+        if (!IsTopLanding(collision)) return;
+
+        Rigidbody rb = collision.gameObject.GetComponentInParent<Rigidbody>();
+        if (rb != null) riders.Add(rb);
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -143,7 +237,10 @@ public class CloudTrampoline : MonoBehaviour
     private void BeginCollapse()
     {
         state = State.Collapsing;
-        riders.Clear(); // 붕괴 후엔 위 도형이 낙하하므로 집계 초기화.
+        // 같은 접촉으로 붕괴가 재발동하지 않게 집계를 비운다. 페이드 중에도 도형이 판 위에 남아 있으면
+        // OnCollisionStay가 다시 채우는데(운반이 유지되도록 의도한 것), 그동안 state가 Active가 아니라
+        // OnCollisionEnter의 판정에는 도달하지 않는다.
+        riders.Clear();
     }
 
     private void Update()
@@ -204,6 +301,19 @@ public class CloudTrampoline : MonoBehaviour
             mpb.SetColor(BaseColorId, c);
             r.SetPropertyBlock(mpb);
         }
+    }
+
+    // 왕복 경로를 항상 표시한다(선택 시가 아니라 상시). 지점을 조정할 때는 마커를 선택하므로 구름이
+    // 선택 해제되는데, 그때 경로가 안 보이면 어디로 옮기는지 모른 채 드래그하게 된다.
+    private void OnDrawGizmos()
+    {
+        if (pointA == null || pointB == null) return;
+        // 끝점은 판 규격 박스가 아니라 작은 구로 찍는다 — 박스를 그리면 루트를 회전시키거나 콜라이더
+        // 크기를 바꿨을 때 미리보기 발자국이 실제와 어긋나 "이 틈에 들어간다"는 잘못된 확신을 준다.
+        Gizmos.color = new Color(0.6f, 0.85f, 1f);
+        Gizmos.DrawLine(pointA.position, pointB.position);
+        Gizmos.DrawWireSphere(pointA.position, 0.35f);
+        Gizmos.DrawWireSphere(pointB.position, 0.35f);
     }
 
     // 선택 시 도약 도달 높이를 씬 뷰에 표시해 레벨 배치를 돕는다.
