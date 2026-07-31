@@ -112,6 +112,34 @@ public class PlayerFollowCamera : MonoBehaviour
         }
     }
 
+    /// <summary>카메라를 지금 즉시 타깃 위치로 스냅한다(보간 없음). 타깃이 <b>순간이동</b>했을 때
+    /// 쓴다 — 리스폰처럼 위치가 한 번에 크게 바뀌면 SmoothDamp가 옛 위치에서 새 위치까지 화면을
+    /// 가로질러 날아가, "어디로 돌아갔는지" 대신 "이동하는 과정"이 보인다(RespawnSystem이 부른다).
+    ///
+    /// 보간 상태(smoothedTargetY·속도 누산기)까지 같이 지워야 한다 — 위치만 대입하면 다음
+    /// LateUpdate가 남은 속도로 지나쳐 흔들리고, 감쇠된 Y가 옛 높이에서 다시 따라온다.
+    ///
+    /// onlyForTarget을 주면 그 대상이 지금 따라가는 타깃일 때만 스냅한다. 조작 중이 아닌 플레이어가
+    /// 리스폰했다고 화면이 그쪽으로 튀면 안 되므로, 호출자가 판정을 복제하지 않게 여기서 거른다.</summary>
+    public static void SnapToTarget(Transform onlyForTarget = null)
+    {
+        if (instance == null || instance.target == null) return;
+        if (onlyForTarget != null && instance.target != onlyForTarget) return;
+
+        Transform t = instance.target;
+        instance.smoothedTargetY = t.position.y;
+        instance.targetYVelocity = 0f;
+        instance.followVelocity = Vector3.zero;
+
+        // LateUpdate의 목표 위치·시선 계산과 같은 식이다(offset을 cameraYawOffset만큼 월드 up
+        // 기준으로 돌린 지점에서 몸통을 본다). 여기서 식이 갈라지면 스냅 직후 한 프레임 튄다.
+        instance.transform.position =
+            t.position + Quaternion.AngleAxis(instance.cameraYawOffset, Vector3.up) * instance.offset;
+        Vector3 dir = t.position + Vector3.up * instance.lookHeightOffset - instance.transform.position;
+        if (dir.sqrMagnitude > 0.0001f)
+            instance.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
+    }
+
     /// <summary>PlayerControlSwitcher가 활성 플레이어를 바꿀 때 호출한다. 씬에 카메라가 없으면 무시된다.</summary>
     public static void SetActiveTarget(Transform newTarget)
     {
