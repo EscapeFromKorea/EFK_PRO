@@ -5,17 +5,25 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// 리스폰(공용 안전망) 컨트롤러 — 씬에 하나. 낙사·소프트락을 "실패 처리"가 아니라 흐름을 끊지 않는
-/// 복귀로 되돌린다. 두 가지 발동을 처리한다:
+/// 복귀로 되돌린다. <b>연출은 두 가지, 발동은 셋이다 — 발동 사유가 연출을 고른다.</b>
 ///
-/// - <b>자동(낙하 리스폰)</b>: 킬 라인(killY) 아래에 outOfBoundsSeconds 이상 머무르면, 체크포인트
-///   구역 상단으로 순간이동시킨 뒤 중력으로 자연 낙하시킨다. 암전도 페이드도 없어 화면상으로는
-///   "하늘에서 다시 떨어져 내려온 것"으로 보인다. 장외 판정을 트리거 볼륨이 아니라 <b>높이 한 줄</b>로
-///   두는 이유: 볼륨은 맵이 넓어질 때마다 늘려야 하고 빠뜨린 빈틈에 떨어진 플레이어는 영영
-///   리스폰되지 않는다(구멍 난 안전망은 없는 것보다 나쁘다). 대신 맵 <b>옆으로</b> 튕겨나가 같은
-///   높이에 뜬 경우는 못 잡는다 — 그건 R이 담당한다.
-/// - <b>수동(페이드 리스폰)</b>: R 한 번으로 조작 중인 도형이 그 자리에서 흐려져 사라지고
-///   체크포인트 바닥 위에서 나타난다. 대기 시간이 없는 이유는 수동 입력 자체가 확정 의사표시라서다.
-///   지형에 끼거나 되돌릴 수 없는 협동 배치를 만들었을 때의 소프트락 방지 장치이기도 하다.
+/// - <b>킬 라인 → 낙하 리스폰</b>: killY 아래에 outOfBoundsSeconds 이상 머무르면, 체크포인트 구역
+///   상단(+dropExtraHeight)으로 순간이동시킨 뒤 중력으로 자연 낙하시킨다. 암전도 페이드도 없어
+///   화면상으로는 "하늘에서 다시 떨어져 내려온 것"으로 보인다 — <b>떨어져서 죽었으니 떨어져서
+///   돌아온다.</b> 장외의 기본 판정을 트리거 볼륨이 아니라 <b>높이 한 줄</b>로 두는 이유: 볼륨은
+///   맵이 넓어질 때마다 늘려야 하고 빠뜨린 빈틈에 떨어진 플레이어는 영영 리스폰되지 않는다(구멍 난
+///   안전망은 없는 것보다 나쁘다).
+/// - <b>장외 볼륨(OutOfBoundsVolume) → 페이드 리스폰</b>: 볼륨은 낙하와 무관한 상황을 덮는다(맵
+///   옆으로 튕겨나가 같은 높이에 뜸, 지형 틈에 낀 채 안 떨어짐). 그런 자리에서 "하늘에서 다시
+///   떨어지는" 연출은 사유와 어긋나므로, 그 자리에서 흐려져 사라지고 체크포인트 바닥에 나타난다.
+/// - <b>수동 R / 외부 호출(낙석 피격 등) → 페이드 리스폰</b>: 조작 중인 도형이 그 자리에서 흐려져
+///   사라지고 체크포인트 바닥 위에서 나타난다. R에 대기 시간이 없는 이유는 수동 입력 자체가 확정
+///   의사표시라서다. 지형에 끼거나 되돌릴 수 없는 협동 배치를 만들었을 때의 소프트락 방지 장치이기도 하다.
+///
+/// [순간이동하면 카메라도 같은 프레임에 스냅한다]
+/// PlayerFollowCamera는 SmoothDamp로 따라오므로, 그냥 옮기면 카메라가 옛 위치에서 복귀 지점까지
+/// 화면을 가로질러 날아간다 — 플레이어가 보는 것이 "돌아간 결과"가 아니라 "이동하는 과정"이 된다.
+/// PlayerFollowCamera.SnapToTarget()으로 보간 상태까지 지운다(PlayerSystem에 순수 추가, 허가받음).
 ///
 /// 카운터와 체크포인트를 이 컴포넌트가 소유한다. 씬에 하나뿐이므로 "세 도형 공유"가 구조적으로
 /// 보장되고(도형별 카운터를 합산하는 구조를 만들지 않는다), 이 게임의 실패는 개인이 아니라 팀
@@ -48,9 +56,25 @@ public class RespawnController : MonoBehaviour
     [Tooltip("씬 뷰에 그릴 킬 라인 평면의 한 변 길이(Unit). 표시 전용 — 판정은 무한 평면이다.")]
     public float killLineGizmoSize = 100f;
 
-    [Header("낙하 리스폰 (자동)")]
+    [Header("낙하 리스폰 (자동 — 킬 라인)")]
+    [Tooltip("낙하 시작 지점을 체크포인트 구역 상단보다 이만큼 더 위로 올린다(Unit). 구역 높이만으로는 " +
+             "낙하가 짧아 '툭 떨어뜨린' 느낌이 나기 때문인데, 구역을 늘리는 대신 이 값으로 올린다 — " +
+             "구역 크기는 체크포인트 판정 범위이기도 해서 연출 길이 때문에 키우면 엉뚱한 곳에서 저장된다. " +
+             "★ 이 높이에 천장 지형이 있으면 그 안에서 스폰한다(기즈모의 하늘색 구가 실제 시작점이다).")]
+    public float dropExtraHeight = 10f;
+
+    [Tooltip("장외로 떨어지던 낙하 속도를 복귀 지점에서도 이어서 유지한다(U/s 상한). 0이면 정지 상태에서 " +
+             "새로 낙하한다. 순간이동으로 속도가 0이 되면 '떨어지던 흐름이 끊기고 다시 떨어뜨려진' 것으로 " +
+             "보이는데, 이어 주면 화면이 끊기지 않는다. 수평 속도는 이어받지 않는다 — 그러면 복귀 지점 밖으로 " +
+             "날아가 그대로 다시 장외가 되는 리스폰 루프가 된다(속도를 0으로 지우던 원래 이유). " +
+             "★ 상한이 필요한 이유: 킬 라인 아래에서 3초를 세는 동안 무저항 낙하가 30 U/s를 넘어서, " +
+             "그대로 이어받으면 물리 스텝당 0.6 U 이상 이동해 얇은 바닥을 뚫고 지나간다(Discrete 충돌 판정). " +
+             "기본 15는 자유낙하 체감(약 10 U/s)보다 빠르면서 스텝당 0.3 U라 안전한 값이다.")]
+    public float maxCarriedFallSpeed = 15f;
+
     [Tooltip("착지를 못 잡았을 때(체크포인트 바닥이 사라진 경우 등) 조작을 강제로 되돌려 주는 시간(초). " +
-             "이 안전망이 없으면 조작 불능으로 영구히 남는다.")]
+             "이 안전망이 없으면 조작 불능으로 영구히 남는다. 위 dropExtraHeight를 크게 올렸으면 " +
+             "낙하 시간도 같이 늘어나므로 이 값이 그보다 넉넉한지 확인해라.")]
     public float landingTimeoutSeconds = 5f;
 
     [Header("페이드 리스폰 (수동 R)")]
@@ -74,6 +98,10 @@ public class RespawnController : MonoBehaviour
     // 체크포인트는 도형별이 아니라 마지막에 갱신된 하나만 공유한다. 좌표로 들고 있어서 구역이
     // 파괴/비활성화돼도 복귀 지점이 살아 있다.
     private RespawnZone currentZone;
+
+    // 이미 한 번 잡은 구역. 뒤로 되돌아가 다시 밟아도 재활성화되지 않게 한다(StoreCheckpoint 참고).
+    private readonly HashSet<RespawnZone> claimed = new HashSet<RespawnZone>();
+
     private bool hasCheckpoint;
     private Vector3 dropPoint;
     private Vector3 groundPoint;
@@ -135,9 +163,17 @@ public class RespawnController : MonoBehaviour
 
     private void StoreCheckpoint(RespawnZone zone)
     {
-        // 같은 구역의 재진입(콜라이더 둘, 경계에서의 반복 Enter)은 무시한다 — 바닥 레이를 다시
-        // 쏘지 않기 위한 게이트이기도 하다.
-        if (currentZone == zone) return;
+        // **한 번 잡은 구역은 다시 활성화되지 않는다.** 뒤로 걸어가 이전 체크포인트를 다시 밟으면
+        // 복귀 지점이 뒤로 밀려 진행이 되감기고, 어려운 구간을 통과한 직후에 죽으면 그 구간을 다시
+        // 하게 된다("체크포인트는 구간 진입부에 둔다"는 배치 원칙이 무너지는 것과 같은 결과다).
+        // 진행은 앞으로만 간다 — 흰 깃발은 "지나온 경로"라는 뜻 그대로 남는다.
+        //
+        // 이 한 줄이 같은 구역 재진입 중복도 같이 막는다(플레이어 콜라이더가 둘이라 진입마다 두 번,
+        // 경계에서 반복 Enter). 바닥 레이도 구역당 정확히 한 번만 쏘게 된다.
+        //
+        // 파괴된 구역이 목록에 남지만 정리하지 않는다 — 파괴 후 재생성된 구역은 다른 인스턴스라
+        // 새로 잡히고, 씬에 미리 배치되는 오브젝트라 목록이 자라지 않는다.
+        if (!claimed.Add(zone)) return;
 
         // 초록 깃발은 씬에서 정확히 하나 — 직전 체크포인트는 "지나온 경로"인 흰 깃발로 내린다.
         // 잡은 곳을 전부 초록으로 두면 실제 저장된 체크포인트는 하나뿐인데 여러 개가 켜져 있어
@@ -150,7 +186,7 @@ public class RespawnController : MonoBehaviour
         groundPoint = zone.FindGroundPoint();
         hasCheckpoint = true;
         warnedNoCheckpoint = false;
-        Debug.Log($"[Respawn] 체크포인트 갱신: '{zone.name}' (낙하 {dropPoint}, 페이드 바닥 {groundPoint})");
+        Debug.Log($"[Respawn] 체크포인트 갱신: '{zone.name}' (낙하 {DropPosition}, 페이드 바닥 {groundPoint})");
     }
 
     /// <summary>외부 기믹이 리스폰을 강제 발동하는 진입점(낙석 피격 등). 인자는 맞은 플레이어의 Root.
@@ -224,11 +260,19 @@ public class RespawnController : MonoBehaviour
     /// <summary>장외 = 킬 라인 아래 <b>또는</b> 장외 볼륨(OutOfBoundsVolume) 안. 둘은 대체 관계가
     /// 아니라 합집합이다 — 킬 라인이 맵 아래를 무조건 덮어 "빈틈에 떨어져 영영 안 돌아오는" 사고를
     /// 막고, 볼륨은 킬 라인이 못 잡는 곳(맵 옆으로 튕겨나가 같은 높이에 뜬 경우 등)을 골라 덮는다.
-    /// 볼륨이 하나도 없으면 AnyContains는 즉시 false라 비용이 0이다.</summary>
-    private bool IsOutOfBounds(PlayerMover mover)
+    /// 볼륨이 하나도 없으면 AnyContains는 즉시 false라 비용이 0이다.
+    ///
+    /// byVolume으로 <b>어느 쪽이 잡았는지</b>를 돌려주는 이유: 연출이 갈린다. 킬 라인은 "떨어져서
+    /// 사라졌다"라 하늘에서 다시 떨어지는 게 맞지만, 볼륨은 옆으로 튕겨나감·지형 틈에 낌처럼 낙하와
+    /// 무관한 상황을 덮으므로 그 자리에서 사라져 체크포인트에 나타나는 편이 읽힌다. 킬 라인이 먼저
+    /// 걸리면 그쪽이 이긴다(볼륨을 라인 아래까지 늘려 놓은 경우 낙하로 취급).</summary>
+    private bool IsOutOfBounds(PlayerMover mover, out bool byVolume)
     {
         Vector3 p = mover.transform.position;
-        return p.y < killY || OutOfBoundsVolume.AnyContains(p);
+        byVolume = false;
+        if (p.y < killY) return true;
+        byVolume = OutOfBoundsVolume.AnyContains(p);
+        return byVolume;
     }
 
     private void CheckOutOfBounds()
@@ -237,7 +281,7 @@ public class RespawnController : MonoBehaviour
         {
             if (mover == null) continue;
 
-            if (!IsOutOfBounds(mover))
+            if (!IsOutOfBounds(mover, out bool byVolume))
             {
                 belowSince.Remove(mover);
                 continue;
@@ -257,23 +301,32 @@ public class RespawnController : MonoBehaviour
             if (IsHeld(mover)) continue;
 
             // 실패(체크포인트 없음)하면 타이머를 살려둬, 체크포인트가 생기는 즉시 복귀시킨다.
-            if (TryRespawn(mover, useFade: false, reason: "장외"))
+            if (TryRespawn(mover, useFade: byVolume, reason: byVolume ? "장외 볼륨" : "킬 라인",
+                           automatic: true))
                 belowSince.Remove(mover);
         }
     }
 
-    private bool TryRespawn(PlayerMover mover, bool useFade, string reason)
+    /// <summary>automatic = 킬 라인·장외 볼륨처럼 <b>매 프레임 스스로 재시도하는</b> 발동. 이 경우에만
+    /// "체크포인트 없음" 경고를 세션당 1회로 줄인다(안 줄이면 콘솔이 초당 수십 줄로 도배된다).
+    ///
+    /// 수동 R·외부 호출(낙석 피격)은 사용자가 요청한 <b>1회성 이벤트</b>라 거절을 매번 알려야 한다.
+    /// 예전엔 일회성 게이트가 이쪽까지 삼켜, 낙석에 맞아도 리스폰이 안 되는데 콘솔이 완전히 무음이었다
+    /// (2026-07-31 실제 사고 — 원인 추적을 로그가 아니라 스택 트레이스에 의존해야 했다). 아래 IsHeld
+    /// 거절이 이미 매번 찍히는 것과도 일관되지 않았다.</summary>
+    private bool TryRespawn(PlayerMover mover, bool useFade, string reason, bool automatic = false)
     {
         if (mover == null) return false;
         if (busy.Contains(mover)) return false; // 연출 중 재입력 무시
 
         if (!hasCheckpoint)
         {
-            if (!warnedNoCheckpoint)
+            if (!automatic || !warnedNoCheckpoint)
             {
-                warnedNoCheckpoint = true;
-                Debug.LogWarning("[Respawn] 아직 지나온 체크포인트(RespawnZone)가 없어 되돌릴 곳이 없다. " +
-                                 "시작 지점에 구역을 하나 놓아라 — 체크포인트가 생기면 즉시 복귀한다.", this);
+                if (automatic) warnedNoCheckpoint = true;
+                Debug.LogWarning($"[Respawn] 아직 지나온 체크포인트(RespawnZone)가 없어 되돌릴 곳이 없다 " +
+                                 $"({reason} 거절). 플레이어가 낙석 구간에 닿기 전에 통과하는 자리에 " +
+                                 "RespawnZone을 놓아라 — 체크포인트가 생기면 즉시 복귀한다.", this);
             }
             return false;
         }
@@ -333,7 +386,12 @@ public class RespawnController : MonoBehaviour
             yield break;
         }
 
-        yield return TeleportRoutine(mover, rb, useFade ? FadeSpawnPosition(mover) : dropPoint);
+        // 낙하 리스폰은 떨어지던 속도를 이어받는다 — 순간이동 후 0에서 다시 가속하면 "떨어지던 흐름이
+        // 끊기고 다시 떨어뜨려진" 것으로 보인다. 페이드는 그 자리에서 사라지는 연출이라 이어받지 않는다
+        // (반투명한 채 아래로 쏘아지면 연출이 깨진다).
+        float carriedFall = useFade ? 0f : Mathf.Min(Mathf.Max(0f, -rb.velocity.y), maxCarriedFallSpeed);
+
+        yield return TeleportRoutine(mover, rb, useFade ? FadeSpawnPosition(mover) : DropPosition, carriedFall);
 
         if (mover == null || rb == null)
         {
@@ -372,7 +430,11 @@ public class RespawnController : MonoBehaviour
         busy.Remove(mover);
     }
 
-    private IEnumerator TeleportRoutine(PlayerMover mover, Rigidbody rb, Vector3 position)
+    /// <summary>복귀 지점으로 순간이동시킨다. carriedFallSpeed(U/s, 0 이상)를 주면 그 속도로 <b>아래로</b>
+    /// 떨어지던 상태를 이어받는다 — 수평 성분은 언제나 버린다(복귀 지점 밖으로 날아가 다시 장외가 되는
+    /// 리스폰 루프를 막는다).</summary>
+    private IEnumerator TeleportRoutine(PlayerMover mover, Rigidbody rb, Vector3 position,
+                                        float carriedFallSpeed = 0f)
     {
         // 세 도형 모두 Interpolate라, 보간된 바디를 순간이동시키면 한 프레임 동안 이전 위치에서 새
         // 위치로 길게 늘어나 보인다. "암전 없이 자연스럽게"가 이 시스템의 전부인데 정확히 그 한
@@ -396,9 +458,25 @@ public class RespawnController : MonoBehaviour
         PlayerGravityOverride gravity = mover.GetComponent<PlayerGravityOverride>();
         if (gravity != null) gravity.RestoreDefault(0f);
 
+        // 낙하 속도 이어받기는 위 CancelBoost/RestoreDefault **뒤에** 대입한다 — 부스트가 살아 있으면
+        // 다음 FixedUpdate에 velocity가 통째로 덮어써져 여기서 넣은 값이 사라진다.
+        if (carriedFallSpeed > 0f) rb.velocity = Vector3.down * carriedFallSpeed;
+
+        // 카메라를 같은 프레임에 새 위치로 스냅한다. 안 하면 SmoothDamp가 옛 위치에서 복귀 지점까지
+        // 화면을 가로질러 날아가, "어디로 돌아갔는지"가 아니라 "이동하는 과정"이 보인다 — 특히 낙하
+        // 리스폰은 시작점이 dropExtraHeight만큼 더 높아 그 거리가 길다. 페이드 리스폰에서도 맞는
+        // 동작이다(알파 0인 동안 옮기므로 스냅이 아예 안 보인다).
+        // onlyForTarget으로 대상을 넘겨, 조작 중이 아닌 플레이어가 리스폰할 때 화면이 튀지 않게 한다.
+        PlayerFollowCamera.SnapToTarget(mover.transform);
+
         yield return new WaitForFixedUpdate();
         if (rb != null) rb.interpolation = prevInterpolation;
     }
+
+    /// <summary>낙하 리스폰 시작 지점 — 체크포인트 구역 상단 + dropExtraHeight. 저장 시점에 더해
+    /// 두지 않고 쓸 때 더하는 이유: 플레이 중 인스펙터로 값을 바꿔도 즉시 반영된다(체크포인트를
+    /// 다시 밟게 만들지 않는다). 기즈모도 같은 값을 쓴다.</summary>
+    private Vector3 DropPosition => dropPoint + Vector3.up * dropExtraHeight;
 
     /// <summary>페이드 스폰 좌표 — 체크포인트 바닥 위로 "콜라이더 밑면이 groundClearance만큼 뜨는" 높이.
     /// 요구사항의 "바닥 + 5cm"는 스케일 1 전제라, ScalingSystem으로 커진 도형은 5cm가 몸 절반보다
@@ -579,8 +657,8 @@ public class RespawnController : MonoBehaviour
 
         if (!hasCheckpoint) return;
         Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(dropPoint, 0.4f);
-        Gizmos.DrawLine(dropPoint, groundPoint);
+        Gizmos.DrawWireSphere(DropPosition, 0.4f);
+        Gizmos.DrawLine(DropPosition, groundPoint);
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(groundPoint, 0.3f);
     }
