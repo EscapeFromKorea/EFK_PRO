@@ -3,8 +3,8 @@ using UnityEngine;
 /// <summary>
 /// 낙석 하나(무너져 내리는 꿈의 파편). FallingRockSpawner가 생성하고 이 컴포넌트를 붙인다.
 /// 하는 일은 세 가지뿐이다 — (1) 스폰 위치에서 일정 거리 내려가면 스스로 소멸, (2) 플레이어에
-/// 부딪히면 스포너에 피격을 보고, (3) 바닥·벽 같은 솔리드에 부딪히면 파편으로 부서지며 소멸.
-/// 낙하 자체는 코드가 관여하지 않는다.
+/// 부딪히면 스포너에 피격을 보고, (3) <b>무엇에든</b> 부딪히면(바닥·벽·플레이어) 파편으로 부서지며
+/// 소멸. 낙하 자체는 코드가 관여하지 않는다.
 ///
 /// ★ 낙하는 "평범한 dynamic Rigidbody + 중력"이다. 절대 velocity를 매 프레임 대입하지 마라. ★
 /// 이 기믹의 존재 이유는 몽환의 모래시계(HourglassSystem/SlowZone)가 낙석을 느리게 만들어
@@ -155,20 +155,30 @@ public class FallingRock : MonoBehaviour
             return;
         }
 
-        if (owner == null) return;
-
         Rigidbody playerRb = collision.collider.attachedRigidbody;
-        if (playerRb == null) return;
-
-        if (!owner.RegisterHit(playerRb, shape)) return;
-
-        if (extraKnockbackImpulse > 0f)
+        if (owner != null && playerRb != null && owner.RegisterHit(playerRb, shape) &&
+            extraKnockbackImpulse > 0f)
         {
             Vector3 away = playerRb.worldCenterOfMass - transform.position;
             away.y = 0f;
             if (away.sqrMagnitude < 0.0001f) away = transform.forward;
             playerRb.AddForce(away.normalized * extraKnockbackImpulse, ForceMode.Impulse);
         }
+
+        // 플레이어 피격도 부서짐으로 끝낸다(2026-07-31). 그 전에는 맞고도 멀쩡히 지나가, (1) "맞았다"는
+        // 신호가 물리적 밀림 하나뿐이라 약하고 (2) 낙석이 플레이어 위에 얹힌 채 통로에 남아 아래
+        // "쌓이지 않는다"가 플레이어 몸 위에서만 깨졌다. 밀려나는 느낌은 그대로 남는다 —
+        // OnCollisionEnter은 PhysX가 그 스텝의 충돌 impulse를 이미 적용한 뒤에 오므로 밀린 다음 부서진다.
+        //
+        // 집계 성공 여부(RegisterHit)와 무관하게 부서진다: 무적 시간처럼 눈에 안 보이는 상태에 따라
+        // 부서지고 안 부서지고가 갈리면 플레이어에게는 그냥 버그로 보인다. 어차피 부서지며 소멸하므로
+        // 같은 낙석이 두 번 때리는 경로도 사라진다(스포너 쪽 중복 제거는 콜라이더가 여러 개인
+        // 도형용으로 남는다).
+        //
+        // 파편이 감속 구역 안에서 소멸하면 위 [하드 제약]의 죽은 참조가 생긴다 — 통과 통로는 설계상
+        // 구역 밑이라 괜찮지만, 구역 <b>안</b>에서 맞으면 파편 수만큼 남는다. 실제로 문제가 되면
+        // shardCount를 0으로 두는 것이 아니라 통로 배치를 본다.
+        Shatter(collision.relativeVelocity.magnitude);
     }
 
     /// <summary>파편을 흩뿌리고 자신은 소멸한다. impactSpeed(충돌 상대속도)가 클수록 세게 튄다.</summary>

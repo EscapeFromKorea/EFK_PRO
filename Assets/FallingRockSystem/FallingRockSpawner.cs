@@ -125,17 +125,17 @@ public class FallingRockSpawner : MonoBehaviour
              "끊겼다 붙으며 Enter가 연속으로 오거나, 두 낙석이 동시에 닿아도 1회로 센다.")]
     public float hitCooldown = 0.5f;
 
-    [Tooltip("누적 피격이 이 횟수를 넘으면 OnHitThresholdExceeded를 발화한다. 0 = 비활성(기본). " +
-             "리스폰 동작은 의도적으로 구현하지 않았다 — 리스폰 시스템이 머지되면 아래 이벤트에 " +
-             "배선만 하면 된다(Q2 기획 확정).")]
+    [Tooltip("이 횟수만큼 맞으면 OnHitThresholdExceeded를 발화한다(3 = 3번째 피격에 발화). " +
+             "0 = 비활성(기본). 리스폰 동작은 의도적으로 구현하지 않았다 — 리스폰 시스템을 아래 " +
+             "이벤트에 배선하면 된다(Q2 기획 확정).")]
     public int hitsBeforeRespawn = 0;
 
     [Tooltip("낙석에 맞은 플레이어에게 물리 충돌과 별개로 더 줄 넉백 임펄스. 기본 0 = 사용 안 함 " +
              "(질량 있는 낙석이 부딪히면 물리가 이미 밀어낸다). 체감이 부족할 때만 올려라.")]
     public float extraKnockbackImpulse = 0f;
 
-    [Tooltip("누적 피격이 hitsBeforeRespawn을 넘은 순간 발화(인자 = 맞은 플레이어 Root). " +
-             "지금은 비어 있는 게 정상 — 나중에 리스폰 시스템을 여기에 연결한다.")]
+    [Tooltip("누적 피격이 hitsBeforeRespawn회에 도달한 순간 발화(인자 = 맞은 플레이어 Root). " +
+             "비어 있으면 맞아도 아무 일이 없다 — Tools > Respawn > Wire Falling Rock Hits로 꽂는다.")]
     public PlayerHitEvent OnHitThresholdExceeded;
 
     [Header("부서짐 연출")]
@@ -276,7 +276,11 @@ public class FallingRockSpawner : MonoBehaviour
         Debug.Log($"[FallingRockSpawner] '{playerRb.name}'({shape.Kind}) 낙석 피격 {record.count}회. " +
                   "밀려남은 물리 충돌로 처리된다.");
 
-        if (hitsBeforeRespawn > 0 && record.count > hitsBeforeRespawn)
+        // 비교가 >= 인 이유(2026-07-31 수정, 유저 허가): 전에는 >라서 임계 3이 **4번째** 피격에
+        // 발화했다. 필드 이름이 "리스폰까지 맞는 횟수"인데 동작이 "그 횟수를 초과하면"이라 항상 한 번
+        // 어긋나고, 실제로 "3번 맞았는데 리스폰이 안 된다"는 오해를 만들었다. 이름·툴팁·문서 쪽이
+        // 아니라 비교를 고쳐 맞췄다 — 기획 문서의 "낙석 3번 맞고 복귀"가 값 3에 그대로 대응한다.
+        if (hitsBeforeRespawn > 0 && record.count >= hitsBeforeRespawn)
         {
             // 발화 후 카운트를 0으로 되돌린다 - 나중에 리스폰이 연결되면 "리스폰 이후 다시 N번"이
             // 자연히 성립한다(되돌리지 않으면 첫 임계 이후 영원히 매 피격마다 발화한다).
@@ -284,8 +288,8 @@ public class FallingRockSpawner : MonoBehaviour
             // 여기서 리스폰을 구현하지 않는다(Q2 기획 확정). 이벤트만 쏘고 끝 - 리스폰 시스템이
             // 머지되면 인스펙터에서 이 이벤트에 배선한다.
             OnHitThresholdExceeded?.Invoke(playerRb.gameObject);
-            Debug.Log($"[FallingRockSpawner] '{playerRb.name}' 누적 피격이 임계 {hitsBeforeRespawn}회를 " +
-                      "넘어 OnHitThresholdExceeded 발화(리스폰 동작은 미구현 - 의도됨).");
+            Debug.Log($"[FallingRockSpawner] '{playerRb.name}' 누적 피격 {hitsBeforeRespawn}회 도달 - " +
+                      "OnHitThresholdExceeded 발화. 이벤트가 비어 있으면 여기서 끝난다(배선 확인).");
         }
 
         return true;
