@@ -36,6 +36,22 @@ public class PlayerAccelReceiver : MonoBehaviour
         mover = GetComponent<PlayerMover>();
     }
 
+    /// <summary>남은 부스트를 즉시 버린다. 리스폰처럼 외부가 이 바디를 순간이동시킬 때 부른다.
+    ///
+    /// 부스트 중에는 FixedUpdate가 매 스텝 velocity를 통째로 대입하므로(이 컴포넌트의 존재 이유),
+    /// 순간이동 직후 속도를 0으로 초기화해도 다음 물리 스텝에 부스트 속도가 그대로 되살아나
+    /// 복귀 지점 밖으로 다시 발사된다. 가속 발판을 밟고 장외로 날아간 플레이어를 되돌리는 경우가
+    /// 정확히 이 상황이다.
+    ///
+    /// enabled 토글로는 해결되지 않는다 — state와 holdTimer가 남아 다시 켜는 순간 남은 부스트가
+    /// 이어진다. 그래서 상태를 버리는 전용 진입점을 둔다. velocity는 건드리지 않는다(호출한
+    /// 쪽이 원하는 속도를 정한다 — 여기서 0으로 만들면 부스트 중 일시정지 같은 다른 용도를 막는다).</summary>
+    public void CancelBoost()
+    {
+        state = State.None;
+        boostVelocity = Vector3.zero;
+    }
+
     /// <summary>AccelPad가 호출하는 진입점.</summary>
     public void ApplyBoost(Vector3 velocity, float hold, float decel)
     {
