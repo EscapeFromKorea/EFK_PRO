@@ -6581,11 +6581,23 @@ MonoBehaviour:
   despawnFallDistance: 8
   referenceSlowZone: {fileID: 428611023}
   hitCooldown: 0.5
-  hitsBeforeRespawn: 0
+  hitsBeforeRespawn: 3
   extraKnockbackImpulse: 0
   OnHitThresholdExceeded:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 866554134}
+        m_TargetAssemblyTypeName: RespawnController, Assembly-CSharp
+        m_MethodName: RespawnPlayer
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: 
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
   shardCount: 6
   shardScatterSpeed: 3
   shardLifetime: 1.2
