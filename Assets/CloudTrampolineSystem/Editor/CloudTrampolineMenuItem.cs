@@ -190,12 +190,16 @@ public static class CloudTrampolineMenuItem
         return AssetDatabase.LoadAssetAtPath<Material>(path);
     }
 
-    /// <summary>머티리얼을 알파 블렌딩(Transparent surface)으로 설정하되 ZWrite는 켜둔다(_ZWrite=1).
-    /// 파이프라인마다 프로퍼티/키워드가 달라 셰이더 이름으로 분기한다. Transparent가 아니면 붕괴 시 알파를
-    /// 낮춰도 반투명으로 그려지지 않는다. ZWrite를 켜는 이유(RainbowBridge와의 차이): 구름은 겹친 puff
-    /// 구들이라 깊이를 안 쓰면(ZWrite off) 앞뒤 정렬이 오브젝트 단위로만 이뤄져 카메라 이동 시 내부 면이
-    /// 깜빡인다. 깊이를 쓰면 알파=1(평상시)엔 완전 불투명하게 픽셀 단위로 가려지고 페이드 중에도 정렬이
-    /// 결정적이라 깜빡임이 없다.</summary>
+    /// <summary>머티리얼을 알파 블렌딩(Fade)으로 설정한다. 파이프라인마다 프로퍼티/키워드가 달라 셰이더
+    /// 이름으로 분기한다. 이 설정이 없으면 붕괴 시 알파를 낮춰도 반투명으로 그려지지 않는다.
+    ///
+    /// [ZWrite=1을 포기했다 — 2026-07-31, 유저 결정]
+    /// 원래는 겹친 puff 구의 정렬 팝(깊이를 안 쓰면 앞뒤 정렬이 오브젝트 단위로만 이뤄져 카메라 이동 시
+    /// 내부 면이 깜빡임)을 막으려고 Built-in에서도 ZWrite를 켰다. 그런데 Built-in Standard는 반투명
+    /// _Mode의 정규값이 ZWrite 0이라 **프로젝트를 열 때마다 0으로 되돌아간다** — 이 수정은 실제로는
+    /// 내내 꺼진 채 돌았고, 그 대신 `Cloud_Mat.mat`이 무한히 드리프트해 커밋 직전마다 손으로 되돌려야
+    /// 했다. 있지도 않은 효과의 대가로 반복 작업만 낸 셈이라 정리했다. 팝이 실제로 관찰되면 ZWrite가
+    /// 아니라 전용 셰이더나 렌더러 인스턴스 설정으로 해결한다.</summary>
     private static void ConfigureTransparent(Material mat)
     {
         string n = mat.shader != null ? mat.shader.name : "";
@@ -221,10 +225,19 @@ public static class CloudTrampolineMenuItem
         }
         else // Built-in Standard
         {
-            mat.SetFloat("_Mode", 3f);
+            // 2 = Fade. Unity가 프로젝트를 열 때 아래 블렌드 값들을 _Mode대로 다시 유도하므로,
+            // _Mode와 어긋나는 조합을 쓰면 에셋이 조용히 덮어써진다(3 = Transparent는
+            // _ALPHAPREMULTIPLY_ON + SrcBlend One). 근거는 RainbowBridgeMenuItem의 같은 지점 주석.
+            mat.SetFloat("_Mode", 2f);      // Fade
             mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
             mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-            mat.SetInt("_ZWrite", 1); // 겹친 puff 깊이 정렬 → 카메라 이동 시 내부 면 팝 방지
+            // ★ Built-in Standard에서는 ZWrite를 1로 유지할 수 없다(2026-07-31 확인, 유저 결정).
+            // 반투명 _Mode(2 Fade / 3 Transparent) 둘 다 정규값이 ZWrite 0이라, 1로 써 놔도 프로젝트를
+            // 열 때마다 0으로 되돌아간다 — 즉 "겹친 puff 정렬 팝 방지"는 여기 적혀 있던 내내 실제로는
+            // 꺼진 채 돌았고, 그 대신 `.mat`이 무한히 드리프트해 매번 손으로 되돌려야 했다.
+            // 팝이 실제로 보이면 ZWrite로 돌아오지 말고 전용 셰이더나 렌더러 인스턴스 설정으로 가라.
+            // (아래 URP/HDRP 분기는 ZWrite가 독립 프로퍼티라 1이 유지된다 — 이 프로젝트는 Built-in이다.)
+            mat.SetInt("_ZWrite", 0);
             mat.DisableKeyword("_ALPHATEST_ON");
             mat.EnableKeyword("_ALPHABLEND_ON");
             mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
