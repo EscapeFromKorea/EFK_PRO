@@ -146,9 +146,27 @@ public class DreamThreadController : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F))
         {
             if (state == ThreadState.Hanging)
-                Release(intoLaunch: true);
+            {
+                // 매달린 당사자가 조작 대상일 때만 F로 놓는다. 이 게이트가 없으면 A가 매달린 채
+                // 파킹돼 있고 B를 조작 중일 때 **B가 누른 F로 A의 실이 끊긴다** — 이 컴포넌트는 씬
+                // 싱글턴이라 입력이 누구 것인지 스스로 구분하지 못하기 때문이다. 같은 함수의
+                // HandleWheel과 FixedUpdate의 펌핑·접지이동에는 원래 같은 게이트가 있었고, F만
+                // 빠져 있었다. 설계 의도는 "실을 강제로 끊는 경우는 대상/고리 소멸과 무게 초과
+                // 유예 소진뿐"이다(폴더 CLAUDE.md).
+                //
+                // 여기서 TryConnect로 흘려보내면 안 된다: BeginHang이 activeMover를 B로 덮어써
+                // A는 조인트가 붙고 ExternallyDriven이 true인 채 추적에서 사라진다 = 영구 조작 불능.
+                // 매달림은 동시 1명이므로(단일 state/joint) B는 A가 놓을 때까지 기다린다.
+                if (activeMover == null || activeMover.IsControlled)
+                    Release(intoLaunch: true);
+                else
+                    Debug.Log("[DreamThread] 다른 플레이어가 매달려 있습니다 — Tab으로 그 플레이어를 " +
+                              "조작해 F로 놓으세요(매달림은 동시 1명).");
+            }
             else
+            {
                 TryConnect(); // Idle 또는 Launching 중 재연결 시도(실패해도 상태 유지)
+            }
         }
 
         if (state == ThreadState.Hanging)
