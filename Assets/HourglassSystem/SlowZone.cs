@@ -91,6 +91,29 @@ public class SlowZone : MonoBehaviour
         new Dictionary<PlayerGravityOverride, FallRamp>();
     private float deactivateAt;
 
+    // 대상이 구역 안에서 파괴되며 사라지면 OnTriggerExit가 죽은 collider를 null 체크로 걸러
+    // 그냥 반환한다(파괴 경로에서는 프로퍼티 접근 자체가 예외를 던지기 때문). 그러면 이 딕셔너리에
+    // 죽은 키가 하나씩 영구히 남는다 - 낙석 커튼처럼 소멸이 잦은 대상이 구역 안에서 사라지는 배치가
+    // 생기면 누적된다. 50 FixedUpdate(약 1초)마다 죽은 키를 걷어내 원인 배치와 무관하게 누적을 막는다.
+    private int pruneCounter;
+    private readonly List<PlayerGravityOverride> deadKeys = new List<PlayerGravityOverride>();
+
+    private void FixedUpdate()
+    {
+        if (++pruneCounter < 50) return;
+        pruneCounter = 0;
+        if (affected.Count == 0) return;
+
+        deadKeys.Clear();
+        // 파괴된 UnityEngine.Object는 ==null이 true지만 C# 참조/해시는 그대로 살아 있어 Remove가
+        // 정상 동작한다.
+        foreach (var pair in affected)
+            if (pair.Key == null) deadKeys.Add(pair.Key);
+
+        foreach (var dead in deadKeys)
+            affected.Remove(dead);
+    }
+
     private struct FallRamp
     {
         public float startTime;
