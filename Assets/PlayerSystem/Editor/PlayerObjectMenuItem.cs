@@ -62,6 +62,7 @@ public static class PlayerObjectMenuItem
         root.AddComponent<PlayerMover>();
         root.AddComponent<PlayerJump>();
         root.AddComponent<PlayerAccelReceiver>();
+        root.AddComponent<PlayerWindReceiver>();
         // 이속/점프높이/질량/마찰은 PlayerShapeIdentity가 도형 스탯 에셋(PlayerShapeStats)에서 읽어
         // 아래(콜라이더 생성 후) Start 시점에 적용한다 — 값은 코드가 아니라 데이터 에셋에 있다(#2).
         PlayerShapeController shapeController = root.AddComponent<PlayerShapeController>();
