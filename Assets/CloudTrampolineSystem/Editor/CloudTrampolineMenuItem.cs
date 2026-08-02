@@ -55,21 +55,81 @@ public static class CloudTrampolineMenuItem
         (new Vector3(-0.5f, -0.22f, -0.66f), new Vector3(0.5f, 0.5f, 0.5f)),
     };
 
+    // 왕복 변형의 기본 경로 길이(Unit). 씬에서 Point_B를 옮겨 조정한다. DreamThread 앵커 2개(10 Unit)와
+    // 같은 "메뉴가 두 지점을 벌려 놓아 준다" 방식.
+    private const float MovingSpanX = 8f;
+
+    // 왕복 변형의 기본 주기(초). CloudTrampoline.movePeriodSec 기본값과 맞춰 로그에 안내한다.
+    private const float MovingPeriodSec = 4f;
+
     // 리프가 아니라 서브메뉴 아래에 둔다. 같은 이름을 리프 항목이면서 서브메뉴로 동시에 쓸 수 없어서,
     // 나중에 "Tools/CloudTrampoline/무엇" 항목이 하나라도 추가되면 리프였던 이 항목이 경고 없이
-    // 사라진다(ZeroGravityBubble에서 실제로 겪음).
+    // 사라진다(ZeroGravityBubble에서 실제로 겪음 — 실제로 아래 Moving 항목이 추가됐다).
     [MenuItem("Tools/CloudTrampoline/Create Cloud Trampoline")]
     private static void CreateCloudTrampoline()
     {
-        EnsureMaterialFolder();
+        GameObject cloud = BuildCloud(SceneOrigin(), "Create CloudTrampoline");
+        Selection.activeGameObject = cloud;
+        Debug.Log("[CloudTrampoline] 구름 트램펄린 생성 완료. Player 태그 오브젝트로 구름 위에 착지/점프해 " +
+                  "도약을, 무거운 조합(네모+구 등)으로 과부하 붕괴를 테스트하세요.");
+    }
 
-        Vector3 origin = Vector3.zero;
-        if (SceneView.lastActiveSceneView != null)
-            origin = SceneView.lastActiveSceneView.pivot;
+    /// <summary>
+    /// 두 지점을 왕복하는 구름 트램펄린을 생성한다. 계층은 "고정 루트 + 그 아래에서 움직이는 구름":
+    ///   CloudTrampoline_Moving  (고정)
+    ///   ├─ Point_A / Point_B    (빈 마커 — 씬에서 트랜스폼 기즈모로 드래그해 경로 조정)
+    ///   └─ CloudTrampoline      (콜라이더 + puff 시각 + 키네마틱 Rigidbody, A↔B 왕복)
+    /// 마커를 "움직이는 구름"이 아니라 고정 루트의 자식으로 두는 것이 핵심이다 — 구름 아래에 두면 구름이
+    /// 움직일 때 목표 지점도 따라 움직여 되먹임이 걸린다. 지점 조정용 에디터 코드(Handles/CustomEditor)는
+    /// 쓰지 않는다: 빈 GameObject 2개면 기본 트랜스폼 기즈모로 드래그되고, 경로선은 CloudTrampoline의
+    /// OnDrawGizmos가 상시 그린다(DreamThread 앵커 2개 방식과 동일).
+    /// 구름에 키네마틱 Rigidbody를 붙여 MovePosition으로 옮기는 이유는 ThreadBridge와 같다 — transform
+    /// 직접 대입은 PhysX가 스윕하지 않아 위에 선 도형과 파고들었다 튕긴다.
+    /// </summary>
+    [MenuItem("Tools/CloudTrampoline/Create Cloud Trampoline (Moving)")]
+    private static void CreateMovingCloudTrampoline()
+    {
+        Vector3 origin = SceneOrigin();
+
+        GameObject root = new GameObject("CloudTrampoline_Moving");
+        root.transform.position = origin;
+        Undo.RegisterCreatedObjectUndo(root, "Create CloudTrampoline (Moving)");
+
+        GameObject a = new GameObject("Point_A");
+        a.transform.SetParent(root.transform, false);
+
+        GameObject b = new GameObject("Point_B");
+        b.transform.SetParent(root.transform, false);
+        b.transform.localPosition = new Vector3(MovingSpanX, 0f, 0f);
+
+        GameObject cloud = BuildCloud(origin, "Create CloudTrampoline (Moving)");
+        cloud.transform.SetParent(root.transform, true);
+
+        Rigidbody rb = cloud.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+        CloudTrampoline trampoline = cloud.GetComponent<CloudTrampoline>();
+        trampoline.pointA = a.transform;
+        trampoline.pointB = b.transform;
+        trampoline.movePeriodSec = MovingPeriodSec;
+
+        Selection.activeGameObject = root;
+        Debug.Log($"[CloudTrampoline] 왕복 구름 트램펄린 생성 완료. Point_A / Point_B를 씬에서 옮겨 경로를 " +
+                  $"조정하고, 구름의 Move Period Sec(기본 {MovingPeriodSec}초 = A→B→A 한 바퀴)으로 이동 " +
+                  "속도를 조절하세요.");
+    }
+
+    /// <summary>구름 판 하나(솔리드 콜라이더 + CloudTrampoline + 뭉게구름 시각)를 만들어 반환한다.
+    /// 고정형과 왕복형이 공유한다 — 왕복형은 여기에 키네마틱 Rigidbody와 두 지점만 더 붙인다.</summary>
+    private static GameObject BuildCloud(Vector3 origin, string undoName)
+    {
+        EnsureMaterialFolder();
 
         GameObject cloud = new GameObject("CloudTrampoline", typeof(BoxCollider), typeof(CloudTrampoline));
         cloud.transform.position = origin;
-        Undo.RegisterCreatedObjectUndo(cloud, "Create CloudTrampoline");
+        Undo.RegisterCreatedObjectUndo(cloud, undoName);
 
         // 도약/지지 판 — 솔리드 콜라이더. 윗면이 착지/도약/눌러앉는 면이 된다.
         BoxCollider col = cloud.GetComponent<BoxCollider>();
@@ -92,9 +152,12 @@ public static class CloudTrampolineMenuItem
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        Selection.activeGameObject = cloud;
-        Debug.Log("[CloudTrampoline] 구름 트램펄린 생성 완료. Player 태그 오브젝트로 구름 위에 착지/점프해 " +
-                  "도약을, 무거운 조합(네모+구 등)으로 과부하 붕괴를 테스트하세요.");
+        return cloud;
+    }
+
+    private static Vector3 SceneOrigin()
+    {
+        return SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.pivot : Vector3.zero;
     }
 
     private static void EnsureMaterialFolder()
@@ -127,12 +190,16 @@ public static class CloudTrampolineMenuItem
         return AssetDatabase.LoadAssetAtPath<Material>(path);
     }
 
-    /// <summary>머티리얼을 알파 블렌딩(Transparent surface)으로 설정하되 ZWrite는 켜둔다(_ZWrite=1).
-    /// 파이프라인마다 프로퍼티/키워드가 달라 셰이더 이름으로 분기한다. Transparent가 아니면 붕괴 시 알파를
-    /// 낮춰도 반투명으로 그려지지 않는다. ZWrite를 켜는 이유(RainbowBridge와의 차이): 구름은 겹친 puff
-    /// 구들이라 깊이를 안 쓰면(ZWrite off) 앞뒤 정렬이 오브젝트 단위로만 이뤄져 카메라 이동 시 내부 면이
-    /// 깜빡인다. 깊이를 쓰면 알파=1(평상시)엔 완전 불투명하게 픽셀 단위로 가려지고 페이드 중에도 정렬이
-    /// 결정적이라 깜빡임이 없다.</summary>
+    /// <summary>머티리얼을 알파 블렌딩(Fade)으로 설정한다. 파이프라인마다 프로퍼티/키워드가 달라 셰이더
+    /// 이름으로 분기한다. 이 설정이 없으면 붕괴 시 알파를 낮춰도 반투명으로 그려지지 않는다.
+    ///
+    /// [ZWrite=1을 포기했다 — 2026-07-31, 유저 결정]
+    /// 원래는 겹친 puff 구의 정렬 팝(깊이를 안 쓰면 앞뒤 정렬이 오브젝트 단위로만 이뤄져 카메라 이동 시
+    /// 내부 면이 깜빡임)을 막으려고 Built-in에서도 ZWrite를 켰다. 그런데 Built-in Standard는 반투명
+    /// _Mode의 정규값이 ZWrite 0이라 **프로젝트를 열 때마다 0으로 되돌아간다** — 이 수정은 실제로는
+    /// 내내 꺼진 채 돌았고, 그 대신 `Cloud_Mat.mat`이 무한히 드리프트해 커밋 직전마다 손으로 되돌려야
+    /// 했다. 있지도 않은 효과의 대가로 반복 작업만 낸 셈이라 정리했다. 팝이 실제로 관찰되면 ZWrite가
+    /// 아니라 전용 셰이더나 렌더러 인스턴스 설정으로 해결한다.</summary>
     private static void ConfigureTransparent(Material mat)
     {
         string n = mat.shader != null ? mat.shader.name : "";
@@ -158,10 +225,19 @@ public static class CloudTrampolineMenuItem
         }
         else // Built-in Standard
         {
-            mat.SetFloat("_Mode", 3f);
+            // 2 = Fade. Unity가 프로젝트를 열 때 아래 블렌드 값들을 _Mode대로 다시 유도하므로,
+            // _Mode와 어긋나는 조합을 쓰면 에셋이 조용히 덮어써진다(3 = Transparent는
+            // _ALPHAPREMULTIPLY_ON + SrcBlend One). 근거는 RainbowBridgeMenuItem의 같은 지점 주석.
+            mat.SetFloat("_Mode", 2f);      // Fade
             mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
             mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-            mat.SetInt("_ZWrite", 1); // 겹친 puff 깊이 정렬 → 카메라 이동 시 내부 면 팝 방지
+            // ★ Built-in Standard에서는 ZWrite를 1로 유지할 수 없다(2026-07-31 확인, 유저 결정).
+            // 반투명 _Mode(2 Fade / 3 Transparent) 둘 다 정규값이 ZWrite 0이라, 1로 써 놔도 프로젝트를
+            // 열 때마다 0으로 되돌아간다 — 즉 "겹친 puff 정렬 팝 방지"는 여기 적혀 있던 내내 실제로는
+            // 꺼진 채 돌았고, 그 대신 `.mat`이 무한히 드리프트해 매번 손으로 되돌려야 했다.
+            // 팝이 실제로 보이면 ZWrite로 돌아오지 말고 전용 셰이더나 렌더러 인스턴스 설정으로 가라.
+            // (아래 URP/HDRP 분기는 ZWrite가 독립 프로퍼티라 1이 유지된다 — 이 프로젝트는 Built-in이다.)
+            mat.SetInt("_ZWrite", 0);
             mat.DisableKeyword("_ALPHATEST_ON");
             mat.EnableKeyword("_ALPHABLEND_ON");
             mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");

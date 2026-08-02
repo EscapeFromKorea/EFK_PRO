@@ -174,7 +174,10 @@ public static class HourglassMenuItem
         }
         else // Built-in Standard
         {
-            mat.SetFloat("_Mode", 3f);
+            // 2 = Fade. Unity가 프로젝트를 열 때 아래 블렌드 값들을 _Mode대로 다시 유도하므로,
+            // _Mode와 어긋나는 조합(3 = Transparent는 _ALPHAPREMULTIPLY_ON + SrcBlend One)을 쓰면
+            // 에셋이 조용히 덮어써진다. 자세한 근거는 RainbowBridgeMenuItem의 같은 지점 주석 참고.
+            mat.SetFloat("_Mode", 2f);      // Fade
             mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
             mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
             mat.SetInt("_ZWrite", 0);

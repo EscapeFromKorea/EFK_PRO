@@ -136,7 +136,14 @@ public static class RainbowBridgeMenuItem
         }
         else // Built-in Standard
         {
-            mat.SetFloat("_Mode", 3f);      // Transparent
+            // _Mode는 표시용 값이 아니라 **블렌드 상태의 출처**다 — Unity가 프로젝트를 열 때 아래
+            // 값들을 _Mode대로 다시 유도하므로, _Mode와 어긋나는 조합을 쓰면 에셋이 조용히 덮어써진다.
+            // 2 = Fade(SrcAlpha/OneMinusSrcAlpha, ZWrite 0, _ALPHABLEND_ON)가 아래 조합과 정확히
+            // 같아서, 이 값이어야 드리프트가 안 생긴다. 3(Transparent)은 _ALPHAPREMULTIPLY_ON +
+            // SrcBlend One이라 매번 되돌아갔다(2026-07-31 원인 규명 — `.mat` 반복 드리프트의 정체).
+            // 의미상으로도 Fade가 맞다: 물체가 사라지는 연출이고, Transparent는 유리처럼 스페큘러를
+            // 남기는 모드다.
+            mat.SetFloat("_Mode", 2f);      // Fade
             mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
             mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
             mat.SetInt("_ZWrite", 0);
