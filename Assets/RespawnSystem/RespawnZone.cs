@@ -174,6 +174,10 @@ public class RespawnZone : MonoBehaviour
             // 자기 자식(막대·깃발)은 바닥이 아니다. 메뉴가 만드는 막대는 콜라이더가 없지만,
             // 누가 나중에 붙이면 레이가 막대 꼭대기를 바닥으로 잡아 플레이어가 공중에 선다.
             if (hit.collider.transform.IsChildOf(transform)) continue;
+            // 낙석(FallingRock)은 트리거가 아닌 평범한 dynamic Rigidbody라 위 필터에 안 걸린다.
+            // 체크포인트 저장 순간 낙석이 마침 구역 중앙 축을 지나가면 그 표면을 바닥으로 잡아,
+            // 페이드 리스폰이 허공(낙석이 지나간 자리)에 서게 된다 — 낙석도 바닥 후보에서 뺀다.
+            if (hit.collider.GetComponentInParent<FallingRock>() != null) continue;
             if (hit.point.y > groundY) groundY = hit.point.y;
         }
         return !float.IsNegativeInfinity(groundY);
