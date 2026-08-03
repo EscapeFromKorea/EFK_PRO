@@ -61,6 +61,9 @@ public class PlayerShapeController : MonoBehaviour
         "레이어가 없으면 Everything으로 두세요.")]
     public LayerMask groundLayer = ~0; // 기본값: Everything (-1)
 
+    private Rigidbody rb;
+    private PlayerShapeIdentity shapeIdentity;
+
     // 초기 스케일 저장
     private Vector3 initialScale;
 
@@ -88,6 +91,9 @@ public class PlayerShapeController : MonoBehaviour
 
     void Start()
     {
+        rb = GetComponent<Rigidbody>();
+        shapeIdentity = GetComponent<PlayerShapeIdentity>();
+
         initialScale = transform.localScale;
         targetScale = initialScale;
 
@@ -145,6 +151,16 @@ public class PlayerShapeController : MonoBehaviour
 
     void FixedUpdate()
     {
+        // 요구사항: 크기가 커지거나 작아진 비율만큼 무게도 비례해 늘거나 준다(기본 크기=1 기준).
+        // stats.mass를 기준값으로 삼아(PlayerShapeIdentity의 Start 실행 순서와 무관하게) 매 스텝
+        // 현재 스케일 비율을 곱한다 — PlayerWeight.Of가 rb.mass를 그대로 읽으므로 실·문·구름
+        // 트램펄린 등 무게 판정 전부가 이 변경만으로 자동 반영된다.
+        if (rb != null && shapeIdentity != null && shapeIdentity.stats != null && initialScale.x > 0f)
+        {
+            float scaleRatio = transform.localScale.x / initialScale.x;
+            rb.mass = shapeIdentity.stats.mass * scaleRatio;
+        }
+
         if (groundContact != null)
         {
             // Rigidbody 회전이 자유로워진 뒤로는(정육면체/정사면체가 실제로 통통 튀며 구름),
