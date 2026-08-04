@@ -19,6 +19,10 @@ UserSettings/
 .DS_Store
 Thumbs.db
 
+# Local-only editor tooling (NuGet-installed, not shared project content)
+Assets/Plugins/
+Assets/Plugins.meta
+
 # Internal planning docs / agent config (not for GitHub)
 PRD.md
 CLAUDE.md
