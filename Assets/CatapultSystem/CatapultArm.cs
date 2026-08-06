@@ -352,6 +352,14 @@ public class CatapultArm : MonoBehaviour
     [Tooltip("발사 피치각(도, 수평 기준 위쪽). PRD 확정값 50도 고정. 각도라 스케일과 무관.")]
     public float launchPitch = 50f;
 
+    [Header("ScalePad 연동 — 작아지면(가벼워지면) 더 멀리 (신규, 2026-08-06) [TBD, 임시값]")]
+    [Tooltip("탑승자의 rb.mass / PlayerShapeIdentity.stats.mass 비율의 역수(1/비율)를 [1, 이 값] 범위로 " +
+             "clamp해 발사 속도에 곱한다 — 가벼울수록(비율<1) 배율이 1보다 커져 더 멀리 날아가고, " +
+             "정상 이상 무거워도 하한을 1로 둬 페널티 없이 최소 1배를 보장한다(CatapultBucket." +
+             "heavyBoardBlockScaleRatio가 커진 상태는 탑승 자체를 막아 실전에서는 그 경우가 안 생기지만, " +
+             "방어적으로 하한을 둔다). 감각적 기본값.")]
+    public float maxWeightSpeedMultiplier = 2f;
+
     [Tooltip("탑승자를 보관하는 버킷. 발사 시 이 버킷에서 탑승자를 꺼낸다(빈 버킷이면 null).")]
     public CatapultBucket bucket;
 
@@ -515,6 +523,15 @@ public class CatapultArm : MonoBehaviour
     /// 예전처럼 즉시 반동 연출만 재생한다 — 관통을 막을 탑승자 자체가 없기 때문이다.</summary>
     public void Fire(float ratio01)
     {
+        // PR #54 코드검토 반영(2026-08-06, P0) — BeginPull()은 State==Launching일 때 재입력을
+        // 무시하는 가드가 있지만(18차 개편), Fire()에는 같은 가드가 없었다. CatapultLoadController가
+        // 재연결(TryConnect, BeginPull 무시됨) 후 바로 다시 C를 누르면 Disconnect(fire:true)가
+        // 곧바로 이 함수를 호출하는데, 그 시점에도 버킷엔 탑승자가 여전히 남아 있어(스윙이 아직 안
+        // 끝났으므로) 아래 조건을 그대로 통과해 launchElapsed를 0으로 되돌린다 — C를 연타하면
+        // ConsumeOccupant()가 영원히 불리지 않아 정육면체가 버킷에 영구 고정된다. BeginPull과
+        // 정확히 같은 가드를 여기도 둔다 — 스윙이 끝날 때까지 재호출을 전부 무시한다.
+        if (State == ArmState.Launching) return;
+
         ratio01 = Mathf.Clamp01(ratio01);
         recoilJolted = false; // 8차 개편 — 이번 발사의 "정착 후 클런크"를 다시 한 번 쓸 수 있게 리셋.
 
@@ -531,6 +548,22 @@ public class CatapultArm : MonoBehaviour
         launchStartAngle = currentAngle;
         float angleRatio = Mathf.InverseLerp(restAngle, pulledAngle, launchStartAngle);
         float speed = Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, angleRatio);
+
+        // ScalePad 연동 신규(2026-08-06) — 탑승자가 작아진(가벼워진) 상태면 더 멀리 날아가게 배율을
+        // 곱한다. bucket.HasOccupant가 true인 시점부터 실제 ConsumeOccupant()(스윙 종료)까지는
+        // 탑승자가 바뀌지 않으므로, 소비하지 않는 OccupantBody로 미리 들여다봐도 안전하다(클래스
+        // 상단 "ScalePad 연동" 헤더 참고, 실제 게이트/식 근거는 CatapultBucket.cs 상단 주석에 있다).
+        Rigidbody occupantForSpeed = bucket.OccupantBody;
+        PlayerShapeIdentity occupantIdentity = occupantForSpeed != null
+            ? occupantForSpeed.GetComponent<PlayerShapeIdentity>() : null;
+        float weightSpeedMultiplier = 1f;
+        if (occupantIdentity != null && occupantIdentity.stats != null && occupantIdentity.stats.mass > 0f)
+        {
+            float scaleRatio = occupantForSpeed.mass / occupantIdentity.stats.mass; // 1=Normal, <1=Shrunk(가벼움)
+            weightSpeedMultiplier = Mathf.Clamp(1f / Mathf.Max(0.01f, scaleRatio), 1f, maxWeightSpeedMultiplier);
+        }
+        speed *= weightSpeedMultiplier;
+
         // 15차 개편 — 앵커 쪽(-Z)으로 발사하도록 기준 방향과 회전 부호를 함께 뒤집었다(클래스 상단
         // "15차 개편" 주석 참고 — 둘 중 하나만 뒤집으면 위/아래가 반대로 나온다).
         Vector3 dir = Quaternion.AngleAxis(launchPitch, aimRoot.right) * (-aimRoot.forward);

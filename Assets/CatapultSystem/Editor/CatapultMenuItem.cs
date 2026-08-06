@@ -648,37 +648,45 @@ public static class CatapultMenuItem
         strut.GetComponent<Renderer>().sharedMaterial = mat;
     }
 
+    // PR #54 코드검토 반영(2026-08-06, P1) — 콜라이더(고정)와 회전 메시(자식)를 분리한다. 예전엔
+    // CatapultWheelVisual과 BoxCollider가 같은 Transform("Catapult_Wheel" 자신)에 있어, 시각 스크립트가
+    // 매 프레임 그 Transform을 돌리면 컴파운드 콜라이더 형상까지 함께 돌았다 — "순수 시각 연출"이라는
+    // 주석과 실제 동작이 어긋났다. 게다가 그 회전축(로컬 X, Space.Self)도 수학적으로 틀렸었다 —
+    // Quaternion.Euler(0,0,90)으로 이미 기울여진 객체에 Space.Self로 로컬 X를 돌리면(사원수 합성을
+    // 직접 전개해 확인: R0*Rx(θ)) 축(axle) 자체가 매 프레임 방향을 바꾸며 팽이처럼 도는 동작이 나온다
+    // (θ=0에서 축이 -X를 향하다 θ=90°에서 +Z를 향함 — 굴러가는 게 아니라 넘어지듯 돈다). 지금은
+    // "Catapult_Wheel"(부모, 콜라이더 전용, 절대 회전하지 않음)과 "Catapult_WheelMesh"(자식, 메시+
+    // 회전 스크립트 전용)로 나눈다 — 자식은 부모의 고정 회전(R0)을 그대로 상속만 하고 자신의 로컬
+    // 회전은 identity에서 시작하므로, 자식 자신의 로컬 Y축(메시의 원래 높이/축 방향)을 그대로 돌리면
+    // 축 방향이 고정된 채(World = R0 * Ry(θ)) 올바르게 굴러간다 — 아래
+    // `CatapultWheelVisual`도 이 축을 로컬 X에서 로컬 Y로 함께 바꿨다.
     private static void CreateWheel(Transform parent, Vector3 localPos, float radius, float thickness, Material mat, PhysicMaterial groundMaterial)
     {
-        GameObject wheel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        wheel.name = "Catapult_Wheel";
+        GameObject wheel = new GameObject("Catapult_Wheel");
         wheel.transform.SetParent(parent, false);
         wheel.transform.localPosition = localPos;
         wheel.transform.localRotation = Quaternion.Euler(0f, 0f, 90f); // 원통의 높이축을 로컬 X(옆면)로 돌려 바퀴처럼 보이게 한다.
         // 기본 Cylinder는 scale=1일 때 반지름 0.5·높이 2 — 따라서 반지름은 *2f, 두께(높이)는 *0.5f로 환산.
         wheel.transform.localScale = new Vector3(radius * 2f, thickness * 0.5f, radius * 2f);
-        wheel.GetComponent<Renderer>().sharedMaterial = mat;
-        // 18차 개편(2026-08-06) — CreatePrimitive(Cylinder)가 기본으로 붙이는 CapsuleCollider를
-        // BoxCollider로 교체한다(11차 개편의 "장식 콜라이더를 지우지 않는다"는 여전히 지킨다 —
-        // 콜라이더를 없애는 게 아니라 종류/크기만 바로잡는다). 근본 원인(`Catupult_bug6.png` 확인,
-        // 클래스 상단 "18차 개편" 주석 참고): 이 바퀴는 두께(thickness)가 지름(2×radius)보다 훨씬
-        // 얇아, Unity가 캡슐의 "world height"를 "2×world radius" 미만으로 clamp해 원통 구간 길이를
-        // 0으로 만든다 — 결과적으로 반지름과 같은 반지름의 **완전한 구**가 된다(예: Scale=3 기준
-        // radius=1.5, thickness=0.54 < 2×1.5=3.0 → clamp 발동). 이 구가 바퀴 축(로컬 X, 회전 후
-        // 세계 X) 방향으로 반지름만큼 양쪽으로 부풀어 얇은 시각 바퀴보다 훨씬 안쪽까지 파고들어
-        // 받침대/트레슬을 관통했다 — `CapsuleCollider.radius`/`height`를 명시적으로 다시 세팅해도
-        // 물리 엔진이 같은 clamp를 다시 적용하므로 이 문제 자체는 고쳐지지 않는다(캡슐이 얇은 원판을
-        // 표현할 수 없는 근본 한계). BoxCollider는 원통 프리미티브 메시의 로컬 바운딩 박스(반지름
-        // 방향 X/Z는 ±0.5, 축 방향 Y는 ±1)와 정확히 같은 크기를 잡을 수 있어 이 clamp 문제 자체가
-        // 없다 — size=(1,2,1)을 이미 회전+스케일이 적용된 Transform에 얹으면 시각 메시와 같은 세계
-        // 좌표 크기(지름×지름×두께)가 나온다.
-        Object.DestroyImmediate(wheel.GetComponent<Collider>());
+
+        // 18차 개편(2026-08-06)의 BoxCollider 근거는 그대로 유효하다 — CapsuleCollider는 두께가
+        // 지름보다 얇으면 Unity가 원통 구간을 0으로 clamp해 완전한 구가 되므로 쓸 수 없다
+        // (`Catupult_bug6.png`로 확인). BoxCollider는 이제 이 부모(회전하지 않음)에 고정된다.
         BoxCollider wheelCollider = wheel.AddComponent<BoxCollider>();
         wheelCollider.size = new Vector3(1f, 2f, 1f);
         // 12차 개편 — 바퀴도 바닥과 닿을 수 있는 콜라이더라 저마찰 재질을 적용한다(클래스 상단
         // "12차 개편 (1)" 참고).
         wheelCollider.material = groundMaterial;
-        wheel.AddComponent<CatapultWheelVisual>().wheelRadius = radius; // 순수 시각 회전(§ 아래 참고).
+
+        GameObject mesh = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        mesh.name = "Catapult_WheelMesh";
+        Object.DestroyImmediate(mesh.GetComponent<Collider>());
+        mesh.transform.SetParent(wheel.transform, false);
+        mesh.transform.localPosition = Vector3.zero;
+        mesh.transform.localRotation = Quaternion.identity; // 부모의 R0을 그대로 상속만 한다 — 정지 시 외형은 이전과 동일.
+        mesh.transform.localScale = Vector3.one; // 부모 스케일을 그대로 상속한다.
+        mesh.GetComponent<Renderer>().sharedMaterial = mat;
+        mesh.AddComponent<CatapultWheelVisual>().wheelRadius = radius; // 순수 시각 회전, 콜라이더 없는 자식(§ 위 주석 참고).
     }
 
     // 레퍼런스 사진처럼 좌/우에 교차 지지대(X자 목재 트레슬)를 세우고, 그 위를 가로대(Axle)로 연결한다.

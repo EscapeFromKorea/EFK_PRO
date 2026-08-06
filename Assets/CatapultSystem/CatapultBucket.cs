@@ -297,6 +297,22 @@ using UnityEngine;
 /// **부작용이자 사용자가 명시적으로 원한 방향 — F 벽이 없으므로 그쪽에서 걸어 들어오는 탑승도 이제
 /// 0.8배 구역 안에서는 물리적으로 가능하다.** 별도 방지 장치를 추가하지 않았다 — "탑승이 편해짐"은
 /// 부작용이 아니라 사용자가 원한 결과다.
+///
+/// [ScalePad 연동 신규 — 커지면 탑승 차단, 작아지면(가벼워지면) 더 멀리 (2026-08-06, 사용자 요청)]
+/// ScalingSystem 파일은 건드리지 않는다 — `PlayerShapeController.ToggleScale`이 매 `FixedUpdate`마다
+/// `rb.mass = stats.mass * (localScale.x / initialScale.x)`로 이미 현재 스케일 비율을 `rb.mass`에
+/// 반영해 두므로(파일 읽기로 확인), `rb.mass / identity.stats.mass`를 다시 계산하면 별도 접근자 없이도
+/// "지금 커졌는지/작아졌는지"를 정확히 알 수 있다(1.0=Normal, growMultiplier 기본값 기준 2.0=Grown,
+/// shrinkMultiplier 기본값 기준 0.5=Shrunk) — 이 비율을 `Board()`/`CatapultArm.Fire()`가 공유하는
+/// `OccupantScaleRatio(Rigidbody, PlayerShapeIdentity)`로 한 곳에 뒀다. 무게(`PlayerWeight.Of`)가 아니라
+/// 이 스케일 비율을 직접 쓰는 이유 — 여기서 막으려는 건 "물리적으로 버킷에 안 맞는 크기"이지 무게로
+/// 버티는 문제(실·구름 등)가 아니고, `PlayerWeight.Of`는 중력 배율까지 섞어 굳이 필요 없는 변수를
+/// 끌어온다. `heavyBoardBlockScaleRatio`(기본 1.2 — Normal 1.0/Shrunk 0.5는 통과, Grown 2.0은 차단)
+/// 이상이면 탑승을 거부한다 — 사용자가 명시한 "커지면 탑승 못 함"을 role 게이트(Kind==Cube, 이미
+/// 있음)와 같은 자리에서 추가로 확인한다. 발사 속도 배율은 `CatapultArm.Fire()`가
+/// `bucket.OccupantBody`로 탑승자를 미리 들여다봐 계산한다(자세한 근거는 `CatapultArm.cs` 상단
+/// 참고) — 탑승 차단 덕분에 실전에서 스케일 비율이 1을 넘는 경우가 없어 항상 "가벼울수록 더 빨리"
+/// 방향으로만 작동하지만, 방어적으로 반대 방향(비율>1이면 감속)도 같은 식으로 자연스럽게 성립한다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
 public class CatapultBucket : MonoBehaviour
@@ -340,6 +356,13 @@ public class CatapultBucket : MonoBehaviour
              "0에 가까우면 바닥에 파묻히고, 너무 크면 예전(정중앙)과 다시 비슷해진다 — 감각적 기본값.")]
     public float occupantFloorClearance = 0.08f;
 
+    [Header("ScalePad 연동 — 커지면 탑승 차단 (신규, 2026-08-06) [TBD, 임시값]")]
+    [Tooltip("탑승 시도 중인 정육면체의 rb.mass / PlayerShapeIdentity.stats.mass 비율이 이 값 이상이면 " +
+             "탑승을 거부한다(클래스 상단 'ScalePad 연동' 주석 참고). growMultiplier/shrinkMultiplier " +
+             "기본값(2.0/0.5) 기준으로 Normal(1.0)·Shrunk(0.5)는 통과, Grown(2.0)만 차단하도록 사이값 " +
+             "1.2로 잡았다 — 감각적 기본값.")]
+    public float heavyBoardBlockScaleRatio = 1.2f;
+
     // PlayerObjectMenuItem.cs가 정육면체에 쓰는 BoxCollider.size = Vector3.one(1×1×1, 이 기믹의 Scale과
     // 무관하게 고정) 기준 반높이 — 이 프로젝트에서 바뀔 여지가 거의 없어 하드코딩한다(18차 개편).
     private const float OccupantHalfHeight = 0.5f;
@@ -373,6 +396,11 @@ public class CatapultBucket : MonoBehaviour
     /// <summary>지금 탑승자가 있는지(빈 발사 판정 등 외부에서 조회용).</summary>
     public bool HasOccupant => occupantBody != null;
 
+    /// <summary>지금 탑승 중인 Rigidbody(없으면 null) — ScalePad 연동 신규. `CatapultArm.Fire()`가
+    /// `ConsumeOccupant()`로 실제 분리하기 전에 발사 속도 계산용으로 미리 들여다본다(소비하지 않는
+    /// 읽기 전용 조회, 클래스 상단 "ScalePad 연동" 주석 참고).</summary>
+    public Rigidbody OccupantBody => occupantBody;
+
     void Awake()
     {
         arm = GetComponentInParent<CatapultArm>();
@@ -381,6 +409,15 @@ public class CatapultBucket : MonoBehaviour
 
     // 12차 개편 — CatapultArm을 못 찾았으면(수동 조립 등) 게이트를 걸지 않는다(과거 동작 폴백).
     private bool ArmAngleAllowsBoard() => arm == null || arm.CurrentAngle >= boardMinArmAngle;
+
+    // ScalePad 연동 신규 — 커진 정육면체는 탑승 자체를 거부한다(클래스 상단 "ScalePad 연동" 주석
+    // 참고). stats를 못 찾으면(수동 조립 등) 게이트를 걸지 않는다 — 이 파일의 다른 게이트들과 같은
+    // 방어적 폴백 원칙.
+    private bool IsTooHeavyToBoard(Rigidbody body, PlayerShapeIdentity identity)
+    {
+        if (identity == null || identity.stats == null || identity.stats.mass <= 0f) return false;
+        return (body.mass / identity.stats.mass) >= heavyBoardBlockScaleRatio;
+    }
 
     // 19차 개편 신규 — 벽이 사라진 대신 이 거리 게이트가 "가장자리를 스치기만 해도 탑승"을 막는다
     // (클래스 상단 "19차 개편" 주석 참고). world 좌표를 이 트리거(Catapult_BucketInner) 자신의
@@ -438,6 +475,16 @@ public class CatapultBucket : MonoBehaviour
         PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
         if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Cube) return; // 정육면체 전용(역할 게이트)
 
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+
+        // ScalePad 연동 신규 — 커진 상태면 탑승 자체를 거부한다(클래스 상단 "ScalePad 연동" 주석 참고).
+        if (IsTooHeavyToBoard(body, identity))
+        {
+            Debug.Log("[Catapult] 커진 상태로는 버킷에 탑승할 수 없습니다.");
+            return;
+        }
+
         // 12차 개편 — 각도 게이트. C키 경로는 매 프레임 입력을 폴링하므로(이 메서드 자체가 Update()에서
         // 매 프레임 불린다) 각도가 나중에 넘어가면 자연히 재시도된다 — 걸어서 들어오는 경로처럼
         // 별도 OnTriggerStay 재확인이 필요 없다.
@@ -446,9 +493,6 @@ public class CatapultBucket : MonoBehaviour
             Debug.Log("[Catapult] 아직 팔이 충분히 당겨지지 않아 탑승할 수 없습니다.");
             return;
         }
-
-        Rigidbody body = mover.GetComponent<Rigidbody>();
-        if (body == null) return;
 
         float myDistance = Vector3.Distance(body.position, transform.position);
         if (myDistance > boardApproachRange) return;
@@ -540,6 +584,9 @@ public class CatapultBucket : MonoBehaviour
         // 정육면체만 탑승 판정을 받는다(역할 게이트, PlayerWeight 미사용).
         if (identity.Kind != PlayerShapeStats.ShapeKind.Cube) return;
 
+        // ScalePad 연동 신규 — 커진 상태면 탑승 자체를 거부한다(클래스 상단 "ScalePad 연동" 주석 참고).
+        if (IsTooHeavyToBoard(body, identity)) return;
+
         // 12차 개편 — 각도 게이트. 미달이면 지금은 탑승시키지 않는다(overlapCount도 건드리지 않는다
         // — 탑승 자체가 아직 성립하지 않았으므로). 정육면체가 각도 미달 상태로 먼저 들어와 트리거
         // 안에 머무는 경우는 OnTriggerStay가 매 프레임 재확인해, 각도가 나중에 넘어가는 순간
@@ -562,10 +609,14 @@ public class CatapultBucket : MonoBehaviour
         if (!other.CompareTag("Player")) return;
         PlayerShapeIdentity identity = other.GetComponentInParent<PlayerShapeIdentity>();
         if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Cube) return;
-        if (!ArmAngleAllowsBoard()) return;
 
         Rigidbody body = identity.GetComponent<Rigidbody>();
         if (body == null) return;
+
+        // ScalePad 연동 신규 — 커진 상태면 탑승 자체를 거부한다(클래스 상단 "ScalePad 연동" 주석 참고).
+        if (IsTooHeavyToBoard(body, identity)) return;
+
+        if (!ArmAngleAllowsBoard()) return;
 
         // 19차 개편 — 가장자리에 머무르며 재시도하는 것도 같은 기준으로 걸러낸다.
         if (!IsWithinCentralBoardZone(body.position)) return;

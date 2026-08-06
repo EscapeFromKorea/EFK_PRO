@@ -11,9 +11,20 @@ using UnityEngine;
 /// 대상은 아니다), 이동 속도를 알 방법이 없다. 투석기 루트의 Rigidbody(조향 SpringJoint가
 /// 움직이는 그 바디)가 유일한 속도 정보원이다.
 ///
-/// [왜 로컬 X축인가]
-/// `CatapultMenuItem.CreateWheel`이 이미 원통의 높이축을 로컬 Z 90도 회전으로 로컬 X(바퀴의 축
-/// 방향)로 돌려놨다 — 바퀴가 굴러가는 회전은 그 축(로컬 X)을 중심으로 일어나야 한다.
+/// [PR #54 코드검토 반영(2026-08-06, P1) — 콜라이더 분리 + 회전축을 로컬 X에서 로컬 Y로 수정]
+/// 예전엔 이 컴포넌트가 `BoxCollider`와 같은 Transform("Catapult_Wheel" 자신)에 붙어, 매 프레임
+/// 그 Transform을 돌리면 컴파운드 콜라이더 형상까지 함께 돌았다 — "순수 시각 연출"이라는 클래스
+/// 설명과 실제 동작이 어긋났다. 지금은 `CatapultMenuItem.CreateWheel`이 이 컴포넌트를 콜라이더 없는
+/// **자식**("Catapult_WheelMesh")에만 붙인다 — 부모("Catapult_Wheel")는 콜라이더를 든 채 절대
+/// 회전하지 않는다.
+/// 축도 함께 고쳤다 — 예전 코드는 로컬 X(`Vector3.right`)를 돌렸는데, 부모가 이미
+/// `Quaternion.Euler(0,0,90)`으로 기울어져 있는 상태에서 자식이 로컬 X를 `Space.Self`로 돌리면
+/// (그 자식 자신은 identity에서 시작하므로 사원수 합성이 그대로 `parentR0 * Rx(θ)`가 된다) 축
+/// (axle) 자체가 프레임마다 방향을 바꾼다(θ=0에서 -X를 향하다 θ=90°에서 +Z를 향하도록 직접
+/// 전개해 확인) — 이건 굴러가는 게 아니라 넘어지듯 도는(팽이 회전) 동작이다. 자식의 로컬 **Y**축을
+/// 돌리면 합성이 `parentR0 * Ry(θ)`가 되고, `Ry(θ)`는 Y축 자신은 항상 그대로 두므로(자기 축을
+/// 중심으로 도는 회전이 자기 축을 안 움직이는 건 당연하다) 부모의 R0이 정한 축 방향(투석기 로컬
+/// X)이 θ와 무관하게 항상 고정된다 — 이게 실제 "바퀴가 축을 중심으로 굴러가는" 동작이다.
 ///
 /// [12차 개편(2026-08-05) — 회전이 과하다는 신고, 진짜 원인은 수직(Y) 속도 유입]
 /// 코디네이터의 첫 가설(`CreateWheel`이 `wheelRadius`를 안 채워 기본값 1f가 실제 반지름(1.5)보다
@@ -47,6 +58,8 @@ public class CatapultWheelVisual : MonoBehaviour
         Vector3 v = rootBody.velocity;
         float speed = new Vector2(v.x, v.z).magnitude;
         float degPerSec = (speed / wheelRadius) * Mathf.Rad2Deg;
-        transform.Rotate(Vector3.right, degPerSec * Time.deltaTime, Space.Self);
+        // PR #54 코드검토(2026-08-06) — 로컬 X에서 로컬 Y로 축 변경(클래스 상단 주석 참고). 이제 이
+        // 컴포넌트는 콜라이더 없는 자식(Catapult_WheelMesh)에만 붙는다.
+        transform.Rotate(Vector3.up, degPerSec * Time.deltaTime, Space.Self);
     }
 }
