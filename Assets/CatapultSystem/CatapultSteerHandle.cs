@@ -96,6 +96,15 @@ using UnityEngine;
 /// 않는다), `isKinematic = false`, `mover.ExternallyDriven = false`. **자동 "튕겨나가기"는 없다
 /// (사용자 명시적 확정)** — 구는 현재(도킹된, 확대된) 위치에서 그대로 다시 조작 가능해질 뿐이고,
 /// 걸어/뛰어 나가는 것은 플레이어 몫이다.
+///
+/// [25차 개편(2026-08-06) — 도킹된 구가 조작 대상이 아닐 때 다른 플레이어의 A/D가 새는 버그 수정]
+/// `Update()`가 조향 입력을 `dockedBody != null`일 때만 읽었는데, `Input.GetAxis("Horizontal")`은
+/// 전역 축이라 이 조건만으로는 "지금 실제로 도킹된 구를 조작 중인가"를 걸러내지 못했다 — 구가
+/// 도킹된 채 Tab으로 다른 플레이어에게 조작권이 넘어가도(`dockedMover.IsControlled == false`)
+/// 그 다른 플레이어가 A/D를 누르면 값이 그대로 들어와 투석기가 제멋대로 돌았다(사용자 재현
+/// 보고). `HandleDockInput()`의 C키 해제 게이트가 이미 `dockedMover.IsControlled`를 확인하던 것과
+/// 똑같은 조건을 조향 입력 읽기에도 추가했다 — 두 입력 경로(C키/좌우 이동)가 이제 정확히 같은
+/// "조작 대상 확인" 기준을 공유한다.
 /// </summary>
 public class CatapultSteerHandle : MonoBehaviour
 {
@@ -150,8 +159,13 @@ public class CatapultSteerHandle : MonoBehaviour
         HandleDockInput();
 
         // 입력은 여기서 읽고, 실제 회전 대입은 FixedUpdate에서 한다(클래스 상단 "조향" 주석 참고 —
-        // 5차 개편이 이미 정립한 이유와 같다).
-        pendingHorizontal = dockedBody != null ? Input.GetAxis("Horizontal") : 0f;
+        // 5차 개편이 이미 정립한 이유와 같다). 25차 개편 — `dockedBody != null`만으로는 부족했다.
+        // Input.GetAxis("Horizontal")은 전역 축이라, 도킹된 구가 Tab으로 파킹된 동안 다른 플레이어가
+        // A/D를 눌러도 그 값이 그대로 여기 들어와 투석기가 제멋대로 돌았다(사용자 재현 보고) —
+        // `dockedMover.IsControlled`까지 함께 확인해야 "지금 실제로 이 구를 조작 중"일 때만 반응한다
+        // (HandleDockInput의 C키 게이트가 이미 쓰는 것과 같은 조건, 클래스 상단 "입력 게이트" 주석 참고).
+        pendingHorizontal = (dockedBody != null && dockedMover != null && dockedMover.IsControlled)
+            ? Input.GetAxis("Horizontal") : 0f;
     }
 
     void FixedUpdate()
