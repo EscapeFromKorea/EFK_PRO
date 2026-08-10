@@ -21,9 +21,10 @@ using UnityEngine;
 /// 쪽에서 완화한다(구체적인 내용은 PlayerObjectMenuItem.cs 상단 주석 참고):
 /// - 정육면체: BoxCollider(정확한 모양) 자체는 그대로 두되, 저마찰 PhysicMaterial로 접지 중
 ///   접촉면을 따라 생기는 마찰력을 줄여 충돌 강도를 낮춘다.
-/// - 정사면체: Unity에 대응하는 기본 Primitive Collider가 없다. 꼭짓점 4개 각각에 작은
-///   SphereCollider를 배치한 컴파운드로 근사해, 뾰족한 점 대신 둥근 표면으로 접촉하게 한다
-///   (구는 어느 방향으로 회전해도 중심-표면 거리가 일정해 침투가 완만해진다).
+/// - 정사면체: Unity에 대응하는 기본 Primitive Collider가 없다. 꼭짓점을 이웃 쪽으로 살짝 깎은
+///   통짜 convex MeshCollider(TetrahedronMeshGenerator.CreateChamferedColliderMesh)를 쓴다 —
+///   뾰족한 점 대신 작은 면으로 접촉해 침투가 완만해진다. (예전엔 꼭짓점 4개에 작은 SphereCollider를
+///   배치한 컴파운드였으나 구 사이 미접촉 구간 때문에 폐기됐다. 상세는 PlayerObjectMenuItem.cs 참고.)
 /// - 공통: Rigidbody.maxAngularVelocity를 기본 캡(7 rad/s)보다 넉넉히 올리고(v=ωr로 나온
 ///   각속도가 잘리지 않도록), interpolation과 solver iteration을 높여 시각적 떨림/솔버 오차를
 ///   줄인다.
@@ -43,6 +44,20 @@ using UnityEngine;
 /// 정육면체/정사면체 브랜치에서 true로 세팅한다. 방향 조종성은 SteerAngularVelocity(어긋난
 /// 각속도 성분 감쇠)와 RealignHorizontalVelocity(수평 속도 방향 재정렬)로 보강한다.
 /// 토글이 false면 기존 각속도 대입 방식이 그대로 유지되어 구(Sphere) 동작은 변하지 않는다.
+///
+/// [경사에 따른 가감속]
+/// 접지 이동은 바닥 법선 평면에 입력을 투영해 비탈을 따라가지만, 그것만으로는 속력이 항상
+/// moveSpeed로 일정해 오르막과 내리막이 똑같이 느껴졌다. 그래서 "중력의 비탈 방향 성분"을
+/// 진행 방향에 투영해 그 값을 **시간에 따라 속력에 누적**한다 — 목표 속도를 경사각으로 즉시
+/// 스케일하는 방식과 달리, 오르막에서는 점점 힘에 부치고 내리막에서는 점점 탄력이 붙는다.
+/// 이 누적은 **진행 방향 성분만** 다루고, 그와 직교하는 흘러내림(등고선 방향으로 걸을 때 비탈
+/// 아래로 밀리는 성분)은 대입으로 지우지 않고 물리(중력+마찰)에 그대로 맡긴다 — 무입력 분기가
+/// 경사면에서 대입을 건너뛰는 것과 같은 이유다.
+/// 평지에서는 접선 성분이 정확히 0이라 이 로직 전체가 무효가 되어 기존 동작(지상 속도 =
+/// moveSpeed, 도달 규격표의 전제)이 한 톨도 변하지 않는다. 적용 대상은 Kind가 아니라 무게로
+/// 가른다(slopeAccelMaxWeight) — 기본값에서 네모만 빠지고, 무중력 버블로 가벼워지면 네모도
+/// 경사에 밀린다. 비탈 착지 프레임에는 파고든 속도의 일부가 비탈 아래 속도로 바뀌는 연출이
+/// 얹힌다(landingImpactSlideRatio) — 손맛일 뿐 등반 차단 기능이 아니다.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerMover : MonoBehaviour
@@ -100,6 +115,49 @@ public class PlayerMover : MonoBehaviour
     [Tooltip("바닥으로 인정할 레이어 마스크")]
     public LayerMask groundLayer = ~0;
 
+    [Tooltip("입력이 없을 때 수평 속도를 0으로 잡아 '딱 멈추게' 할 바닥의 평평함 기준. 바닥 법선의 " +
+             "y가 이 값보다 크면 평지로 보고 멈춘다. 이보다 기울면 경사면으로 보고 대입을 건너뛰어 " +
+             "중력에 미끄러지게 둔다. 1에 가까울수록 '경사면'으로 인정하는 각도가 작아진다 " +
+             "(0.999≈2.6°, 0.99≈8°, 0.98≈11°). 씬 바닥이 미세하게 안 맞아 평지에서도 미끄러지면 값을 낮춘다.")]
+    [Range(0.9f, 1f)]
+    public float idleStopMaxNormalY = 0.999f;
+
+    [Header("경사에 따른 가감속 (접지 + 이동 입력 중에만)")]
+    [Tooltip("중력의 비탈 방향 성분을 속력에 누적할 때 곱하는 튜닝 계수. 1 = 실제 중력 그대로 " +
+             "(g·sinθ). moveSpeed 7, 경사 20° 기준 오르막 7.0 → 0.5s 5.3 → 1.0s 3.6, 내리막 " +
+             "7.0 → 0.5s 8.7 → 1.0s 10.4가 나온다. 체감이 밋밋하면 1.2~1.5로 올리고, 경사가 " +
+             "너무 사납게 느껴지면 0.7 등으로 내린다. 0이면 가감속 없음(예전 동작).")]
+    public float slopeAccelMultiplier = 1f;
+    [Tooltip("내리막 속도 상한 = moveSpeed × 이 값. 긴 비탈에서 무한정 빨라져 조작 불능이 되는 " +
+             "것을 막는다. 2면 구(7.0)가 최대 14까지 나온다 — 도달 규격표는 '지상 속도'가 " +
+             "moveSpeed임을 전제하므로, 이 배수를 키울수록 비탈 끝 점프의 가로 도달이 규격표를 " +
+             "넘어선다는 점을 감안할 것. 진행 방향 속력과 옆으로 흘러내리는 속력에 **각각** 걸리는 " +
+             "상한이라, 등고선 방향으로 걸으며 최대로 흘러내리는 최악의 경우 총 속력은 " +
+             "√(moveSpeed² + (moveSpeed×이 값)²)까지 나올 수 있다.")]
+    public float downhillSpeedCap = 2f;
+    [Tooltip("오르막 한계각(도). 진행 방향의 오르막 각도가 0 → 이 값으로 갈수록 유지 가능한 속도가 " +
+             "moveSpeed → 0으로 선형으로 줄고, 이 값을 넘으면 유지 속도가 음수가 되어 입력을 " +
+             "유지해도 밀려 내려온다. PlayerGroundContact가 '바닥'으로 인정하는 한계(법선 y > 0.5, " +
+             "약 60°)보다 훨씬 낮게 잡아, 30~60° 구간을 '설 수는 있지만 못 오르는' 벽으로 쓸 수 있게 한다.")]
+    public float uphillLimitAngle = 30f;
+    [Tooltip("이 무게 이상이면 경사 가감속을 아예 받지 않는다(무겁고 접지력이 좋아 비탈에 안 밀리는 " +
+             "쪽). 실제 에셋 질량이 구 1.5 / 세모 1.0 / 네모 3.0이라 기본 2.5면 네모만 제외된다. " +
+             "Kind 하드코딩이 아니라 무게(질량 × 실효 중력 배율)로 재므로, 무중력 버블 등으로 " +
+             "실효 무게가 내려가면(네모 3.0 → 1.8) 네모도 경사에 밀리기 시작한다 — 의도된 상호작용이다.")]
+    public float slopeAccelMaxWeight = 2.5f;
+
+    [Header("착지 충격 → 비탈 아래로 밀림 (연출)")]
+    [Tooltip("착지 순간 바닥으로 파고든 속도(법선 방향 성분) 중 이 비율만큼을 비탈 아래 방향 속도로 " +
+             "바꾼다. 가파른 비탈에 크게 떨어질수록 세게 밀리는 '쿵' 하는 손맛용이며, 등반을 막는 " +
+             "기능이 아니다(작고 빠른 홉은 충격 자체가 작아 거의 안 밀린다 — 등반 제한은 " +
+             "uphillLimitAngle이 전담). 0이면 완전히 꺼진다. 0.25는 10 Unit 낙하 기준 약 2 U/s가 " +
+             "더해지는 보수적인 값이고, 0.4를 넘기면 급경사 착지에서 조작이 어려워진다.")]
+    public float landingImpactSlideRatio = 0.25f;
+    [Tooltip("이 속도(m/s) 이하의 충격은 무시하고, 넘는 만큼에만 위 비율을 적용한다(문턱에서 툭 " +
+             "튀지 않게 초과분만 쓴다). 기본 3은 약 0.46 Unit 자유낙하에 해당해, 비탈을 오르내리며 " +
+             "찍는 잔 홉(착지 충격 3 미만)에서는 아무 일도 일어나지 않는다.")]
+    public float landingImpactMinSpeed = 3f;
+
     [Header("조작권 상실 시 감쇠 (Tab 전환용)")]
     [Tooltip("조작권을 잃은 플레이어가 관성/각속도로 계속 굴러가지 않도록 초당 감쇠하는 비율. " +
              "값이 클수록 빨리 멈춘다(프레임레이트 무관). 수직(중력) 속도는 건드리지 않는다.")]
@@ -134,6 +192,22 @@ public class PlayerMover : MonoBehaviour
     private PlayerShapeController shapeController;
     private PlayerGroundContact groundContact;
 
+    // 경사에서 누적된 속력 가감분(m/s). 평지에 서거나(slopeAffected == false) 소유권이 다른
+    // 시스템/다른 플레이어에게 넘어갈 때만 0으로 되돌린다. **점프나 입력 뗌으로는 지우지 않는다** —
+    // 지우면 그때마다 오르막 페널티가 초기화돼, 한계각을 넘는 비탈도 점프나 입력 연타로 전속력
+    // 등반이 가능해진다(2026-08-10 플레이테스트에서 실제로 뚫렸다).
+    private float slopeSpeedBonus;
+
+    // 착지 충격 연출용. 공중 프레임마다 그 시점의 속도를 남겨 두고, 접지로 바뀌는 프레임에 한 번 쓴다
+    // (착지 프레임의 rb.velocity는 이미 충돌 응답으로 깎여 있어 충격 크기를 못 잰다).
+    private bool wasAirborne;
+    private Vector3 airVelocity;
+
+    // 직전 스텝에 이 컴포넌트가 대입한 "이동 성분"(수평, 흘러내림 제외). 다음 스텝에 실제 속도에서
+    // 이 값을 빼야 물리(중력·마찰)가 만든 몫만 남는다 — 빼지 않으면 우리가 넣은 속도가 흘러내림으로
+    // 재해석돼 되먹임 발산한다. 대입하지 않은 스텝(공중·무입력·평지·소유권 이전)에는 0으로 둔다.
+    private Vector3 lastTravelVelocity;
+
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -158,7 +232,13 @@ public class PlayerMover : MonoBehaviour
     void FixedUpdate()
     {
         // 외부 시스템이 몸을 굴리는 동안은 이동도 감쇠도 하지 않는다(둘 다 그 물리를 짓밟는다).
-        if (ExternallyDriven) return;
+        if (ExternallyDriven)
+        {
+            slopeSpeedBonus = 0f;
+            airVelocity = Vector3.zero;
+            lastTravelVelocity = Vector3.zero;
+            return;
+        }
 
         if (useTorqueRolling)
         {
@@ -193,6 +273,15 @@ public class PlayerMover : MonoBehaviour
             // 이 계수에 맞춰 계산돼 있다. velocity를 "대입"하므로 입력을 유지하면 즉시 0.6배
             // 속도가 되어(가속이 아니라) 체공 내내 그 속도를 유지 → D가 정확히 성립한다.
             // 벽으로 미는 성분은 제거해(벽면 따라만) 그립 마찰이 몸을 벽에 붙들어 안 떨어지는 걸 막는다.
+            // [2026-08-10 수정 — 점프로 비탈을 거슬러 오르던 구멍]
+            // 예전엔 여기서 slopeSpeedBonus를 0으로 지웠다. 그러면 점프할 때마다 오르막 페널티가
+            // 통째로 초기화되고, 착지 후 하한까지 내려가는 데 1초 남짓 걸리니 그 전에 또 뛰면
+            // 페널티가 영영 안 쌓여 한계각을 넘는 비탈도 전속력으로 올라갔다. 공중에서는 누적을
+            // 얼려 두기만 하고, 착지하면 그 비탈의 floor 클램프가 즉시 다시 잡는다(평지로 돌아가면
+            // 접지 분기의 slopeAffected 게이트가 0으로 지운다). 공중 속도 자체는 규격표 고정값 그대로다.
+            wasAirborne = true;
+            airVelocity = rb.velocity;
+            lastTravelVelocity = Vector3.zero; // 공중에서는 이동 성분을 비탈에 대입하지 않았다.
             Vector3 airMove = DeflectAirMoveFromWall(move);
             rb.velocity = new Vector3(airMove.x * airControlMultiplier, rb.velocity.y, airMove.z * airControlMultiplier);
             // 회전은 건드리지 않는다(구는 자유 물리 회전 보존, 다면체는 PlayerVisualRoll이 시각만 처리).
@@ -201,8 +290,9 @@ public class PlayerMover : MonoBehaviour
 
         // 접지 중 velocity를 매 스텝 하드 대입하는 이 경로는(클래스 상단 주석) 항상 월드 XZ 평면
         // 기준으로 move를 대입했다 — 경사면에서는 그 수평 velocity가 비탈을 파고들거나 뜨는 방향이라,
-        // 매 스텝 물리 접촉이 그걸 강제로 되돌리는 충돌을 반복해 "미끄러지듯 씹히는" 느낌이 났다(구
-        // 전용 경로 — 정육면체/정사면체는 useTorqueRolling이라 이 문제가 없다). 바닥 법선 평면에
+        // 매 스텝 물리 접촉이 그걸 강제로 되돌리는 충돌을 반복해 "미끄러지듯 씹히는" 느낌이 났다
+        // (PlayerObjectMenuItem이 useTorqueRolling을 더 이상 켜지 않으므로 세 도형 모두 이 경로를
+        // 탄다 — 각속도 대입만 정육면체/정사면체의 FreezeRotation에 막혀 무효화된다). 바닥 법선 평면에
         // move를 투영해(속력은 보존) X/Z 방향만 비탈을 따라가게 하고, 각속도도 같은 법선 기준으로
         // 계산해 시각 회전축이 실제 이동 방향과 일치하게 한다(평지에선 법선이 Vector3.up이라 기존과
         // 동일하게 동작한다).
@@ -214,17 +304,141 @@ public class PlayerMover : MonoBehaviour
         // 보였다. Y는 항상 `rb.velocity.y`를 그대로 보존하고(중력/점프의 소유물), 투영은 X/Z 방향에만
         // 적용한다 — 원래 코드가 항상 지키던 계약을 그대로 유지한다.
         Vector3 groundNormal = groundContact != null ? groundContact.GroundNormal : Vector3.up;
+        // 평지(접선 성분이 0)와 무거운 도형(기본값에서 네모)은 경사 로직 전체에서 빠져 예전 동작
+        // 그대로 간다. 가감속·착지 충격·흘러내림 보존이 모두 같은 조건이어야 하므로 한 번만 판정한다.
+        bool slopeAffected = groundNormal.y <= idleStopMaxNormalY
+                             && PlayerWeight.Of(rb) < slopeAccelMaxWeight;
+        if (!slopeAffected) slopeSpeedBonus = 0f;
+
+        if (wasAirborne)
+        {
+            wasAirborne = false;
+            if (slopeAffected) ApplyLandingImpact(groundNormal);
+        }
+
         if (move.sqrMagnitude > 0.0001f)
         {
-            Vector3 slopeMove = Vector3.ProjectOnPlane(move, groundNormal).normalized * move.magnitude;
-            rb.velocity = new Vector3(slopeMove.x, rb.velocity.y, slopeMove.z);
+            // 속력은 더 이상 move.magnitude로 고정이 아니다 — 경사 가감속(SlopeSpeed)이 오르막에서
+            // 깎고 내리막에서 더한다. 방향(slopeDir)과 속력을 분리해 곱하므로 각속도도 같은
+            // slopeMove로 계산되어 실제 이동 속도와 계속 일치한다(구르는 연출이 안 어긋난다).
+            Vector3 slopeDir = Vector3.ProjectOnPlane(move, groundNormal).normalized;
+            Vector3 slopeMove = slopeDir * (slopeAffected
+                ? SlopeSpeed(move.magnitude, slopeDir, groundNormal)
+                : move.magnitude);
+
+            Vector3 target = new Vector3(slopeMove.x, 0f, slopeMove.z);
+            if (slopeAffected)
+            {
+                // [2026-08-10 1차 — 등고선 방향으로 걸으면 흘러내리지 않던 버그]
+                // SlopeSpeed는 중력의 비탈 방향 성분을 **진행 방향에 투영한 스칼라**만 다룬다. 등고선
+                // (오르내림 0) 방향으로 가면 그 내적이 정확히 0이라 중력의 접선 성분이 통째로 사라지고,
+                // XZ 대입이 흘러내림을 매 스텝 지워 비탈 위를 옆으로 활보하게 된다. 그래서 진행 방향
+                // 성분만 우리가 정하고 직교 성분은 물리에 맡긴다(무입력 분기가 대입을 건너뛰는 것과
+                // 같은 이유). 스칼라 누적기를 하나 더 두지 않은 이유는 slopeDir이 입력에 따라 매
+                // 프레임 회전해, 그 축에 저장한 값이 방향을 틀 때 함께 회전해 버리기 때문이다.
+                //
+                // [2026-08-10 2차 — 방향 전환 펌핑(위 수정이 만든 회귀)]
+                // 처음엔 `target += horizontal - Project(horizontal, target)`로 직교 성분을 **통째**
+                // 보존했다. 그러면 직전까지의 진행 속도가 방향을 트는 순간 새 진행 방향 기준으로는
+                // 직교 성분이 되어 살아남고, 그 위에 새 방향 전속력이 얹힌다(√(s²+v²)). 90° 전환만
+                // 반복하면 √2·s에서 멎지만, **비스듬한 방향으로 계속 가면** 우리가 넣은 속도가 다음
+                // 스텝에 다시 직교 성분으로 재해석되는 되먹임이 걸려 s/cosα로 발산했다(스텝 시뮬레이션
+                // 기준 20° 비탈·45° 진행에서 6초에 18 m/s 이상). 진행 방향 성분에만 걸리는
+                // downhillSpeedCap은 이 경로를 전혀 막지 못했다.
+                //
+                // 보존해야 할 것은 **중력이 만든 흘러내림**이지 플레이어 자신의 관성이 아니므로 둘을
+                // 가른다: (1) 흘러내림은 항상 비탈 아래를 향하니 그 축의 성분만 보고(임의 방향 관성은
+                // 축에서 벗어나 걸러지고, 오르막 쪽 음수는 버린다), (2) 그 축에서도 **직전 스텝에
+                // 우리가 대입한 이동 성분을 빼서** 물리(중력·마찰)가 만든 몫만 남긴다. (2)가 없으면
+                // 우리가 넣은 속도가 다음 스텝에 흘러내림으로 재해석돼 s/cosα로 발산한다(비스듬히
+                // 걸을 때). 마지막으로 내리막 상한으로 잘라 어떤 경우에도 절대 상한을 준다.
+                Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, groundNormal);
+                downhill = new Vector3(downhill.x, 0f, downhill.z).normalized;
+                Vector3 horizontal = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+                float drift = Mathf.Clamp(Vector3.Dot(horizontal - lastTravelVelocity, downhill),
+                                          0f, moveSpeed * downhillSpeedCap);
+                lastTravelVelocity = target;
+
+                // 진행 방향 성분은 SlopeSpeed가 이미 소유하므로 직교분만 더한다 — 정면 오르막/내리막
+                // 에서는 흘러내림이 target과 나란해 더해지는 값이 정확히 0(수치 무변화)이다.
+                Vector3 driftVec = downhill * drift;
+                target += driftVec - Vector3.Project(driftVec, target);
+            }
+            else lastTravelVelocity = Vector3.zero;
+            rb.velocity = new Vector3(target.x, rb.velocity.y, target.z);
             if (rollRadius > 0.0001f)
                 rb.angularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
         }
         else
         {
-            rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+            lastTravelVelocity = Vector3.zero; // 이 스텝엔 이동 성분을 대입하지 않는다(전부 물리의 몫).
+            // 여기서도 slopeSpeedBonus를 지우지 않는다(위 공중 분기와 같은 이유) — 지우면 비탈에서
+            // 입력을 한 프레임 뗐다 다시 누르는 것만으로 오르막 페널티가 초기화된다. 얼려 두면
+            // 다시 누른 순간 그 비탈의 floor 클램프가 잡아 곧바로 그 경사의 유지 속도로 들어간다.
+            // 입력이 없을 때 수평 속도를 0으로 대입하는 건 평지에서 "미끄러지지 않고 딱 멈추는"
+            // 감각을 위한 것이다. 그런데 경사면에서는 중력이 만드는 비탈 방향 성분이 거의 전부
+            // 수평 성분이라, 이 대입이 매 스텝 그걸 지워 도형이 비탈에 붙박이가 된다(경사각을
+            // 올려도 상수 0을 대입하므로 증상이 똑같다 — 2026-08-10 플레이테스트로 확인).
+            // 경사면에서는 대입을 건너뛰고 물리에 맡긴다. 마찰(PhysicMaterial)이 도형별로
+            // 얼마나 미끄러질지를 결정하므로 여기서 따로 도형 분기를 두지 않는다.
+            if (groundNormal.y > idleStopMaxNormalY)
+                rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
         }
+    }
+
+    // 착지 프레임 1회. 바닥으로 파고든 속도(법선 방향 성분)의 일부를 비탈 아래 방향 속도로 바꿔
+    // "쿵" 하고 밀려나게 하는 연출이다. 등반 차단 기능이 아니다 — 작고 빠른 홉은 충격 자체가 작아
+    // 거의 안 밀린다(등반 제한은 uphillLimitAngle이 전담한다). 호출부가 slopeAffected 안에서만
+    // 부르므로 평지(비탈 아래 방향이 정의되지 않는다)와 무거운 도형에서는 아예 실행되지 않는다.
+    // Y는 건드리지 않는다 — 충격을 수직으로 되돌리면 착지 튕김이 되어 점프/낙하 규격과 충돌한다.
+    private void ApplyLandingImpact(Vector3 groundNormal)
+    {
+        float impact = -Vector3.Dot(airVelocity, groundNormal);
+        if (landingImpactSlideRatio <= 0f || impact <= landingImpactMinSpeed) return;
+
+        // 아주 높은 곳에서 떨어지면 충격이 얼마든 커질 수 있으므로 여기서도 내리막 상한으로 자른다
+        // (이 컴포넌트가 비탈 아래로 넣는 속도는 전부 같은 상한을 공유한다).
+        Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, groundNormal).normalized;
+        float amount = Mathf.Min((impact - landingImpactMinSpeed) * landingImpactSlideRatio,
+                                 moveSpeed * downhillSpeedCap);
+        Vector3 kick = downhill * amount;
+        rb.velocity = new Vector3(rb.velocity.x + kick.x, rb.velocity.y, rb.velocity.z + kick.z);
+    }
+
+    // 경사에 따른 가감속. 이번 스텝에 낼 "비탈 방향 속력"을 돌려준다.
+    //
+    // 모델: 중력의 비탈 방향 성분(크기 g·sinθ)을 진행 방향에 투영한 값이 이 순간의 가감속도이고,
+    // 그것을 속력에 시간에 따라 누적한다. 오르막이면 음수라 점점 힘에 부치고, 내리막이면 양수라
+    // 점점 탄력이 붙으며, 등고선을 따라 옆으로 가면 정확히 0이다(경사면인데도 무변화가 자연히 성립).
+    // 목표 속도를 경사각으로 즉시 스케일하는 방식을 쓰지 않은 이유가 이 "시간에 따른 축적"이다.
+    //
+    // 하한(floor)이 오르막 한계각을 만든다: 진행 방향 오르막 각도가 uphillLimitAngle에 가까워질수록
+    // 유지 가능한 속력이 0으로 줄고, 넘으면 음수가 되어 입력을 유지해도 밀려 내려온다. 누적값 자체를
+    // [floor, cap] 범위로 클램프해(출력만 클램프하면) 오래 오른 뒤 방향을 바꿨을 때 쌓인 값이
+    // 한꺼번에 터지는 windup을 막는다.
+    //
+    // 적용 대상 판정(평지 제외 · 무게 임계)은 호출부가 slopeAffected로 이미 걸렀다 — 그 판정이
+    // 직교 성분 보존 여부와 같은 조건이라, 두 군데로 갈라지지 않게 호출부 한 곳에 모아 뒀다.
+    // 평지에서 누적값을 0으로 지우는 것도 그래서 호출부의 몫이다("지상 속도 = moveSpeed" 보장).
+    private float SlopeSpeed(float baseSpeed, Vector3 slopeDir, Vector3 groundNormal)
+    {
+        // 전역 중력이 아니라 이 바디의 실효 중력을 쓴다 — 무중력 버블 안에서는 비탈이 미는 힘도
+        // 같은 배율로 약해져야 앞뒤가 맞는다(PlayerJump가 √(2gH)에 실효 중력을 쓰는 것과 같은 이유).
+        // 버블이 런타임에 컴포넌트를 붙이므로 Awake 캐시가 아니라 그때그때 조회한다.
+        PlayerGravityOverride gravity = GetComponent<PlayerGravityOverride>();
+        float g = gravity != null ? gravity.EffectiveGravityMagnitude : Mathf.Abs(Physics.gravity.y);
+        float tangentAccel = Vector3.Dot(Vector3.ProjectOnPlane(Vector3.down * g, groundNormal), slopeDir)
+                             * slopeAccelMultiplier;
+
+        float climbAngle = Mathf.Asin(Mathf.Clamp(slopeDir.y, -1f, 1f)) * Mathf.Rad2Deg; // 오르막 +, 내리막 -
+        float cap = moveSpeed * downhillSpeedCap;
+        float floor = (climbAngle >= 0f && uphillLimitAngle > 0.01f)
+            ? Mathf.Max(baseSpeed * (1f - climbAngle / uphillLimitAngle), -cap)
+            : -cap;
+
+        slopeSpeedBonus = Mathf.Clamp(slopeSpeedBonus + tangentAccel * Time.fixedDeltaTime,
+                                      floor - baseSpeed, Mathf.Max(cap - baseSpeed, 0f));
+        return baseSpeed + slopeSpeedBonus;
     }
 
     // 실험 경로: 접지 중 velocity/각속도를 대입하지 않고 토크만 걸어, 지면 마찰이 그 토크를
@@ -284,6 +498,10 @@ public class PlayerMover : MonoBehaviour
     // 수직 속도(중력/낙하)는 유지해 공중에 뜨거나 낙하가 멈추는 부작용을 막는다.
     private void DampWhenUncontrolled()
     {
+        // 조작권을 되찾았을 때 잃기 전 경사 누적/착지 충격이 뒤늦게 되살아나지 않게 함께 지운다.
+        slopeSpeedBonus = 0f;
+        airVelocity = Vector3.zero;
+        lastTravelVelocity = Vector3.zero;
         float k = Mathf.Clamp01(uncontrolledDamping * Time.fixedDeltaTime);
         Vector3 vel = rb.velocity;
         rb.velocity = new Vector3(vel.x * (1f - k), vel.y, vel.z * (1f - k));
