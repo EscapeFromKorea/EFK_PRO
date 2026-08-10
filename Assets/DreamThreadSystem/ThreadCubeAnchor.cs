@@ -27,7 +27,7 @@ using UnityEngine;
 /// 그대로 스윙을 이어간다. 상태 저장도 필요 없고 컨트롤러도 무변경이다.
 ///
 /// [하드룰] 네모에 붙이는 건 런타임 자식 마커뿐이다(ThreadPinPlacer가 핀을 만드는 것과 같은 방식).
-/// PlayerSystem은 Kind / IsGrounded / velocity를 읽기만 한다 — 파일 수정 없음.
+/// PlayerSystem은 Kind / IsGrounded / velocity / PlayerVisualRoll.visual을 읽기만 한다 — 파일 수정 없음.
 /// </summary>
 public class ThreadCubeAnchor : MonoBehaviour
 {
@@ -98,10 +98,12 @@ public class ThreadCubeAnchor : MonoBehaviour
     // 네모가 파괴되면 고리도 함께 사라진다(수명 관리 불필요).
     private Transform EnsureRing(Transform cube)
     {
+        Vector3 ringLocalPos = RingLocalPosition(cube);
+
         Transform ring = cube.Find(RingName);
         if (ring != null)
         {
-            ring.localPosition = Vector3.up * anchorHeightOffset;
+            ring.localPosition = ringLocalPos;
             return ring;
         }
 
@@ -109,10 +111,33 @@ public class ThreadCubeAnchor : MonoBehaviour
         obj.name = RingName;
         Destroy(obj.GetComponent<Collider>()); // 앵커는 순수 마커 — 물리 접촉 없음(ThreadAnchor 주석 참고)
         obj.transform.SetParent(cube, false);
-        obj.transform.localPosition = Vector3.up * anchorHeightOffset;
+        obj.transform.localPosition = ringLocalPos;
         obj.transform.localScale = Vector3.one * markerSize;
         obj.AddComponent<ThreadAnchor>().connectRange = 0f;
         return obj.transform;
+    }
+
+    /// <summary>
+    /// 고리를 달 네모 Root 로컬 위치. 네모 Root는 FreezeRotation이라 "월드 수직으로 anchorHeightOffset"
+    /// 이 오래 성립했지만, 경사면에서는 시각 메쉬(Player_MeshVisual)만 바닥 법선에 눕고(localRotation)
+    /// 그만큼 법선 방향으로 내려앉는다(localPosition, PlayerVisualRoll의 침하 보정). 고리가 Root 기준을
+    /// 그대로 쓰면 눈에 보이는 네모는 비탈에 누워 있는데 고리만 수직으로 떠 "따로 노는" 그림이 된다.
+    /// 그래서 고리를 시각 메쉬에 리지드하게 붙은 것처럼 계산한다 — 회전 중심은 메쉬가 실제로 도는
+    /// 중심(Player_Mesh의 위치)이라야 고리가 기운 윗면 위에 얹힌다(Root 원점을 중심으로 돌리면
+    /// 고리가 옆으로 더 밀려 네모 실루엣 밖으로 나간다).
+    /// PlayerVisualRoll이 없으면(구, 혹은 정렬을 안 쓰는 씬 구성) 예전 그대로 월드 수직이다.
+    /// </summary>
+    private Vector3 RingLocalPosition(Transform cube)
+    {
+        Vector3 upright = Vector3.up * anchorHeightOffset;
+
+        PlayerVisualRoll roll = cube.GetComponent<PlayerVisualRoll>();
+        Transform visual = roll != null ? roll.visual : null;
+        if (visual == null || visual.parent == null) return upright;
+
+        Vector3 pivot = visual.parent.localPosition;       // 메쉬 회전 중심(Root 로컬, 평지 기준)
+        Vector3 center = pivot + visual.localPosition;     // 침하 보정까지 반영한 현재 중심
+        return center + visual.localRotation * (upright - pivot);
     }
 
     // 닻이 걸리는 상태는 따뜻한 금색, 안 걸리는 상태는 어둡게 — 플레이어가 "지금 걸 수 있나"를 눈으로 안다.

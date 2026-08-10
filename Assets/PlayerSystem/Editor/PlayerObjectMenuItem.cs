@@ -102,6 +102,11 @@ public static class PlayerObjectMenuItem
             PlayerVisualRoll visualRoll = root.AddComponent<PlayerVisualRoll>();
             visualRoll.visual = visual.transform;
             visualRoll.groundContact = shapeController.groundContact;
+            // 경사면 침하 보정 기준값. 정육면체는 반높이 0.5가 기하적으로 정확하지만(기본값),
+            // 정사면체는 밑면 3회 대칭이라 정육면체용 4각 대칭 식과 정확히 맞는 값이 없다
+            // (비탈 방향에 따라 이론값 0.29~0.57). 파고드는 것보다 살짝 뜨는 편이 덜 어색해
+            // 중앙보다 낮은 값에서 출발시키고, 최종 조정은 씬에서 눈으로 한다.
+            if (shape == PlayerShapeType.Tetrahedron) visualRoll.groundSinkFactor = 0.45f;
         }
 
         // 도형 스탯 에셋을 로드(없으면 요구사항 기본값으로 생성)해 부착한다. 실제 적용은 Start에서.

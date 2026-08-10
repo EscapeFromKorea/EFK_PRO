@@ -19,6 +19,17 @@ public class WindZone : MonoBehaviour
     [Tooltip("공중에 뜬 플레이어에게는 windSpeed에 이 배율을 추가로 곱한다(더 강하게 밀림).")]
     public float airMultiplier = 2f;
 
+    [Header("무게 기반 반응 (PlayerWeight.Of 재사용 — Kind 하드코딩 아님)")]
+    [Tooltip("이 무게 이상이면 바람을 전혀 받지 않는다(0배). 정육면체 기본 무게(3.0)를 기준으로 " +
+        "잡으면 정육면체는 면역, 그보다 가벼운 도형만 영향권에 든다.")]
+    public float heavyWeightCutoff = 3f;
+    [Tooltip("이 무게 이하면 lightWeightBoost 배율을 그대로(최대로) 받는다. 정사면체 기본 무게(1.0) " +
+        "기준이면 정사면체가 가장 강하게 밀린다.")]
+    public float lightWeightThreshold = 1f;
+    [Tooltip("lightWeightThreshold 이하 무게가 받는 배율(windSpeed/airMultiplier와 별도로 곱해진다). " +
+        "heavyWeightCutoff와 lightWeightThreshold 사이는 이 값에서 0까지 선형 보간된다.")]
+    public float lightWeightBoost = 2f;
+
     [Tooltip("바람 방향을 보여주는 파티클(WindZone_Visual). 지정하면 이 구역의 BoxCollider " +
         "size/center가 바뀔 때마다 파티클 방출 범위를 자동으로 맞춘다 — 안 그러면 씬에서 구역을 " +
         "리사이즈했을 때(특히 한쪽 면 핸들만 드래그하면 center도 같이 움직여) 파티클이 옛 중심에만 " +
@@ -51,7 +62,10 @@ public class WindZone : MonoBehaviour
         PlayerWindReceiver receiver = other.GetComponentInParent<PlayerWindReceiver>();
         if (receiver == null) return;
 
-        receiver.SetWindTarget(transform.forward * windSpeed, airMultiplier);
+        float weight = PlayerWeight.Of(receiver.GetComponent<Rigidbody>());
+        float weightMultiplier = Mathf.Lerp(0f, lightWeightBoost, Mathf.InverseLerp(heavyWeightCutoff, lightWeightThreshold, weight));
+
+        receiver.SetWindTarget(transform.forward * windSpeed * weightMultiplier, airMultiplier);
     }
 
     // OnTriggerExit는 따로 두지 않는다 — PlayerWindReceiver가 매 FixedUpdate 자신의 상태를
