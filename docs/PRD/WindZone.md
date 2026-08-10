@@ -104,6 +104,11 @@
   이동 경로를 쓰는지 판별하는 데만 쓴다. `PlayerMover.cs` 자체는 수정하지 않는다.
 - **PlayerShapeController — `IsGrounded()`(읽기 전용 참조).** 접지 여부로 `airMultiplier`
   적용 여부를 가른다.
+- **PlayerWeight.Of(읽기 전용 참조, 2026-08-05 6차 개편 신규).** "가벼운 도형일수록 더 세게
+  밀리고, 무거운 도형은 아예 안 밀린다"는 요구를 `Kind` 하드코딩이 아니라 저장소 공통 무게
+  판정 창구로 구현했다(Assets/CLAUDE.md의 "무거워서 못 한다류는 무게로" 규칙과 같은 이유 —
+  무중력 버블 등으로 실효 무게가 바뀌어도 특수 분기 없이 자연히 반영된다). `WindZone.
+  OnTriggerStay`가 매 스텝 호출한다.
 - AccelSystem과는 코드 의존이 없다(각자 독립적으로 `PlayerMover` 이후에 실행되는 수신자를
   둔다). 같은 순간 가속 발판과 돌풍 구역에 동시에 걸치는 상황은 아직 플레이테스트하지 않았다
   (§7 TBD).
@@ -121,6 +126,9 @@
 | 조작 제한 | 없음 — 이동/조향/점프 모두 그대로 동작, 바람은 덧셈만 | 확정 |
 | 시각화 | 구역 내부에 forward 방향으로 흐르는 파티클(항상 표시) | 확정 |
 | 트리거 박스 기본 크기 | 4×3×4 Unit(메뉴 생성 시) | 씬 튜닝 대상 |
+| `heavyWeightCutoff`(기본, 2026-08-05 6차 개편 신규) | 3(정육면체 기본 무게 — 이 이상은 바람 0배, 면역) | 씬 튜닝 대상 |
+| `lightWeightThreshold`(기본, 6차 개편 신규) | 1(정사면체 기본 무게 — 이 이하는 `lightWeightBoost`를 그대로 받음) | 씬 튜닝 대상 |
+| `lightWeightBoost`(기본, 6차 개편 신규) | 2배 | 씬 튜닝 대상 |
 
 ## 7. 남은 TBD
 
@@ -188,4 +196,10 @@ Main 모듈에서 `Scaling Mode`를 `Shape`로, `Start Size`를 `0.02` 근처로
 | 신고 증상 | 근본 원인 | 조치 |
 |---|---|---|
 | `airMultiplier` 미적용으로 정정한 뒤에도 실타래 매달림 중 여전히 많이 돎 | 진자 운동(ConfigurableJoint)은 조향으로 힘을 상쇄할 방법이 없어, 걷거나 구를 때와 같은 세기의 바람에도 훨씬 쉽게 통제를 잃는다 — `airMultiplier`만 빼는 것으로는 부족했다 | `PlayerWindReceiver.hangingWindMultiplier`(인스펙터) 추가 — 매달린 동안은 기본 세기 자체를 줄인다. `airMultiplier`는 여전히 미적용(둘은 별개 노브) |
+
+### 2026-08-05 (6차, 기능 추가 — 무게 기반 반응 세기)
+
+| 요청 사항 | 조치 |
+|---|---|
+| 일정 무게 이상은 바람에 영향받지 않고, 일정 무게 이하는 더 크게 영향받게(인스펙터 조정 가능) | `WindZone`에 `heavyWeightCutoff`/`lightWeightThreshold`/`lightWeightBoost` 3개 인스펙터 필드 추가. `OnTriggerStay`에서 `PlayerWeight.Of(receiver.GetComponent<Rigidbody>())`로 무게를 구하고, `Mathf.InverseLerp(heavyWeightCutoff, lightWeightThreshold, weight)`로 "무거움→가벼움"을 0→1로 매핑한 뒤 `Mathf.Lerp(0, lightWeightBoost, t)`로 배율을 만들어 `windSpeed`에 곱한다(무게 임계 사이는 선형 보간, 그 바깥은 InverseLerp가 자동으로 0/1에 클램프). 기존 무게 판정 창구(`PlayerWeight.Of`)를 그대로 재사용해 `Kind` 하드코딩을 피했다 — 무중력 버블 등으로 실효 무게가 바뀌면 이 반응도 자동으로 따라간다. 기본값은 현재 도형 무게(정사면체 1 / 구 1.5 / 정육면체 3)를 기준으로 잡아, 기본 상태에서 정육면체는 면역·정사면체는 최대 반응이 되게 했다 — §6·§3 참고. |
 | 5차 조치의 기본값 0.25로도 여전히 많이 돎(같은 날 재테스트) | 진자가 힘에 반응하는 민감도가 직관보다 훨씬 커서, 25%까지 줄여도 부족했다 | 실측으로 **0.007**(0.7%)까지 낮춰야 원하는 느낌이 확인됨 — 스크립트 기본값과 씬에 이미 배치된 플레이어 3개의 직렬화 값을 모두 0.007로 갱신 |
