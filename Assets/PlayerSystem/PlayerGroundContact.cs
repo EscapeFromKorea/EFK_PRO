@@ -40,6 +40,13 @@ public class PlayerGroundContact : MonoBehaviour
 
     public bool IsGrounded => Time.time - lastGroundedTime <= groundedGraceTime;
 
+    /// <summary>마지막으로 확인된 바닥 법선(둘 중 어느 판정이 잡았든). 평지 기본값은 Vector3.up —
+    /// PlayerMover의 경사면 롤링(레거시 경로, 구 전용)이 자기 raycast를 새로 쏘는 대신 이 값을
+    /// 읽는다. 이 컴포넌트는 이미 ownColliders로 자기 자신을 제외하고 판정하므로, PlayerMover가
+    /// 별도 raycast를 쏘면 자기 자신/다른 플레이어에 걸려 불안정한 법선을 얻을 위험이 있었다
+    /// (2026-08-05 실제로 이동이 구불거리는 버그로 드러남 — 판정 소스를 하나로 합쳤다).</summary>
+    public Vector3 GroundNormal { get; private set; } = Vector3.up;
+
     private void Awake()
     {
         ownColliders = transform.root.GetComponentsInChildren<Collider>(true);
@@ -58,6 +65,7 @@ public class PlayerGroundContact : MonoBehaviour
             if (hitBuffer[i].normal.y > groundNormalThreshold)
             {
                 lastGroundedTime = Time.time;
+                GroundNormal = hitBuffer[i].normal;
                 return;
             }
         }
@@ -73,6 +81,7 @@ public class PlayerGroundContact : MonoBehaviour
             if (contact.normal.y > groundNormalThreshold)
             {
                 lastGroundedTime = Time.time;
+                GroundNormal = contact.normal;
                 return;
             }
         }

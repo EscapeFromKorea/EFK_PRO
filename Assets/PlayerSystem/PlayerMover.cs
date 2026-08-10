@@ -132,11 +132,14 @@ public class PlayerMover : MonoBehaviour
 
     private Rigidbody rb;
     private PlayerShapeController shapeController;
+    private PlayerGroundContact groundContact;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
         shapeController = GetComponent<PlayerShapeController>();
+        // Player_Collider(자식)에 붙는다 — 경사면 롤링(레거시 경로)이 이미 필터링된 법선을 읽는 데 쓴다.
+        groundContact = GetComponentInChildren<PlayerGroundContact>();
 
         if (shapeController == null)
             groundLayer &= ~(1 << gameObject.layer);
@@ -196,9 +199,32 @@ public class PlayerMover : MonoBehaviour
             return;
         }
 
-        rb.velocity = new Vector3(move.x, rb.velocity.y, move.z);
-        if (rollRadius > 0.0001f)
-            rb.angularVelocity = Vector3.Cross(Vector3.up, move) / rollRadius;
+        // 접지 중 velocity를 매 스텝 하드 대입하는 이 경로는(클래스 상단 주석) 항상 월드 XZ 평면
+        // 기준으로 move를 대입했다 — 경사면에서는 그 수평 velocity가 비탈을 파고들거나 뜨는 방향이라,
+        // 매 스텝 물리 접촉이 그걸 강제로 되돌리는 충돌을 반복해 "미끄러지듯 씹히는" 느낌이 났다(구
+        // 전용 경로 — 정육면체/정사면체는 useTorqueRolling이라 이 문제가 없다). 바닥 법선 평면에
+        // move를 투영해(속력은 보존) X/Z 방향만 비탈을 따라가게 하고, 각속도도 같은 법선 기준으로
+        // 계산해 시각 회전축이 실제 이동 방향과 일치하게 한다(평지에선 법선이 Vector3.up이라 기존과
+        // 동일하게 동작한다).
+        //
+        // [2026-08-05 수정 — Y까지 투영값으로 통째로 대입했던 첫 시도의 회귀 버그]
+        // 처음엔 `rb.velocity = slopeMove`로 Y까지 통째로 대입했다 — 평지(법선=Up)에서는 slopeMove.y가
+        // 항상 0이 되므로, 이동 중(이 분기)에 점프가 걸려도 그 다음 물리 스텝에서(착지 유예 시간 중엔
+        // 여전히 이 분기가 실행된다) Y velocity가 즉시 0으로 덮어써져 "이동 중엔 점프가 안 되는" 것처럼
+        // 보였다. Y는 항상 `rb.velocity.y`를 그대로 보존하고(중력/점프의 소유물), 투영은 X/Z 방향에만
+        // 적용한다 — 원래 코드가 항상 지키던 계약을 그대로 유지한다.
+        Vector3 groundNormal = groundContact != null ? groundContact.GroundNormal : Vector3.up;
+        if (move.sqrMagnitude > 0.0001f)
+        {
+            Vector3 slopeMove = Vector3.ProjectOnPlane(move, groundNormal).normalized * move.magnitude;
+            rb.velocity = new Vector3(slopeMove.x, rb.velocity.y, slopeMove.z);
+            if (rollRadius > 0.0001f)
+                rb.angularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
+        }
+        else
+        {
+            rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+        }
     }
 
     // 실험 경로: 접지 중 velocity/각속도를 대입하지 않고 토크만 걸어, 지면 마찰이 그 토크를
