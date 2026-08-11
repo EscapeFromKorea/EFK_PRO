@@ -36,14 +36,29 @@ public class BreakableObject : MonoBehaviour
     [Tooltip("생성된 파편이 자동으로 사라지기까지의 시간(초).")]
     public float fragmentLifetime = 5f;
 
-    [Header("절차적 파편 (fragmentPrefabs가 비어 있을 때만 사용)")]
-    [Tooltip("절차적으로 생성할 파편 개수. FallingRockSystem의 shardCount(기본 6)보다 적게 잡아 " +
-             "조각 하나하나가 더 크게 보이게 한다.")]
+    [Header("절차적 파편 (fragmentPrefabs가 비어 있을 때만 사용) — 오브젝트 스케일에 비례")]
+    [Tooltip("스케일 (1,1,1) 기준 파편 개수. 실제 생성 개수는 오브젝트의 평균 스케일에 비례해 계산되고 " +
+             "(2026-08-11 추가) 아래 min/maxProceduralFragmentCount 사이로 clamp된다. FallingRockSystem의 " +
+             "shardCount(기본 6)보다 적게 잡아 조각 하나하나가 더 크게 보이게 한다.")]
     public int proceduralFragmentCount = 4;
 
-    [Tooltip("절차적 파편 크기 — 원본 localScale에 곱하는 비율. FallingRockSystem의 " +
-             "shardSizeRatio(기본 0.35)보다 크게 잡았다(사용자 요청 — 낙석 파편보다 큰 파편).")]
-    public float proceduralFragmentSizeRatio = 0.5f;
+    [Tooltip("스케일에 비례해 계산한 파편 개수의 하한. 오브젝트를 작게 스케일해도 파편이 0개가 " +
+             "되지 않게 막는다.")]
+    public int minProceduralFragmentCount = 2;
+
+    [Tooltip("스케일에 비례해 계산한 파편 개수의 상한. 오브젝트를 크게 스케일했을 때 파편이 과도하게 " +
+             "많아져 순간 부하가 튀는 것을 막는다.")]
+    public int maxProceduralFragmentCount = 16;
+
+    [Tooltip("절차적 파편 크기 — 원본 localScale에 곱하는 비율이라 오브젝트 스케일에 이미 비례한다. " +
+             "플레이테스트 결과 파편이 너무 커 기존값(0.5)의 1/3로 줄였다(2026-08-11, 사용자 확정) — " +
+             "FallingRockSystem의 shardSizeRatio(0.35)보다도 작다.")]
+    public float proceduralFragmentSizeRatio = 0.1667f;
+
+    [Tooltip("절차적 파편이 스폰 직후 작은 크기에서 최종 크기로 커지는 데 걸리는 시간(초). 즉시 " +
+             "최종 크기+흩어진 위치로 나타나면 원본이 순간적으로 파편으로 바뀌는 하드 컷처럼 보여서 " +
+             "추가했다(2026-08-11, 사용자 피드백). 0으로 두면 이전처럼 즉시 등장한다.")]
+    public float fragmentGrowDuration = 0.12f;
 
     [Header("폭발력")]
     [Tooltip("파편에 가할 폭발력 크기(Rigidbody.AddExplosionForce). 낮게 잡아 밖으로 터지기보다 " +
@@ -78,19 +93,21 @@ public class BreakableObject : MonoBehaviour
     {
         broken = true;
 
-        if (fragmentPrefabs != null && fragmentPrefabs.Count > 0)
+        GameObject prefab = (fragmentPrefabs != null && fragmentPrefabs.Count > 0)
+            ? fragmentPrefabs[Random.Range(0, fragmentPrefabs.Count)]
+            : null;
+
+        if (prefab != null)
         {
-            GameObject prefab = fragmentPrefabs[Random.Range(0, fragmentPrefabs.Count)];
-            if (prefab != null)
-            {
-                GameObject fragment = Instantiate(prefab, transform.position, transform.rotation);
-                foreach (Rigidbody body in fragment.GetComponentsInChildren<Rigidbody>())
-                    body.AddExplosionForce(explosionForce, hitPoint, explosionRadius);
-                Destroy(fragment, fragmentLifetime);
-            }
+            GameObject fragment = Instantiate(prefab, transform.position, transform.rotation);
+            foreach (Rigidbody body in fragment.GetComponentsInChildren<Rigidbody>())
+                body.AddExplosionForce(explosionForce, hitPoint, explosionRadius);
+            Destroy(fragment, fragmentLifetime);
         }
         else
         {
+            // 리스트에 슬롯은 있지만 그 슬롯이 비어있는 경우(디자이너가 아직 다 안 채움)도 절차적
+            // 파편으로 폴백한다 — 아니면 파괴됐는데 파편이 하나도 안 보이는 침묵 실패가 된다.
             SpawnProceduralFragments(hitPoint);
         }
 
@@ -108,23 +125,41 @@ public class BreakableObject : MonoBehaviour
 
     /// <summary>fragmentPrefabs가 비어 있을 때(아트 없이도 바로 파편이 보이도록) 원본 위치 근방에
     /// 작은 큐브 조각을 흩뿌린다. FallingRockSystem.Shatter의 절차적 생성 아이디어를 참고했지만
-    /// (코드는 복제하지 않는다 — 이 저장소 관례상 작은 패턴은 컴포넌트마다 각자 구현한다), 조각을
-    /// 더 크고 적게 잡고(proceduralFragmentSizeRatio 0.5 vs FallingRock 0.35), 위로 치우친 방향
-    /// 없이 explosionForce·explosionRadius를 낮게 잡아 튀어 오르기보다 중력 위주로 무너지도록
-    /// 했다(사용자 확정 — "후두둑 떨어지는" 느낌). 원본 렌더러의 머티리얼을 그대로 물려받아
-    /// 균열 텍스처와 시각적으로 어울린다.</summary>
+    /// (코드는 복제하지 않는다 — 이 저장소 관례상 작은 패턴은 컴포넌트마다 각자 구현한다), 위로
+    /// 치우친 방향 없이 explosionForce·explosionRadius를 낮게 잡아 튀어 오르기보다 중력 위주로
+    /// 무너지도록 했다(사용자 확정 — "후두둑 떨어지는" 느낌). 원본 렌더러의 머티리얼을 그대로
+    /// 물려받아 균열 텍스처와 시각적으로 어울린다.
+    ///
+    /// 크기(fragmentScale)는 localScale에 곱하는 비율이라 원래도 오브젝트 스케일에 비례했다. 개수는
+    /// 스케일과 무관하게 고정값이었는데(2026-08-11 발견), 레벨 디자이너가 같은 Breakable 프리팹을
+    /// 상황마다 다르게 스케일해 배치할 걸 감안해 평균 스케일에 비례하도록 바꿨다 — 큰 벽이 작은
+    /// 조각 4개로만 부서지면 허전해 보이고, 작은 오브젝트가 큰 오브젝트와 같은 개수를 뿌리면
+    /// 조각당 밀도가 과해진다. min/max로 clamp해 극단적 스케일에서도 0개나 성능을 해치는 대량
+    /// 생성으로 가지 않게 막는다.
+    ///
+    /// 스폰 위치 흩어짐 반경은 원본 오브젝트 크기 기준이다 — 조각들이 오브젝트 전체 면적 곳곳에서
+    /// 나온 것처럼 보이려면 이 정도로 넓게 퍼뜨려야 한다(2026-08-11, "한 지점에서 우르르 나온다"
+    /// 피드백으로 파편 크기 기준의 좁은 반경에서 되돌림 — 그 시도는 반경을 좁혀 "갑자기 변하는
+    /// 느낌"을 고치려 했지만, 그 문제의 실제 원인은 스폰 위치가 아니라 파편이 스폰 즉시 최종
+    /// 크기로 나타나는 것이었다. 그건 DestructionFragment(아래)가 담당하므로 반경은 원래 목적
+    /// (오브젝트 전역에 고르게 분포)대로 되돌려도 된다).</summary>
     private void SpawnProceduralFragments(Vector3 hitPoint)
     {
-        if (proceduralFragmentCount <= 0 || proceduralFragmentSizeRatio <= 0f) return;
+        if (proceduralFragmentSizeRatio <= 0f) return;
+
+        float avgScale = (transform.localScale.x + transform.localScale.y + transform.localScale.z) / 3f;
+        int fragmentCount = Mathf.Clamp(Mathf.RoundToInt(proceduralFragmentCount * avgScale),
+            minProceduralFragmentCount, maxProceduralFragmentCount);
+        if (fragmentCount <= 0) return;
 
         Renderer sourceRenderer = GetComponent<Renderer>();
         Material sharedMat = sourceRenderer != null ? sourceRenderer.sharedMaterial : null;
         Vector3 fragmentScale = transform.localScale * proceduralFragmentSizeRatio;
-        // 흩뿌리는 반경은 원본 절반 정도 - 조각들이 원본이 있던 자리에서 갈라져 나온 것처럼 보인다
-        // (FallingRock.Shatter와 같은 계산).
+        // 흩뿌리는 반경은 원본 절반 정도 - 조각들이 원본 전체 면적 여기저기서 갈라져 나온 것처럼
+        // 보인다(FallingRock.Shatter와 같은 계산).
         float spread = Mathf.Max(transform.localScale.x, transform.localScale.y, transform.localScale.z) * 0.5f;
 
-        for (int i = 0; i < proceduralFragmentCount; i++)
+        for (int i = 0; i < fragmentCount; i++)
         {
             GameObject fragment = GameObject.CreatePrimitive(PrimitiveType.Cube);
             fragment.name = $"{name}_Fragment{i}";
@@ -138,6 +173,9 @@ public class BreakableObject : MonoBehaviour
             // FallingRockSystem/CLAUDE.md "파편 질량 = 원본 / 파편수" 참고).
             fragBody.mass = 0.3f;
             fragBody.AddExplosionForce(explosionForce, hitPoint, explosionRadius);
+
+            DestructionFragment growth = fragment.AddComponent<DestructionFragment>();
+            growth.growDuration = fragmentGrowDuration;
 
             Destroy(fragment, fragmentLifetime);
         }

@@ -1,6 +1,9 @@
 # 물체 파괴 시스템 설계 문서 (Unity)
 
-> 이 문서는 구현 착수 전 참고용 스펙 문서입니다. 실제 코드 작성/수정은 사용자 승인(diff 확인) 후 진행합니다.
+> 상태: **구현 완료(`Assets/DestructionSystem/`). 씬 배치·수치 튜닝·플레이테스트는 아직 안 함.**
+> 구현 메모(코드만 봐서는 알기 어려운 "왜")는 `Assets/DestructionSystem/CLAUDE.md` 참고.
+> 아래 §3.1은 착수 전 의사코드이며, 실제 구현은 절차적 파편 폴백이 추가되는 등 세부가 달라졌다 —
+> §8 "구현 vs 설계 차이"에 실제 동작을 정리했다.
 
 **대상 엔진 버전: Unity 2022.3.62f3 (LTS)**
 
@@ -169,15 +172,14 @@ public class BreakableObject : MonoBehaviour
 
 ---
 
-## 6. 결정 필요 항목 (구현 착수 전 확인 필요)
+## 6. 결정 완료 항목 (구현 착수 전 결정 필요했던 것들 — 결과)
 
-1. `requiredWeight` 기준값 — 어떤 도형(조합)까지 통과시킬지의 레벨 디자인 판단(2.1 참고, 값 자체는
-   `PlayerShapeStats`로 이미 알려져 있어 "수치를 모른다"는 문제가 아니라 "어디를 기준선으로 삼을지"
-   설계 판단이다).
-2. Breakable 생성 툴에서 형태 프리셋을 프리팹으로 관리할지, PrimitiveType으로 즉석 생성할지
-3. 파편 오브젝트 풀링(Object Pooling) 적용 여부 — 동시 다발 파괴가 잦다면 성능상 고려 필요
-   (참고: `FallingRockSystem`은 풀링 없이 런타임 Instantiate/Destroy만 쓴다 — 이 저장소에서
-   풀링이 필수 관례는 아니다).
+1. `requiredWeight` 기준값 — **기본값 3.0(정육면체 단독 통과)으로 결정**(사용자 확정, 2026-08-11).
+   구+세모 협동만 통과시키려는 배치는 오브젝트별로 더 높게 잡으면 된다.
+2. Breakable 생성 툴 형태 프리셋 — **PrimitiveType 즉석 생성으로 결정**(`PlayerObjectMenuItem`/
+   `CatapultMenuItem`과 같은 패턴). 아트 에셋이 아직 없어 프리팹 프리셋을 만들 재료가 없었다.
+3. 파편 오브젝트 풀링 — **1차 구현에서는 안 함**(`FallingRockSystem`과 동일하게 런타임
+   Instantiate/Destroy). 동시 다발 파괴가 잦아지면 재검토.
 
 ---
 
@@ -194,3 +196,25 @@ public class BreakableObject : MonoBehaviour
 - (전문가 검토 반영) "CharacterController 여부" 결정 항목 제거 — 코드로 이미 Rigidbody 기반임을 확인
 - (전문가 검토 반영) 1장에 레벨 디자인 목적("새 경로를 여는 장애물") 명시, `FallingRockSystem`과의
   관계(독립 기믹, 파편 처리 방식은 참고 가능) 명시
+
+---
+
+## 8. 구현 vs 설계 차이 / 코드 점검 결과 (2026-08-11)
+
+§3.1 의사코드 이후 실제 구현에서 추가되거나 달라진 부분.
+
+- **절차적 파편 폴백이 새로 추가됐다** — §3.2는 "파편 프리팹은 미리 준비돼 있어야 한다"를
+  전제했지만, `fragmentPrefabs`가 비어 있는 상태(Tools로 막 생성한 직후)에서도 바로 파편이 보이길
+  원해서(사용자 요청) `BreakableObject.SpawnProceduralFragments`가 큐브 파편을 즉석 생성하는
+  경로가 생겼다. `FallingRock.Shatter`의 절차적 생성 아이디어를 참고했으나 코드는 복제하지
+  않았다(저장소 관례). 상세 수치 근거는 `Assets/DestructionSystem/CLAUDE.md` 참고.
+- **`broken` 플래그로 이중 파괴를 막는다** — 의사코드에는 없던 가드. `Break()` 진입 즉시
+  `true`로 세워, 같은 물리 스텝에 다른 콜라이더로부터 또 `OnCollisionEnter`가 들어와도(Unity는
+  콜백을 직렬로 호출하므로) 무시된다.
+- **코드 점검 중 발견 → 수정: `fragmentPrefabs`에 빈 슬롯(null)이 섞여 있으면 파편이 하나도
+  안 보이는 침묵 실패가 있었다.** `fragmentPrefabs.Count > 0`이면 절차적 폴백 없이 곧장 랜덤
+  인덱스를 뽑는데, 디자이너가 리스트 슬롯만 늘려두고 아직 다 채우지 않은 상태(작업 중 흔한
+  상태)에서 하필 빈 슬롯이 뽑히면 오브젝트는 비활성화되는데 파편은 전혀 안 뜬다. 랜덤으로 뽑은
+  슬롯이 `null`일 때도 절차적 파편으로 폴백하도록 수정(2026-08-11).
+- 나머지(무게 판정 `PlayerWeight.Of`, 컴포넌트 기준 판별, `Breakable` 태그 자동 생성, 균열
+  텍스처 절차 생성)는 §2~4 설계 그대로 구현됐다 — 코드 대조 완료, 추가로 발견된 결함 없음.
