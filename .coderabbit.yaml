@@ -1,0 +1,35 @@
+language: "ko-KR"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    - "!Library/**"
+    - "!Logs/**"
+    - "!UserSettings/**"
+    - "!ProjectSettings/**"
+    - "!**/*.meta"
+    - "!**/*.asset"
+    - "!**/*.unity"
+    - "!**/*.prefab"
+
+  path_instructions:
+    - path: "Assets/**/*.cs"
+      instructions: >
+        이 프로젝트는 바이브코딩(AI 어시스턴트 활용 코딩)으로 작성되는 Unity C# 스크립트가 많다.
+        사소한 스타일/네이밍 지적보다, 아래와 같은 치명적 문제를 우선적으로 찾아서 지적하라:
+        - Null Reference 가능성 (GetComponent 실패, 인스펙터 미할당 참조 등)
+        - Update/FixedUpdate에서의 성능 문제 (매 프레임 GetComponent, GC 할당 등)
+        - Coroutine/이벤트 구독 누수 (OnDestroy/OnDisable에서 해제 누락)
+        - Unity 생명주기 메서드 오용 (Awake vs Start 타이밍 문제 등)
+        - 싱글톤/정적 상태로 인한 멀티플레이어 동기화 버그
+        - 스레드 안전성 문제
+        문제를 지적할 때는 왜 치명적인지와 어떻게 고칠 수 있는지를 초보자도 이해할 수 있게 설명하라.
+
+chat:
+  auto_reply: true
