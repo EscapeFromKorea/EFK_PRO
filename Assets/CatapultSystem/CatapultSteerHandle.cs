@@ -105,6 +105,23 @@ using UnityEngine;
 /// 보고). `HandleDockInput()`의 C키 해제 게이트가 이미 `dockedMover.IsControlled`를 확인하던 것과
 /// 똑같은 조건을 조향 입력 읽기에도 추가했다 — 두 입력 경로(C키/좌우 이동)가 이제 정확히 같은
 /// "조작 대상 확인" 기준을 공유한다.
+///
+/// [26차 개편(2026-08-06) — 도킹 중 구가 각도에 따라 링 위치에 안 맞는 버그, 가설 기반 수정]
+/// 사용자 재현 보고: "구가 C키를 눌러 링크했을 때, 각도(조향 회전량)에 따라 구가 링 위치에 맞게
+/// 움직이지 않는다." `Dock()`은 구를 `dockAnchor`(회전하는 투석기 루트의 자식)에 부모화하고
+/// `localPosition/localRotation`을 identity로 스냅하므로, 순수 Transform 계층 규칙상으로는 조향
+/// 각도와 무관하게 항상 정확히 링 위치를 따라가야 한다 — 그런데 구 Rigidbody는
+/// `PlayerObjectMenuItem.cs:140`이 기본으로 `RigidbodyInterpolation.Interpolate`를 켜 둔다. 이건
+/// `CatapultBucket`의 탑승자가 16차 개편에서 겪은 것과 정확히 같은 함정이다 — 킨네마틱
+/// Rigidbody가 Interpolate 모드인 채로 부모 Transform 회전에 "간접적으로" 끌려가면 Unity의 보간
+/// 버퍼가 그 변화를 제대로 못 쫓아가 `Update()`가 읽는 렌더링용 Transform이 실제 물리 자세와
+/// 어긋나거나 지연될 수 있다 — 회전량(각도)이 클수록 어긋남이 커지므로 "각도에 따라 안 맞는다"는
+/// 보고와 정확히 일치한다. `CatapultBucket.Board()`/`ConsumeOccupant()`가 이미 쓰는
+/// `occupantOriginalInterpolation` 저장→복원 패턴을 `Dock()`/`Undock()`에 그대로 이식했다 —
+/// 도킹 시작 시 `body.interpolation`을 `None`으로 끄고 `dockedOriginalInterpolation`에 원래 값을
+/// 저장했다가, `Undock()`(비킨네마틱으로 복귀)에서 되돌린다. **이건 가설 기반 수정이다 —
+/// `CatapultBucket`이 겪은 것과 같은 코드 구조(킨네마틱+회전 부모+Interpolate)라는 정황 근거로
+/// 판단했을 뿐, 이 증상을 실측으로 재현·확인하지는 못했다** — 다음 플레이테스트로 검증이 필요하다.
 /// </summary>
 public class CatapultSteerHandle : MonoBehaviour
 {
@@ -148,6 +165,9 @@ public class CatapultSteerHandle : MonoBehaviour
     private PlayerMover dockedMover;
     private PlayerShapeController dockedShapeController;
     private Transform dockedOriginalParent;
+    // 26차 개편 — 도킹 중 보간을 끈다(CatapultBucket.occupantOriginalInterpolation과 같은 이유·
+    // 패턴, 클래스 상단 "26차 개편" 주석 참고). Undock()에서 원래 값으로 되돌린다.
+    private RigidbodyInterpolation dockedOriginalInterpolation;
 
     void Awake()
     {
@@ -262,6 +282,16 @@ public class CatapultSteerHandle : MonoBehaviour
 
         body.isKinematic = true; // ThreadPinPlacer의 벽 부착과 같은 선택 — 조인트도 velocity 다툼도 없다.
 
+        // 26차 개편 — 탑승 중엔 보간을 끈다(CatapultBucket.Board()와 같은 이유). 구는
+        // PlayerObjectMenuItem.cs가 기본으로 RigidbodyInterpolation.Interpolate를 켜 두는데, 킨네마틱
+        // Rigidbody가 이 모드인 채로 부모(dockAnchor) Transform 회전에 간접적으로 끌려가면 Unity의
+        // 보간 버퍼가 그 변화를 제대로 못 쫓아가 렌더링용 Transform이 실제 자세와 어긋나거나 지연될
+        // 수 있다(Unity 알려진 함정, CatapultBucket이 16차 개편에서 겪은 것과 같은 종류 — 조향 회전이
+        // 클수록 어긋남이 커져 "각도에 따라 링 위치에 안 맞는다"는 증상과 일치한다). Undock()에서
+        // 원래 값으로 되돌린다.
+        dockedOriginalInterpolation = body.interpolation;
+        body.interpolation = RigidbodyInterpolation.None;
+
         // dockAnchor에 부모화해 위치/회전을 스냅한다 — 조향으로 투석기 루트가 돌 때 도킹된 구가
         // 그 회전을 그대로 따라가야 "손잡이를 쥐고 함께 도는" 느낌이 난다(클래스 상단 "도킹 시
         // 하는 일" 주석 참고).
@@ -297,6 +327,10 @@ public class CatapultSteerHandle : MonoBehaviour
             // 명시적 확정, 클래스 상단 "해제" 주석 참고).
             dockedBody.transform.SetParent(dockedOriginalParent, true);
             dockedBody.isKinematic = false;
+            // 26차 개편 — 도킹 중 꺼뒀던 보간을 해제 즉시 원래 값으로 되돌린다(CatapultBucket.
+            // ConsumeOccupant()와 같은 이유 — 해제 후엔 다시 비킨네마틱 실제 물리로 움직이므로 시각적
+            // 떨림 방지가 필요하다).
+            dockedBody.interpolation = dockedOriginalInterpolation;
         }
 
         if (dockedMover != null) dockedMover.ExternallyDriven = false;
