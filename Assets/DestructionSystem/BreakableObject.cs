@@ -72,6 +72,13 @@ public class BreakableObject : MonoBehaviour
              "증발했다가 부풀어 오르는 역효과가 난다.")]
     public float fragmentGrowDuration = 0.12f;
 
+    [Tooltip("절차적 파편이 수명 끝에서 투명해지며 사라지는 데 걸리는 시간(초). 두 경로(격자/구 폴백) " +
+             "공통이다 — 등장 연출은 경로마다 다르지만 퇴장은 같아도 된다. 0으로 두면 예전처럼 수명 " +
+             "끝에 한 프레임에 사라진다(하드 팝). fragmentLifetime보다 크면 수명만큼으로 줄여 " +
+             "적용된다. fragmentPrefabs로 지정한 아트 파편에는 적용되지 않는다(그쪽 소멸 연출은 " +
+             "프리팹이 알아서 할 몫이다).")]
+    public float fragmentFadeDuration = 0.6f;
+
     [Header("폭발력 (구 폴백 경로 전용)")]
     [Tooltip("[구 폴백 경로 전용] 랜덤 파편에 가할 폭발력 크기(Rigidbody.AddExplosionForce). 낮게 " +
              "잡아 밖으로 터지기보다 중력 위주로 '후두둑' 무너지는 느낌을 낸다(사용자 확정). 격자 " +
@@ -190,7 +197,11 @@ public class BreakableObject : MonoBehaviour
             minProceduralFragmentCount, maxProceduralFragmentCount);
         if (fragmentCount <= 0) return;
 
-        Renderer sourceRenderer = GetComponent<Renderer>();
+        // GetComponentInChildren이다 - 이 저장소의 계층 관례는 시각 메쉬를 자식에 두는 쪽이고
+        // (Player_MeshVisual, Hourglass_RockVisual), 루트에서만 찾으면 그런 Breakable에서 렌더러가
+        // null이 돼 아래 바운즈가 1x1x1 폴백으로 떨어진다 - 12x8 벽이 1 크기 조각 더미로 부서지는
+        // 침묵 실패였다(2026-08-14 코드 리뷰에서 발견. 머티리얼도 못 물려받아 파편이 흰색이 됐다).
+        Renderer sourceRenderer = GetComponentInChildren<Renderer>();
         Material sharedMat = sourceRenderer != null ? sourceRenderer.sharedMaterial : null;
         Vector3 fragmentScale = transform.localScale * proceduralFragmentSizeRatio;
 
@@ -229,10 +240,12 @@ public class BreakableObject : MonoBehaviour
             fragBody.maxDepenetrationVelocity = 1f;
             fragBody.AddExplosionForce(explosionForce, hitPoint, explosionRadius);
 
+            // 수명·소멸도 DestructionFragment가 맡는다(Destroy(obj, t)를 쓰지 않는다) — 페이드가
+            // 끝난 뒤에 사라져야 하므로 둘을 한 컴포넌트가 함께 봐야 한다.
             DestructionFragment growth = fragment.AddComponent<DestructionFragment>();
             growth.growDuration = fragmentGrowDuration;
-
-            Destroy(fragment, fragmentLifetime);
+            growth.lifetime = fragmentLifetime;
+            growth.fadeDuration = fragmentFadeDuration;
         }
     }
 
@@ -248,7 +261,9 @@ public class BreakableObject : MonoBehaviour
     /// 없다. 세기에만 relativeVelocity의 크기를 쓴다(크기는 부호 문제가 없다).</summary>
     private void SpawnGridFragments(Vector3 hitPoint, float impactSpeed)
     {
-        Renderer sourceRenderer = GetComponent<Renderer>();
+        // 랜덤 경로와 같은 이유로 GetComponentInChildren이다 — 거기 주석 참고. 격자 경로에서는
+        // 형태 정합이 기능의 전부라 렌더러를 놓치면 기믹 자체가 무의미해진다.
+        Renderer sourceRenderer = GetComponentInChildren<Renderer>();
         Bounds localBounds = sourceRenderer != null
             ? sourceRenderer.localBounds
             : new Bounds(Vector3.zero, Vector3.one);
@@ -306,7 +321,12 @@ public class BreakableObject : MonoBehaviour
             float falloff = Mathf.Lerp(1f, GridMinSpeedRatio, Mathf.Clamp01(dist / falloffRange));
             body.AddForce(dir * (speedBase * falloff), ForceMode.VelocityChange);
 
-            Destroy(fragment, fragmentLifetime);
+            // growDuration 0 — 격자 조각에 성장 연출은 금물이다(위 클래스 주석). 소멸 페이드만
+            // 랜덤 경로와 공유한다: 등장은 경로마다 달라야 하지만 퇴장이 하드 팝인 건 양쪽 다 문제였다.
+            DestructionFragment life = fragment.AddComponent<DestructionFragment>();
+            life.growDuration = 0f;
+            life.lifetime = fragmentLifetime;
+            life.fadeDuration = fragmentFadeDuration;
         }
     }
 
