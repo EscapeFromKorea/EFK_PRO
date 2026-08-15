@@ -103,6 +103,11 @@ public class CloudTrampoline : MonoBehaviour
     // 딕셔너리를 순회하며 지울 수 없어 쓰는 임시 버퍼(매 스텝 할당하지 않으려고 필드로 둔다).
     private readonly List<Rigidbody> boostCleanup = new List<Rigidbody>();
 
+    // "발밑에 뭐가 있나" 확인 거리(무게중심 → 바닥). PlayerGroundContact의 SphereCast 거리(0.6)에
+    // 도형 반 높이와 커지기 패드로 부푼 경우까지 얹은 여유값이다. 접지가 잡힌 바디에만 쏘므로
+    // 넉넉해도 비용이 없고(플레이어 3개), 가장 가까운 히트만 쓰므로 길어서 틀릴 일도 없다.
+    private const float GroundProbeDistance = 3f;
+
     // 페이드 대상: 구름 시각(자식 puff 렌더러들). 지지/도약 콜라이더는 루트에 있는 supportCollider.
     private readonly List<Renderer> renderers = new List<Renderer>();
     private readonly List<Color> baseColors = new List<Color>();
@@ -206,8 +211,14 @@ public class CloudTrampoline : MonoBehaviour
     /// 그것만으로는 안 된다: 그 컴포넌트는 아래로 SphereCast(기본 0.6 U)를 쏘므로 <b>이 판으로
     /// 되돌아오는 하강 중 접촉 몇 프레임 전에 이미 IsGrounded가 켜진다.</b> 그 순간 riders에는 아직
     /// 안 들어와 있어서, 가드가 없으면 같은 판으로 돌아오는 정상 콤보가 매번 착지 직전에 초기화된다.
-    /// 그래서 "판 발자국 위 공중"은 제외한다 — 그 위치에서 갈 곳은 이 판뿐이라 어차피 다음 몇 스텝
-    /// 안에 riders로 들어온다.
+    ///
+    /// 그래서 접지가 잡힌 바디에 한해 <b>발밑에 실제로 무엇이 있는지</b>를 직접 확인한다 — 그게
+    /// 이 판이면 "돌아오는 중"이라 콤보를 유지하고, 다른 것이면 다른 데 착지한 것이라 버린다.
+    /// 처음에는 "판 발자국 XZ 안 + 중심보다 위"라는 위치 근사를 썼는데, 구름 <b>위에 다른 발판이
+    /// 겹쳐</b> 놓인 배치에서는 그 발판에 착지해도 근사가 참이라 콤보가 남았다(2026-08-15 PR 점검).
+    /// 레이캐스트는 가장 가까운 것을 돌려주므로 위에 겹친 발판이 이 판을 가린다.
+    /// (SphereCast가 아니라 Raycast인 이유: 시작점이 바디 자기 콜라이더 안이라 자기 자신은 자동으로
+    /// 제외되고, 겹친 채 시작하는 SphereCast는 거리 0 히트로 쓰레기값을 준다.)
     ///
     /// PlayerGroundContact가 없는 바디(계층 관례를 안 따르는 오브젝트)는 초기화되지 않고 예전처럼
     /// 누적만 이어간다 — 조용히 안 도는 대신 기능이 하나 덜한 쪽으로 열화된다.</summary>
@@ -216,21 +227,21 @@ public class CloudTrampoline : MonoBehaviour
         if (boostSteps.Count == 0) return;
 
         boostCleanup.Clear();
-        Bounds footprint = supportCollider.bounds;
 
         foreach (Rigidbody rb in boostSteps.Keys)
         {
             if (rb == null) { boostCleanup.Add(rb); continue; }
             if (riders.Contains(rb)) continue; // 이 판 위에 있다 — 콤보 유지.
 
-            Vector3 p = rb.worldCenterOfMass;
-            bool overThisPlate = p.y > footprint.center.y &&
-                                 p.x >= footprint.min.x && p.x <= footprint.max.x &&
-                                 p.z >= footprint.min.z && p.z <= footprint.max.z;
-            if (overThisPlate) continue; // 이 판으로 되돌아오는 중 — 위 주석의 SphereCast 선행 감지.
-
             PlayerGroundContact ground = rb.GetComponentInChildren<PlayerGroundContact>();
-            if (ground != null && ground.IsGrounded) boostCleanup.Add(rb);
+            if (ground == null || !ground.IsGrounded) continue;
+
+            // 접지가 잡혔다. 발밑이 이 판이면 되돌아오는 중(위 주석), 아니면 다른 데 착지한 것이다.
+            if (Physics.Raycast(rb.worldCenterOfMass, Vector3.down, out RaycastHit hit,
+                    GroundProbeDistance, ~0, QueryTriggerInteraction.Ignore)
+                && hit.collider == supportCollider) continue;
+
+            boostCleanup.Add(rb);
         }
 
         foreach (Rigidbody rb in boostCleanup) boostSteps.Remove(rb);
