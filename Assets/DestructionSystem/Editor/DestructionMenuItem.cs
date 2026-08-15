@@ -142,6 +142,10 @@ public static class DestructionMenuItem
         // 조용히 죽는다 — 씬에서는 "타격 부위가 잘게 안 부서지네" 정도로만 보여 원인을 찾기 어렵다.
         // 값을 하드코딩하지 않고 컴포넌트에서 직접 읽어, 기본값을 바꾸면 이 점검이 같이 따라온다.
         GameObject probe = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        // HideAndDontSave — 이 프로브는 열린 씬에 만들어진다. 그냥 두면 점검 메뉴를 돌린 것만으로
+        // 씬에 dirty 표시가 붙는데, 이 저장소에서 SampleScene은 텍스트 머지도 임의 되돌리기도
+        // 금지된 지뢰라 점검 도구가 씬 상태를 건드려서는 안 된다(2026-08-14 코드 리뷰).
+        probe.hideFlags = HideFlags.HideAndDontSave;
         BreakableObject defaults = probe.AddComponent<BreakableObject>();
         int defTarget = defaults.proceduralFragmentCount;
         int defMin = defaults.minProceduralFragmentCount;
@@ -272,6 +276,10 @@ public static class DestructionMenuItem
         for (int i = 0; i < pixels.Length; i++) pixels[i] = baseColor;
         tex.SetPixels(pixels);
 
+        // 시드를 고정하되 전역 상태는 원래대로 되돌린다 — InitState는 UnityEngine.Random 전역을
+        // 갈아끼우므로, 복구하지 않으면 같은 에디터 세션에서 뒤이어 도는 다른 절차적 생성이 이
+        // 시드를 물려받는다(2026-08-14 코드 리뷰).
+        Random.State prevRandomState = Random.state;
         Random.InitState(12345);
         const int crackCount = 5;
         for (int c = 0; c < crackCount; c++)
@@ -290,6 +298,7 @@ public static class DestructionMenuItem
             }
         }
 
+        Random.state = prevRandomState;
         tex.Apply();
         return tex;
     }

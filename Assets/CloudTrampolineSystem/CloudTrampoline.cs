@@ -26,8 +26,16 @@ using UnityEngine;
 /// ponytail: 승객 운반은 position 대입이라 보간(Interpolate) 기준 포즈를 매 스텝 갱신한다 — 플레이테스트에서
 /// 판 위 도형이 떠는 지터가 보이면 구름 쪽 interpolation을 None으로 맞춰 표현을 일치시킨다(미확인).
 ///
+/// 연속 도약 부스트(2단계):
+/// 같은 구름에서 이어 튕길 때마다 목표 높이가 heightBoostPerStep씩 오른다(기본 6 → 8 → 10 → 12,
+/// maxBoostSteps에서 천장). 단수는 <b>바디별·판별로</b> 따로 쌓여, 구와 세모가 서로의 진척을 나눠 갖지
+/// 않고 판 두 개를 오가며 쌓을 수도 없다(BounceHeightFor 주석). <b>이 판이 아닌 곳에 착지하면 누적이
+/// 사라진다</b>(DropBoostOfBodiesLandedElsewhere) — 콤보는 한 판에서 이어 튕기는 동안만 유지된다.
+/// 무거운 도형은 눌러앉기 밴드에서 걸려
+/// 발사 경로에 오지 않으므로 "구·세모만 부스트를 쌓는다"가 Kind 분기 없이 성립한다.
+///
 /// "위에서 착지" 판정·발사 위임은 JumpSystem/JumpPad 패턴을, 알파 페이드+콜라이더 타이밍은
-/// RainbowBridgeSystem 패턴을 이식했다(두 원본 모두 수정하지 않음). 도형별 부스트(2단계)는 TBD.
+/// RainbowBridgeSystem 패턴을 이식했다(두 원본 모두 수정하지 않음).
 /// </summary>
 [RequireComponent(typeof(Collider))]
 public class CloudTrampoline : MonoBehaviour
@@ -38,16 +46,24 @@ public class CloudTrampoline : MonoBehaviour
     public float baseBounceHeight = 6f;
 
     [Header("Overload Collapse (무게 과부하 붕괴)")]
-    [Tooltip("구름 위 합산 질량이 이 값 이상이면 튕기지 않고 눌러앉는다(구름이 버팀). " +
-             "세트 B에서 네모(3.0) 단독이 눌러앉는 기준.")]
+    [Tooltip("구름 위 합산 무게가 이 값 이상이면 튕기지 않고 눌러앉는다(구름이 버팀). " +
+             "실제 에셋 질량(구1.5/세모1.0/네모3.0)에서 네모 단독이 눌러앉는 기준.")]
     public float restMassThreshold = 3.0f;
 
-    [Tooltip("구름 위 합산 질량이 이 값 이상이면 과부하로 구름이 붕괴한다. " +
-             "세트 B에서 네모+다른 도형(≥4.0) 기준.")]
+    [Tooltip("구름 위 합산 무게가 이 값 이상이면 과부하로 구름이 붕괴한다. " +
+             "실제 에셋 질량에서 네모+다른 도형(≥4.0) 기준 — 구+세모(2.5)는 둘 다 튕긴다.")]
     public float collapseMassThreshold = 3.5f;
 
     [Tooltip("붕괴 후 다시 나타나기까지 숨어 있는 시간(초).")]
     public float reappearDelaySec = 5f;
+
+    [Header("Bounce Boost (2단계 — 연속 도약 부스트)")]
+    [Tooltip("같은 구름에서 연속으로 튕길 때마다 도약 높이에 더할 값(Unit). 기본 2면 6 → 8 → 10 → 12.")]
+    public float heightBoostPerStep = 2f;
+
+    [Tooltip("부스트 최대 단수. 3이면 baseBounceHeight + 3 × heightBoostPerStep이 천장이다(기본 12 U). " +
+             "0으로 두면 부스트가 꺼지고 1단계와 똑같이 항상 baseBounceHeight로만 튕긴다.")]
+    public int maxBoostSteps = 3;
 
     [Tooltip("사라짐/나타남 알파 페이드 시간(초). 0이면 즉시 전환.")]
     public float fadeDuration = 0.45f;
@@ -72,6 +88,25 @@ public class CloudTrampoline : MonoBehaviour
 
     // 구름 위에 있는 플레이어 Rigidbody들(합산 질량 계산용).
     private readonly HashSet<Rigidbody> riders = new HashSet<Rigidbody>();
+
+    // 바디별 부스트 단수. 도형별로 따로 쌓이는 것은 이 딕셔너리가 바디 단위라 자동으로 성립한다
+    // (Kind 분기 없음 - 저장소 규칙). 이 판의 필드이므로 부스트는 판마다 독립이다.
+    private readonly Dictionary<Rigidbody, int> boostSteps = new Dictionary<Rigidbody, int>();
+
+    // 바디가 "마지막으로 튕긴 판". 판을 옮겨 다니며 쌓는 것을 막으려면 자기 판 정보만으로는 알 수 없어
+    // (A에서 튕기고 B를 거쳐 A로 돌아와도 A 입장에서는 그냥 두 번째 튕김이다) 판 전체가 공유한다.
+    // ponytail: static 딕셔너리라 파괴된 바디 키가 남는다. 플레이어 바디는 3개 고정이라 프루닝을 넣지
+    // 않았다 - 런타임에 생멸하는 바디가 이 판을 밟게 되면 그때 SlowZone식 주기 프루닝을 붙인다.
+    private static readonly Dictionary<Rigidbody, CloudTrampoline> lastBounced =
+        new Dictionary<Rigidbody, CloudTrampoline>();
+
+    // 딕셔너리를 순회하며 지울 수 없어 쓰는 임시 버퍼(매 스텝 할당하지 않으려고 필드로 둔다).
+    private readonly List<Rigidbody> boostCleanup = new List<Rigidbody>();
+
+    // "발밑에 뭐가 있나" 확인 거리(무게중심 → 바닥). PlayerGroundContact의 SphereCast 거리(0.6)에
+    // 도형 반 높이와 커지기 패드로 부푼 경우까지 얹은 여유값이다. 접지가 잡힌 바디에만 쏘므로
+    // 넉넉해도 비용이 없고(플레이어 3개), 가장 가까운 히트만 쓰므로 길어서 틀릴 일도 없다.
+    private const float GroundProbeDistance = 3f;
 
     // 페이드 대상: 구름 시각(자식 puff 렌더러들). 지지/도약 콜라이더는 루트에 있는 supportCollider.
     private readonly List<Renderer> renderers = new List<Renderer>();
@@ -142,6 +177,8 @@ public class CloudTrampoline : MonoBehaviour
     /// <summary>두 지점 왕복 + 위에 얹힌 도형 운반. pointA/pointB가 비어 있으면 아무 일도 하지 않는다.</summary>
     private void FixedUpdate()
     {
+        DropBoostOfBodiesLandedElsewhere();
+
         // 숨어 있는 동안(콜라이더 off)은 제자리에 멈춘다. 계속 움직이면 "5초 뒤 돌아온다"가 "5초 뒤 다른
         // 자리에 돌아온다"가 되어 떨어진 플레이어가 기다릴 자리가 사라지고, 지형 안에서 콜라이더가 켜져
         // 디페네트레이션으로 튕길 수도 있다. 시간(moveElapsed)도 함께 멈추므로 같은 위상에서 재개한다.
@@ -165,6 +202,49 @@ public class CloudTrampoline : MonoBehaviour
         // 덕분에 네모가 판 위에 남아 뒤에 얹히는 도형과 합산 무게를 이루는 협동 설계가 이동판에서도 유지된다.
         foreach (Rigidbody r in riders)
             if (r != null) r.position += delta;
+    }
+
+    /// <summary>부스트를 쌓아둔 바디가 <b>이 판이 아닌 곳에 착지하면</b> 누적을 버린다(2026-08-15
+    /// 플레이테스트 반영). 콤보는 "이 판에서 계속 튕기는 동안"만 이어진다.
+    ///
+    /// 착지 판정은 PlayerSystem의 PlayerGroundContact를 읽는다(읽기 전용 — 하드 룰 준수). 그런데
+    /// 그것만으로는 안 된다: 그 컴포넌트는 아래로 SphereCast(기본 0.6 U)를 쏘므로 <b>이 판으로
+    /// 되돌아오는 하강 중 접촉 몇 프레임 전에 이미 IsGrounded가 켜진다.</b> 그 순간 riders에는 아직
+    /// 안 들어와 있어서, 가드가 없으면 같은 판으로 돌아오는 정상 콤보가 매번 착지 직전에 초기화된다.
+    ///
+    /// 그래서 접지가 잡힌 바디에 한해 <b>발밑에 실제로 무엇이 있는지</b>를 직접 확인한다 — 그게
+    /// 이 판이면 "돌아오는 중"이라 콤보를 유지하고, 다른 것이면 다른 데 착지한 것이라 버린다.
+    /// 처음에는 "판 발자국 XZ 안 + 중심보다 위"라는 위치 근사를 썼는데, 구름 <b>위에 다른 발판이
+    /// 겹쳐</b> 놓인 배치에서는 그 발판에 착지해도 근사가 참이라 콤보가 남았다(2026-08-15 PR 점검).
+    /// 레이캐스트는 가장 가까운 것을 돌려주므로 위에 겹친 발판이 이 판을 가린다.
+    /// (SphereCast가 아니라 Raycast인 이유: 시작점이 바디 자기 콜라이더 안이라 자기 자신은 자동으로
+    /// 제외되고, 겹친 채 시작하는 SphereCast는 거리 0 히트로 쓰레기값을 준다.)
+    ///
+    /// PlayerGroundContact가 없는 바디(계층 관례를 안 따르는 오브젝트)는 초기화되지 않고 예전처럼
+    /// 누적만 이어간다 — 조용히 안 도는 대신 기능이 하나 덜한 쪽으로 열화된다.</summary>
+    private void DropBoostOfBodiesLandedElsewhere()
+    {
+        if (boostSteps.Count == 0) return;
+
+        boostCleanup.Clear();
+
+        foreach (Rigidbody rb in boostSteps.Keys)
+        {
+            if (rb == null) { boostCleanup.Add(rb); continue; }
+            if (riders.Contains(rb)) continue; // 이 판 위에 있다 — 콤보 유지.
+
+            PlayerGroundContact ground = rb.GetComponentInChildren<PlayerGroundContact>();
+            if (ground == null || !ground.IsGrounded) continue;
+
+            // 접지가 잡혔다. 발밑이 이 판이면 되돌아오는 중(위 주석), 아니면 다른 데 착지한 것이다.
+            if (Physics.Raycast(rb.worldCenterOfMass, Vector3.down, out RaycastHit hit,
+                    GroundProbeDistance, ~0, QueryTriggerInteraction.Ignore)
+                && hit.collider == supportCollider) continue;
+
+            boostCleanup.Add(rb);
+        }
+
+        foreach (Rigidbody rb in boostCleanup) boostSteps.Remove(rb);
     }
 
     /// <summary>판 위 도형 집계는 Enter가 아니라 Stay로 유지한다. Enter만 쓰면 "접촉이 시작된 순간
@@ -200,9 +280,29 @@ public class CloudTrampoline : MonoBehaviour
         if (load >= restMassThreshold)
             return; // 눌러앉음: 튕기지 않고 구름이 버틴다.
 
-        // 가벼움: 튕겨 오름(질량 무관 결정론 도약).
+        // 가벼움: 튕겨 오름(질량 무관 결정론 도약). 같은 판에서 연속으로 튕기면 단수만큼 높아진다.
         PlayerJump jump = collision.gameObject.GetComponentInParent<PlayerJump>();
-        if (jump != null) jump.LaunchToHeight(baseBounceHeight);
+        if (jump == null) return;
+        jump.LaunchToHeight(rb != null ? BounceHeightFor(rb) : baseBounceHeight);
+    }
+
+    /// <summary>이번 튕김의 목표 높이를 구하고 그 바디의 부스트 단수를 한 단 올린다.
+    /// 첫 튕김은 baseBounceHeight 그대로이고, 같은 판에서 이어 튕길수록 heightBoostPerStep씩 오른다
+    /// (maxBoostSteps에서 천장). 무거운 도형은 애초에 눌러앉기 밴드에서 걸려 여기 오지 않으므로,
+    /// "구·세모만 부스트를 쌓는다"는 Kind 분기 없이 무게 판정만으로 성립한다.
+    ///
+    /// 콤보는 <b>이 판에서 쉬지 않고 튕기는 동안</b>만 이어진다. 끊는 경로가 둘이다:
+    /// 다른 판에서 튕기고 오면 여기서 이전 누적을 버리고(판 두 개를 오가며 쌓는 우회 차단),
+    /// 이 판이 아닌 곳에 착지하면 DropBoostOfBodiesLandedElsewhere가 버린다.</summary>
+    private float BounceHeightFor(Rigidbody rb)
+    {
+        if (lastBounced.TryGetValue(rb, out CloudTrampoline prev) && prev != this)
+            boostSteps.Remove(rb);
+        lastBounced[rb] = this;
+
+        int step = boostSteps.TryGetValue(rb, out int s) ? s : 0;
+        boostSteps[rb] = Mathf.Min(step + 1, Mathf.Max(0, maxBoostSteps));
+        return baseBounceHeight + heightBoostPerStep * step;
     }
 
     private void OnCollisionExit(Collision collision)
@@ -241,6 +341,10 @@ public class CloudTrampoline : MonoBehaviour
         // OnCollisionStay가 다시 채우는데(운반이 유지되도록 의도한 것), 그동안 state가 Active가 아니라
         // OnCollisionEnter의 판정에는 도달하지 않는다.
         riders.Clear();
+
+        // 무너진 구름은 쌓아둔 부스트도 잃는다. 과부하로 무너뜨려 놓고 복귀 후 높은 도약을 이어받는 건
+        // "무겁게 태우면 벌을 받는다"는 붕괴 규칙과 반대로 간다.
+        boostSteps.Clear();
     }
 
     private void Update()
