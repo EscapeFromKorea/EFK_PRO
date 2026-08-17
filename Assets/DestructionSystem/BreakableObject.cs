@@ -107,6 +107,18 @@ public class BreakableObject : MonoBehaviour
     private const float GridScatterMix = 0.35f;
     private const float GridMinSpeedRatio = 0.25f;
 
+    // 격자 조각 <b>전체</b>의 질량 합. 조각 하나의 질량을 상수로 두면 잔해 총 무게가 조각 수에
+    // 정비례로 불어난다 — 200조각이면 60이라 플레이어(1.5~3.0)의 20배가 되어 "가벼워서 플레이어를
+    // 못 민다"는 전제가 조용히 무너지고, 부순 통로에 치울 수 없는 잔해 벽이 남는다(2026-08-17
+    // 격자 세분화 검토에서 발견 — 조각 수를 늘렸을 때 어긋나는 유일한 동역학 항목이었다).
+    // 총량을 고정하고 셀 부피대로 나눠 가지면 조각 수와 무관해지고, 덤으로 타격점 재분할로 부피가
+    // 1/8이 된 셀이 이웃과 같은 질량을 갖던 것(지금도 틀려 있다)까지 함께 맞는다.
+    // 값 2.4 = 종전 기본값(8조각 x 0.3)이라 기본 설정에서 보이는 그림은 그대로다.
+    private const float GridTotalMass = 2.4f;
+
+    // 조각 수가 아주 많을 때 개별 질량이 0에 수렴해 PhysX가 불안정해지는 것을 막는 하한.
+    private const float MinFragmentMass = 0.02f;
+
     private bool broken;
 
     void Reset()
@@ -297,6 +309,9 @@ public class BreakableObject : MonoBehaviour
         // 감쇠 기준 거리는 오브젝트 자신의 크기다 — 작은 상자든 큰 벽이든 "타격점 근처는 빠르고
         // 반대편 끝은 느리게 밀린다"가 같은 그림으로 나온다.
         float falloffRange = Mathf.Max(worldSize.magnitude * 0.5f, 0.01f);
+        // 질량 배분 기준. 셀 부피의 합이 곧 이 값이므로(격자는 원본을 빈틈없이 나눈다) 조각들의
+        // 질량 합은 조각 수·재분할 여부와 무관하게 항상 GridTotalMass다.
+        float totalVolume = Mathf.Max(worldSize.x * worldSize.y * worldSize.z, 1e-6f);
 
         for (int i = 0; i < cells.Count; i++)
         {
@@ -311,8 +326,10 @@ public class BreakableObject : MonoBehaviour
             if (sharedMat != null) fragment.GetComponent<Renderer>().sharedMaterial = sharedMat;
 
             Rigidbody body = fragment.AddComponent<Rigidbody>();
-            // 가볍게 잡아 플레이어(무게 1.5~3.0)를 밀지 못하게 한다(랜덤 경로/FallingRock 파편과 같은 이유).
-            body.mass = 0.3f;
+            // 가볍게 잡아 플레이어(무게 1.5~3.0)를 밀지 못하게 한다(랜덤 경로/FallingRock 파편과 같은
+            // 이유). 랜덤 경로와 달리 고정값이 아니라 셀 부피 비례다 — 위 GridTotalMass 주석 참고.
+            Vector3 cs = cells[i].size;
+            body.mass = Mathf.Max(MinFragmentMass, GridTotalMass * (cs.x * cs.y * cs.z) / totalVolume);
             // 격자 조각은 면끼리 맞닿은 채로 생기므로 PhysX contact offset만큼 미세 겹침이 생긴다.
             // 기본값이면 그 겹침 해소 속도가 조각을 튀는 속도보다 세게 밀어내 형태가 즉시 흩어진다.
             body.maxDepenetrationVelocity = 1f;
