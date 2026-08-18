@@ -1437,7 +1437,7 @@ MonoBehaviour:
   breakThreshold: 5
   fragmentPrefabs: []
   fragmentLifetime: 5
-  proceduralFragmentCount: 100
+  proceduralFragmentCount: 20
   minProceduralFragmentCount: 2
   maxProceduralFragmentCount: 130
   proceduralFragmentSizeRatio: 0.1667
