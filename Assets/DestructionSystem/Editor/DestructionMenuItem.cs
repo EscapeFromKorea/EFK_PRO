@@ -1,5 +1,6 @@
 // 이 파일은 반드시 프로젝트의 "Editor" 폴더 안에 위치해야 합니다.
 
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -97,21 +98,7 @@ public static class DestructionMenuItem
 
             var cells = BreakableObject.BuildGridCells(c.size, div);
             failures += Check(cells.Count == count, $"{c.label}: 셀 개수 불일치 ({cells.Count} vs {count})");
-
-            // 부피 보존 — 셀 사이에 틈이나 겹침이 있으면 여기서 깨진다.
-            float cellVolumeSum = 0f;
-            Vector3 lo = Vector3.positiveInfinity, hi = Vector3.negativeInfinity;
-            foreach (var cell in cells)
-            {
-                cellVolumeSum += cell.size.x * cell.size.y * cell.size.z;
-                lo = Vector3.Min(lo, cell.center - cell.size * 0.5f);
-                hi = Vector3.Max(hi, cell.center + cell.size * 0.5f);
-            }
-            float originalVolume = c.size.x * c.size.y * c.size.z;
-            failures += Check(Mathf.Abs(cellVolumeSum - originalVolume) <= originalVolume * 1e-4f,
-                $"{c.label}: 셀 부피 합 {cellVolumeSum}이 원본 부피 {originalVolume}와 다름");
-            failures += Check((hi - lo - c.size).magnitude <= 1e-4f && (lo + hi).magnitude <= 1e-4f,
-                $"{c.label}: 셀이 채운 범위 {hi - lo}가 원본 크기 {c.size}와 다르거나 중심이 어긋남");
+            failures += CheckCellInvariants(cells, c.size, c.label);
 
             // 정육면체에 가까운가 — 셀 비율은 원본 비율이나 슬래브(2) 중 나쁜 쪽까지만 허용한다.
             // 원본 비율만으로 재면 안 되는 이유: 목표 개수가 세제곱수가 아니면 정육면체 셀이 원리적
@@ -191,11 +178,91 @@ public static class DestructionMenuItem
                       $"타격점 재분할 후 {cells.Count}조각");
         }
 
+        // 고밀도 격자 점검(2026-08-17, "타일을 더 잘게 쪼개도 물리가 어긋나지 않는가" 검토).
+        // 조각 수를 크게 올리면 격자 계산 자체는 그대로 성립한다(오히려 셀 비율이 좋아진다) —
+        // 대신 셀 크기에 물리적 하한이 생긴다. 셀이 작아질수록 (1) 절대값인
+        // Physics.defaultContactOffset(0.01)이 셀 크기 대비 무시 못 할 비율이 되어 스폰 순간
+        // 겹침 해소가 실루엣을 흩뜨리고, (2) 고정 타임스텝(0.02s)에서 낙하 속도가 '셀 두께 /
+        // 타임스텝'을 넘는 순간 파편이 바닥을 통과한다(셀 0.1 → 5m/s, 반 초 낙하면 도달한다).
+        // 즉 상한은 '조각 수'가 아니라 '셀 최소변'이라, 오브젝트 크기별 안전 조각 수를 계산해
+        // 알려준다 — 디자이너 설정 문제라 실패(빨강)가 아니라 경고로 낸다.
+        const float minSafeCellEdge = 0.15f;
+        const int denseTarget = 200, denseMax = 240;
+        foreach (var c in cases)
+        {
+            Vector3Int div = BreakableObject.ComputeGridDivisions(c.size, denseTarget, min, denseMax);
+            var cells = BreakableObject.BuildGridCells(c.size, div);
+
+            failures += Check(cells.Count <= denseMax,
+                $"{c.label}(고밀도): 조각 수 {cells.Count}가 상한 {denseMax}를 넘음 (div={div})");
+            failures += CheckCellInvariants(cells, c.size, $"{c.label}(고밀도)");
+
+            int safeCount = MaxSafePieceCount(c.size, minSafeCellEdge, min, denseMax);
+            Vector3Int safeDiv = BreakableObject.ComputeGridDivisions(c.size, safeCount, min, denseMax);
+            failures += Check(safeCount <= 1 || MinCellEdge(c.size, safeDiv) >= minSafeCellEdge - 1e-4f,
+                $"{c.label}: 안전 조각 수 계산이 틀림 — {safeCount}조각의 셀 최소변이 " +
+                $"{MinCellEdge(c.size, safeDiv):F3}으로 하한 {minSafeCellEdge}에 미달");
+
+            float edge = MinCellEdge(c.size, div);
+            if (edge >= minSafeCellEdge)
+            {
+                Debug.Log($"[DestructionSystem] {c.label} {c.size} 고밀도: 목표 {denseTarget} → " +
+                          $"{cells.Count}조각, 셀 최소변 {edge:F3} (하한 {minSafeCellEdge} 이상)");
+            }
+            else
+            {
+                Debug.LogWarning($"[DestructionSystem] {c.label} {c.size}는 {denseTarget}조각을 감당 못 한다 — " +
+                                 $"셀 최소변 {edge:F3} < 물리 하한 {minSafeCellEdge}. 이 크기는 " +
+                                 $"{safeCount}조각까지가 안전하다(그 이상은 파편이 바닥을 통과하거나 " +
+                                 "스폰 순간 실루엣이 흩어진다).");
+            }
+        }
+
         if (failures == 0)
             Debug.Log("[DestructionSystem] 격자 분할 자체 점검 통과 — 개수 범위/부피 보존/셀 비율/타격점 재분할 이상 없음.");
         else
             Debug.LogError($"[DestructionSystem] 격자 분할 자체 점검 실패 {failures}건 — 위 로그 참고.");
     }
+
+    /// <summary>셀들이 원본 박스를 틈도 겹침도 없이 정확히 채우는가 — 부피 합과 채운 범위·중심을
+    /// 함께 본다. 기본 밀도와 고밀도 두 곳에서 같은 검사를 하므로 헬퍼로 뺐다.</summary>
+    private static int CheckCellInvariants(List<BreakableObject.GridCell> cells, Vector3 size, string label)
+    {
+        float cellVolumeSum = 0f;
+        Vector3 lo = Vector3.positiveInfinity, hi = Vector3.negativeInfinity;
+        foreach (var cell in cells)
+        {
+            cellVolumeSum += cell.size.x * cell.size.y * cell.size.z;
+            lo = Vector3.Min(lo, cell.center - cell.size * 0.5f);
+            hi = Vector3.Max(hi, cell.center + cell.size * 0.5f);
+        }
+
+        float originalVolume = size.x * size.y * size.z;
+        int failures = Check(Mathf.Abs(cellVolumeSum - originalVolume) <= originalVolume * 1e-4f,
+            $"{label}: 셀 부피 합 {cellVolumeSum}이 원본 부피 {originalVolume}와 다름");
+        failures += Check((hi - lo - size).magnitude <= 1e-4f && (lo + hi).magnitude <= 1e-4f,
+            $"{label}: 셀이 채운 범위 {hi - lo}가 원본 크기 {size}와 다르거나 중심이 어긋남");
+        return failures;
+    }
+
+    /// <summary>셀 최소변이 물리 하한을 지키는 최대 조각 수. `ComputeGridDivisions`는 그리디라
+    /// 목표 개수와 실제 개수가 딱 맞지 않으므로 공식으로 역산하지 않고 그냥 훑는다 — 상한이 수백
+    /// 단위라 에디터 점검에서는 비용이 문제되지 않는다. 최소 개수조차 하한을 못 지키는 아주 작은
+    /// 오브젝트에서는 1(=쪼개지 말 것)을 돌려준다.</summary>
+    private static int MaxSafePieceCount(Vector3 size, float minEdge, int minCount, int maxCount)
+    {
+        int best = 1;
+        for (int t = minCount; t <= maxCount; t++)
+        {
+            Vector3Int d = BreakableObject.ComputeGridDivisions(size, t, minCount, maxCount);
+            if (MinCellEdge(size, d) < minEdge) break;
+            best = d.x * d.y * d.z;
+        }
+        return best;
+    }
+
+    private static float MinCellEdge(Vector3 size, Vector3Int div)
+        => Mathf.Min(size.x / div.x, Mathf.Min(size.y / div.y, size.z / div.z));
 
     private static int Check(bool condition, string failMessage)
     {

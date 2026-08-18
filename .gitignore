@@ -37,3 +37,9 @@ PR*검토*.md.meta
 Assets/CatapultSystem/Catupult_feedback.png
 Assets/CatapultSystem/Catupult_feedback.png.meta
 Movement_bug.png
+
+# 아티팩트 발행본 — PRD/보고서를 읽기 좋게 렌더한 사본. 정본은 항상 .md 쪽이다.
+# docs/는 .md만 추적한다(기존 관례).
+docs/**/*-artifact.html
+PR[0-9]*.md
+PR[0-9]*.md.meta
