@@ -27,6 +27,36 @@ public class Portal : MonoBehaviour
              "아니라 '그 이후 전부를 예외로 선언'이 되어 선택 경로라는 전제가 무너지기 때문이다.")]
     public PortalAction action = PortalAction.Toggle;
 
+    // [왜 리시버 노브가 여기 있나]
+    // 리시버는 이 포탈이 런타임에 AddComponent하므로 씬에 미리 존재하지 않는다 — 즉 리시버 쪽
+    // public 필드는 아무도 인스펙터에서 조정할 수 없었다(PRD §12가 "인스펙터 3노브"라 적어 둔 것과
+    // 어긋난 지점이다). 그래서 같은 값을 문 쪽에 두고 리시버를 얻는 즉시 그대로 복사한다.
+    // 기본값은 리시버 기본값과 일치시켜 둔다. 한 몸이 값이 다른 문 여럿을 지나면 마지막 문이 이긴다.
+    [Header("굴리기 노브")]
+    [Tooltip("텀블 1회 소요 시간 배율. 기본 소요 시간은 '한 칸 ÷ 그 도형의 이속'으로 자동 계산된다. " +
+             "⚠ 배율의 대상은 '속도'가 아니라 '소요 시간'이다 — 1보다 크면 느려지고(1.25 = 25% 느림), " +
+             "1보다 작으면 빨라진다(0.8 = 25% 빠름). 회전을 늦추고 싶으면 1보다 큰 값을 넣어라.")]
+    public float tumbleDurationScale = 1f;
+
+    [Tooltip("방향키를 누르고 있을 때 다음 텀블까지의 간격(초). 0으로 두지 마라 — 그 구간에서 R 리스폰이 거절된다.")]
+    public float holdRepeatInterval = 0.03f;
+
+    [Tooltip("입력 방향을 유효 방향으로 스냅할 때 허용하는 최대 각도(도). 벗어나면 제자리 무반응이다.")]
+    public float inputSnapTolerance = 30f;
+
+    [Tooltip("굴리기 중 발밑이 비면 굴리기 모드를 끄고 기존 이동 방식으로 돌아간다(기본). " +
+             "끄면 굴리기 모드를 유지한 채 몸만 놓아 수직으로 떨어진다 — 포탈 뒤에 리스폰 깃발을 둔 맵용.")]
+    public bool exitRollModeOnFall = true;
+
+    [Tooltip("발밑이 빈 채로 이 시간(초) 안에 다시 착지하면 exitRollModeOnFall과 무관하게 모드를 " +
+             "유지한다 — 턱·계단을 내려갈 때 순간적으로 뜨는 것과 진짜 낙하를 구분한다. 경사면에는 " +
+             "안 듣는다(텀블 모델은 완전 수평 전용).")]
+    public float fallExitGrace = 0.35f;
+
+    [Tooltip("텀블이 막혀 되감기로 돌아설 때 무엇이 막았는지 경고 로그를 찍는다(텀블 하나당 1회). " +
+             "조사용이며, 끝나면 꺼라.")]
+    public bool logBlocking = true;
+
     private void Reset()
     {
         Collider col = GetComponent<Collider>();
@@ -54,6 +84,24 @@ public class Portal : MonoBehaviour
 
         PlayerRollModeReceiver receiver = identity.GetComponent<PlayerRollModeReceiver>();
         if (receiver == null) receiver = identity.gameObject.AddComponent<PlayerRollModeReceiver>();
+
+        // 모드 전환보다 먼저 복사한다 — exitRollModeOnFall은 켜지는 그 순간부터 유효해야 한다.
+        receiver.tumbleDurationScale = tumbleDurationScale;
+        receiver.holdRepeatInterval = holdRepeatInterval;
+        receiver.inputSnapTolerance = inputSnapTolerance;
+        receiver.exitRollModeOnFall = exitRollModeOnFall;
+        receiver.fallExitGrace = fallExitGrace;
+        receiver.logBlocking = logBlocking;
+
+        // [포탈 중앙 정렬] 굴리기 모드로 켜지거나 유지될 때만, 진행 방향과 수직인 폭 축(로컬 X)으로
+        // 위치를 맞춘다 — 문을 치우쳐 지나가면 그 좌우 오차가 이후 몇 칸을 굴러도 그대로 보존되어
+        // 빠듯한 통로에서 벽에 스치는 원인이 된다(PlayerRollModeReceiver.AlignAcrossPortal 참고).
+        // 모드가 꺼지는 통과(Disable/Toggle-off)는 그 뒤 이동 방식이 기존 방식으로 돌아가므로
+        // 정렬할 이유가 없다 — 평범한 보행 중 위치를 임의로 스냅하면 오히려 튄다.
+        bool willBeActive = action == PortalAction.Enable ? true
+                           : action == PortalAction.Disable ? false
+                           : !receiver.RollModeActive;
+        if (willBeActive) receiver.AlignAcrossPortal(transform.position, transform.right);
 
         switch (action)
         {
