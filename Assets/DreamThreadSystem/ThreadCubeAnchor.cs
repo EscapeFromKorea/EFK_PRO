@@ -70,8 +70,16 @@ public class ThreadCubeAnchor : MonoBehaviour
             // "거의 정지" 조건을 그냥 통과한다(= 굴러가는 네모에 닻이 켜진다). 정지해 있기만 하면
             // 굴리기 모드라도 닻은 그대로 허용하고, 실제로 도는 동안만 막는 것이 확정 사양이다.
             // 리시버는 포탈이 런타임에 붙이므로 없을 수 있다 — null 허용.
+            // [2026-08-21 수정] roll.IsTumbling(개별 텀블 애니메이션 재생 중인가)만 보면 연속
+            // 텀블 사이 holdRepeatInterval 대기 구간(여전히 Grab()이 잡고 있어 isKinematic이지만
+            // state==Idle이라 IsTumbling=false)을 "굴리는 중이 아니다"로 잘못 판정한다. 실제로
+            // 몸을 붙잡고 있는 구간은 저장소 공통 관용구(Assets/CLAUDE.md "붙잡기" 절)인
+            // ExternallyDriven || rb.isKinematic로 재야 한다.
             PlayerRollModeReceiver roll = id.GetComponent<PlayerRollModeReceiver>();
-            bool rolling = roll != null && roll.RollModeActive && roll.IsTumbling;
+            Rigidbody idRb = id.GetComponent<Rigidbody>();
+            PlayerMover idMover = id.GetComponent<PlayerMover>();
+            bool rolling = roll != null && roll.RollModeActive &&
+                ((idMover != null && idMover.ExternallyDriven) || (idRb != null && idRb.isKinematic));
 
             Transform ring = EnsureRing(id.transform, rolling);
 
@@ -111,11 +119,9 @@ public class ThreadCubeAnchor : MonoBehaviour
         PlayerMover mover = cube.GetComponent<PlayerMover>();
         if (mover != null && mover.IsControlled) return false;
 
-        // 굴리기 텀블 중에는 isKinematic이라 rb.velocity가 0으로 읽혀 아래 속력 조건을 그냥 통과한다 —
-        // 실제로는 한 칸씩 굴러가는 중이므로 명시적으로 막는다(호출부의 rolling 판정과 같은 근거).
-        PlayerRollModeReceiver roll = cube.GetComponent<PlayerRollModeReceiver>();
-        if (roll != null && roll.IsTumbling) return false;
-
+        // [2026-08-21] 굴리기 중(rolling) 여부는 이제 호출부(Update)가 더 넓은 기준으로 먼저
+        // 걸러서 rolling일 때는 이 함수 자체를 안 부른다 — 여기서 다시 IsTumbling만 좁게 보던
+        // 중복 검사는 삭제했다(남겨두면 두 곳의 판정 기준이 다시 갈라질 여지가 생긴다).
         if (rb.velocity.magnitude > maxAnchorSpeed) return false;
 
         if (!requireGrounded) return true;
@@ -147,7 +153,9 @@ public class ThreadCubeAnchor : MonoBehaviour
         obj.transform.SetParent(cube, false);
         obj.transform.localPosition = ringLocalPos;
         obj.transform.localScale = Vector3.one * markerSize;
-        obj.AddComponent<ThreadAnchor>().connectRange = 0f;
+        // rolling 중 처음 감지된 프레임엔 붙였다 바로 Destroy하는 낭비를 피한다 — Update()가
+        // 어차피 rolling이면 같은 프레임에 ThreadAnchor를 지운다.
+        if (!rolling) obj.AddComponent<ThreadAnchor>().connectRange = 0f;
         return obj.transform;
     }
 
