@@ -41,8 +41,9 @@ public class Portal : MonoBehaviour
     [Tooltip("방향키를 누르고 있을 때 다음 텀블까지의 간격(초). 0으로 두지 마라 — 그 구간에서 R 리스폰이 거절된다.")]
     public float holdRepeatInterval = 0.03f;
 
-    [Tooltip("입력 방향을 유효 방향으로 스냅할 때 허용하는 최대 각도(도). 벗어나면 제자리 무반응이다.")]
-    public float inputSnapTolerance = 30f;
+    [Tooltip("입력 방향을 유효 방향으로 스냅할 때 허용하는 최대 각도(도). 벗어나면 제자리 무반응이다. " +
+             "⚠ 30° 미만 금지 — 정사면체 직진 입력이 항상 45° 벗어난다(PlayerRollModeReceiver 참고).")]
+    public float inputSnapTolerance = 46f;
 
     [Tooltip("굴리기 중 발밑이 비면 굴리기 모드를 끄고 기존 이동 방식으로 돌아간다(기본). " +
              "끄면 굴리기 모드를 유지한 채 몸만 놓아 수직으로 떨어진다 — 포탈 뒤에 리스폰 깃발을 둔 맵용.")]

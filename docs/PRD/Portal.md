@@ -128,6 +128,16 @@
 
 **입력 처리:** 방향 입력을 **현재 유효한 3방향 중 가장 가까운 것으로 스냅**한다. 스냅 허용 각도를 벗어나면(경계에 애매하게 걸치면) 아무것도 하지 않는다.
 
+> ⚠️ **[2026-08-21 추가] 스냅 허용 각도(`inputSnapTolerance`)는 45°를 반드시 넘어야 한다 — 30°는
+> 정사면체를 영구 동결시킨다(첫 실측 플레이테스트에서 재현).** 유효 방향(상태 A 45°/165°/285°)엔
+> "정면 직진"(0° 상대)이 아예 없다 — 통로를 걸어 들어가며 계속 누르는 입력은 진입 방위와 무관하게
+> 유효 방향에서 **항상 정확히 45° 벗어난다.** 허용 각도가 그보다 좁으면 `BeginTumble`이 한 번도
+> 안 불리고, 그 사이 리시버의 "걷기 velocity 매 프레임 봉쇄"는 그대로 돌아가 **텀블도 못 하고
+> 걷지도 못 하는 완전 정지**가 된다(전문가 검토로 원인 확인, 재현 조건 명확). 기본값을 46°로
+> 올렸다 — `Portal.cs`/`PlayerRollModeReceiver.cs` 양쪽 동기화, 상세는 `PortalSystem/CLAUDE.md`.
+> 부작용: 정육면체의 대각 입력(두 키 동시 입력, 45° 방향) 데드존도 같이 사라진다(허용 범위 안으로
+> 들어옴) — 드문 입력이라 수용 가능해 보이나 재검증 필요.
+
 > ⚠️ **[2026-08-19 추가] 위 각도표는 "월드 각도"이고, 입력은 월드축이 아니다.** `PlayerMover`는 `(h, 0, v)`를 그대로 쓰지 않고 **`inputYawOffset`만큼 월드 up 축으로 회전시킨 뒤** 쓴다(`PlayerMover.cs:267`, `:458`). 씬의 플레이어 3종 모두 이 값이 **90**이다(`SampleScene.unity:9418, 11105, 13093`). 리시버가 같은 보정을 적용하지 않으면 W가 90° 어긋난 방향으로 굴러간다 — 그런데 정사면체는 어차피 월드축으로 못 가므로(§9.3) **증상이 "원래 그런 기믹인가?"로 보여 잡기 어렵다.**
 >
 > 입력 → 월드 방향 변환은 반드시 `PlayerMover`와 같은 식을 쓴다: `Quaternion.AngleAxis(mover.inputYawOffset, Vector3.up) * new Vector3(h, 0f, v)`. 값을 복제해 상수로 박지 말고 **`mover.inputYawOffset`을 읽어라** — 씬에서 조정되는 값이다.
@@ -475,6 +485,12 @@
 
 ⚠️ **역으로, 굴리기를 시킬 구간의 천장 여유는 1.42 U 이상이어야 한다.** "몸이 1.0 U니까 1.1 U 터널이면 되겠지"로 깔면 굴리기가 물리적으로 불가능한 구간이 되고, 증상은 "왜 안 굴러가지?"로만 보인다.
 
+> **[2026-08-21 추가] 씬 테스트 예시는 1.30U를 쓴다.** 범위 중간(1.325)보다 살짝 낮게 잡은 이유는
+> 정사면체 쪽 여유(1.30−1.2247=0.0753)를 정육면체 쪽 여유(1.4142−1.30=0.1142)보다 일부러 더
+> 빠듯하게 둬서다 — 통과시켜야 하는 쪽이 아니라 **막아야 하는 쪽에 여유를 더 준다.** 폭은 좁히지
+> 않는다(§9.1과 정반대 축이라 좁히면 오히려 정사면체의 좌우 흔들림 자체를 막아버린다). 상세:
+> `Tools/PortalSystem/Create Tetrahedron Ceiling Gate`, `Assets/PortalSystem/CLAUDE.md`.
+
 ### 9.3 6방향 제약 — 세모는 월드 축으로 못 간다
 
 정사면체의 순 진행 방향은 15° / 75° / 135° / 195° / 255° / 315°다. **월드 축(0°/90°/180°/270°)이 하나도 없다.** 축 정렬 격자로 지은 맵에서 세모는 대각으로만 흐르므로, 같은 바닥 위에서도 두 도형의 도달 가능 영역이 자연히 갈라진다.
@@ -603,15 +619,30 @@
 
 `Tools/PortalSystem/Create Portal` — 트리거 박스 + 문틀 시각화를 함께 생성한다.
 `Tools/PortalSystem/Self-Check Tumble Geometry` — 텀블 기하 불변식(피벗 고정/이동거리/침하 0/방향 세트)을 런타임과 같은 식으로 검사한다.
-`Tools/PortalSystem/Create Test Stairs (Fall Grace)` — [2026-08-20 추가] `fallExitGrace`·계단형 낙차 게이트(§9.6) 검증용 테스트 계단. 단 높이는 `GroundSnapCorrectionCap` 미만으로 고정돼 있다.
+`Tools/PortalSystem/Create Test Stairs (Fall Grace)` — [2026-08-20 추가] `fallExitGrace`·계단형 낙차 게이트(§9.6) 검증용 테스트 계단(정육면체). 단 높이는 `GroundSnapCorrectionCap` 미만으로 고정돼 있다.
+`Tools/PortalSystem/Create Test Stairs (Fall Grace, Tetrahedron)` — [2026-08-21 추가] 위와 같되 단 깊이가 `TetrahedronCellSize`(0.8165U)를 따른다 — 도형 파라미터 하나로 합친 `CreateTestStairs(ShapeKind)`의 얇은 래퍼(`Create Tumble Floor`의 `GridMode` 패턴과 동일). 단 높이는 `GroundSnapCorrectionCap`이 스케일에만 매인 상수라 정육면체와 공유한다.
 `Tools/PortalSystem/Create Tumble Floor (Cube / Tetrahedron / Both)` — [2026-08-20 추가] 굴리기 설계·테스트 전용 평지 바닥 + 도형별 칸 크기 격자 오버레이(Scene 뷰 전용, Game 뷰·실제 플레이엔 안 보임). 기존 바닥 대체가 아니라 추가 선택지 — `PortalTumbleFloor.cs` 참고.
+`Tools/PortalSystem/Create Tetrahedron Ceiling Gate` — [2026-08-21 추가] §9.2 천장 게이트 검증용 낮은 천장(측벽 없음, 폭은 안전폭보다 넉넉히). 씬 뷰 피벗의 Y를 바닥으로 가정해 그 위 1.30U에 밑면을 맞춘다.
 `Tools/PortalSystem/Validate Roll Geometry` — 선택한 구간에 대해 천장 여유(1.42 U) / 복도 폭 / 셀 정합을 검사한다(아직 미구현, §14). 씬에서 눈으로는 못 잡는 값들이므로 `DestructionSystem/Validate Grid Split`과 같은 자체 점검 메뉴를 둔다.
 
 ---
 
 ## 14. 남은 TBD
 
-- **협동 요소 — 미정(추후 논의).** §5.2의 "서로 다른 판" 패턴과 "1.5 U 이상 면" 우회책이 준비돼 있다.
+- **협동 요소 — [2026-08-21 채택] 정사면체는 계단이 아니라 구-정사면체 협동 리프트로 층을 내려간다.**
+  정사면체 전용 계단(§9.6, `TestStairs_FallGrace_Tetra`)을 실제로 플레이해 보니 정사면체의 비대칭
+  교대 방향(45°/15°, §4.2)이 계단의 직선 단 깊이(고정값)와 매 텀블 어긋나 착지가 계속 허공에
+  걸리다 결국 `fallExitGrace`를 넘겨 모드가 풀렸다 — 계단은 구조적으로 정사면체와 안 맞는
+  지형이라는 결론이다(대각 계단으로 재설계해도 유효 방향이 entryYaw에 종속돼 재사용이 안 됨,
+  전문가 검토로 확인). 대신 **구가 패드를 눌러 특정 바닥을 위아래로 움직이는 리프트 위에
+  정사면체가 타고 내려가는 협동 기믹**을 채택한다 — `SnapPivotToGround`가 매 텀블 실제 바닥
+  높이를 다시 재는 구조라, 리프트가 한 텀블(0.163초) 동안 `GroundSnapCorrectionCap`(0.25×scale)
+  미만으로만 움직이면 계단과 달리 축 정렬이 전혀 필요 없이 자동으로 새 높이를 흡수한다.
+  **구현 필수 조건(실측 확인, 2026-08-21):** 정사면체는 텀블 중(붙잡힌 동안) `isKinematic=true`다.
+  Unity는 **kinematic 리지드바디끼리는 `OnCollisionEnter/Stay`가 아예 안 뜬다**(`CloudTrampoline`이
+  쓰는 방식 — 실측으로 검증 완료, 대조군에서 dynamic 라이더는 정상 발화 확인). **트리거 콜라이더 +
+  `OnTriggerEnter/Stay`로 라이더를 감지해야만** kinematic 상태에서도 감지된다. 상세·다음 세션 착수
+  항목: `Assets/PortalSystem/CLAUDE.md`.
 - **카메라.** 스텝 이동이라 현재 `PlayerFollowCamera` 그대로면 뚝뚝 끊겨 보일 수 있다. 플레이테스트 후 판단.
 - **경사면.** 격자 텀블은 평지 전제다. 굴리기 구간은 평지로 설계한다. 계단형 층 이동은 §9.6·§7.2로
   일부 해소됐다(낙차 ≤ 0.25×scale은 재접지로 매끈하게, 그 이상은 `fallExitGrace` 유예로 모드 유지) —

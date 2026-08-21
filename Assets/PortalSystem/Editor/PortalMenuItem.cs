@@ -68,8 +68,10 @@ public static class PortalMenuItem
         else Debug.Log(report);
     }
 
-    // 계단 한 칸 = 정육면체 텀블 한 칸(1.0 U)과 같은 깊이로 둬서 "칸마다 한 단씩 내려간다"는
-    // 감각이 자연스럽다.
+    // 계단 한 단 = 그 도형의 텀블 한 칸과 같은 깊이로 둬서 "칸마다 한 단씩 내려간다"는 감각이
+    // 자연스럽다. 정육면체는 1.0 U, 정사면체는 0.8165 U(TetrahedronCellSize) — 두 도형의 셀
+    // 크기가 다르므로 계단도 도형별로 따로 만들어야 한다(하나를 공유하면 둘 중 하나는 "칸마다
+    // 한 단"이 어긋난다). 단 높이는 도형과 무관하다 — 아래 `StairStepHeight` 정정 참고.
     //
     // [단 높이는 0.35가 아니라 0.25×scale 미만이어야 한다 — 2026-08-20 정정]
     // 처음엔 0.35(낙하시간이 fallExitGrace 0.35초보다 짧다는 이유)로 뒀는데, 실제 플레이테스트에서
@@ -77,24 +79,41 @@ public static class PortalMenuItem
     // `PlayerRollModeReceiver.GroundSnapCorrectionCap`(0.25×scale)이었다 — 그보다 큰 낙차는
     // 매 텀블 재접지가 절대 보정하지 않는 절벽 취급이라, 단마다 "텀블 → 뜸 → 낙하 → 재접지"가
     // 반복되는 스타카토 동작이 된다(전문가 검토로 확인). 캡 미만으로 두면 매 텀블이 재접지로
-    // 매끈하게 흡수된다 — 이 상수 미만이 "계단"의 정의다.
-    private const float StairStepDepth = 1.0f;
+    // 매끈하게 흡수된다 — 이 상수 미만이 "계단"의 정의다. `GroundSnapCorrectionCap`은 스케일에만
+    // 매인 상수라(도형 기하와 무관) 정사면체도 같은 상한을 쓴다 — 도형별로 따로 낮출 이유가 없다.
     private const float StairStepHeight = PlayerRollModeReceiver.GroundSnapCorrectionCap - 0.05f;
     private const float StairWidth = 2.0f;
+    // 정사면체는 직진이 안 되고 좌우로 0.408U 흔들리며 나아가므로(PRD §9.1) 정육면체와 같은 폭(2.0U)을
+    // 쓰면 계단에서도 그 흔들림이 벽에 스친다. 안전폭(2.04U, PRD §9.1)보다 넉넉히 — 아래
+    // TetraGateWidth와 같은 값·같은 근거를 쓴다.
+    private const float StairWidthTetra = 3.0f;
     private const int StairStepCount = 6;
 
-    /// <summary>
-    /// `Tools/PortalSystem/Create Test Stairs (Fall Grace)` — 계단형 낙차 테스트용. 단 높이가
-    /// `GroundSnapCorrectionCap`(0.25×scale) 미만이라 매 텀블의 재접지가 흡수해야 정상이다 —
-    /// 굴리기 모드로 내려가며 매끈하게 이어지는지, 뜸·되감기 없이 모드가 유지되는지 보는 것이 이
-    /// 오브젝트의 용도다(어색함이 재현되면 이 캡 미만에서도 문제가 있다는 뜻이라 별도 원인을 찾아야
-    /// 한다). 게임플레이용이 아니라 테스트용이라 포탈을 같이 만들지 않는다 — 계단 위쪽에 별도로
-    /// 입구 포탈을 놓고 굴리기 모드로 들어와서 확인해라.
-    /// </summary>
     [MenuItem("Tools/PortalSystem/Create Test Stairs (Fall Grace)")]
-    private static void CreateTestStairs()
+    private static void CreateTestStairsCube() => CreateTestStairs(PlayerShapeStats.ShapeKind.Cube);
+
+    [MenuItem("Tools/PortalSystem/Create Test Stairs (Fall Grace, Tetrahedron)")]
+    private static void CreateTestStairsTetrahedron() => CreateTestStairs(PlayerShapeStats.ShapeKind.Tetrahedron);
+
+    /// <summary>
+    /// `Tools/PortalSystem/Create Test Stairs (Fall Grace[, Tetrahedron])` — 계단형 낙차 테스트용.
+    /// 단 높이가 `GroundSnapCorrectionCap`(0.25×scale) 미만이라 매 텀블의 재접지가 흡수해야
+    /// 정상이다 — 굴리기 모드로 내려가며 매끈하게 이어지는지, 뜸·되감기 없이 모드가 유지되는지
+    /// 보는 것이 이 오브젝트의 용도다(어색함이 재현되면 이 캡 미만에서도 문제가 있다는 뜻이라 별도
+    /// 원인을 찾아야 한다). 단 깊이만 <paramref name="shape"/>의 한 칸 이동거리를 따르고(`Create
+    /// Tumble Floor`의 `GridMode`와 같은 판단 — 도형 파라미터 하나로 메서드를 합치고 얇은 MenuItem
+    /// 래퍼만 늘린다), 나머지(단 높이·폭·단 수)는 공유한다. 게임플레이용이 아니라 테스트용이라
+    /// 포탈을 같이 만들지 않는다 — 계단 위쪽에 별도로 입구 포탈을 놓고 굴리기 모드로 들어와서
+    /// 확인해라.
+    /// </summary>
+    private static void CreateTestStairs(PlayerShapeStats.ShapeKind shape)
     {
-        GameObject root = new GameObject("TestStairs_FallGrace");
+        bool tetra = shape == PlayerShapeStats.ShapeKind.Tetrahedron;
+        float stepDepth = tetra ? PlayerRollModeReceiver.TetrahedronCellSize : PlayerRollModeReceiver.CubeCellSize;
+        float stepWidth = tetra ? StairWidthTetra : StairWidth;
+        string suffix = tetra ? "_Tetra" : "";
+
+        GameObject root = new GameObject($"TestStairs_FallGrace{suffix}");
         Material stepMaterial = CreateFrameMaterial();
 
         for (int i = 0; i < StairStepCount; i++)
@@ -102,8 +121,8 @@ public static class PortalMenuItem
             GameObject step = GameObject.CreatePrimitive(PrimitiveType.Cube);
             step.name = $"Step_{i}";
             step.transform.SetParent(root.transform, false);
-            step.transform.localPosition = new Vector3(0f, -StairStepHeight * i, StairStepDepth * i);
-            step.transform.localScale = new Vector3(StairWidth, 1f, StairStepDepth);
+            step.transform.localPosition = new Vector3(0f, -StairStepHeight * i, stepDepth * i);
+            step.transform.localScale = new Vector3(stepWidth, 1f, stepDepth);
 
             MeshRenderer renderer = step.GetComponent<MeshRenderer>();
             if (renderer != null) renderer.sharedMaterial = stepMaterial;
@@ -115,10 +134,56 @@ public static class PortalMenuItem
         Undo.RegisterCreatedObjectUndo(root, "Create Test Stairs");
         Selection.activeGameObject = root;
 
-        Debug.Log($"[Portal] 테스트 계단을 만들었다 — 단 {StairStepCount}개, 단당 깊이 " +
-                  $"{StairStepDepth} U / 높이 {StairStepHeight} U(재접지 보정 상한 미만). 첫 단 " +
-                  "앞쪽에 입구 포탈을 놓고 굴리기 모드로 내려가 매끈하게 이어지는지, 어색함 없이 " +
-                  "모드가 유지되는지 확인해라.", root);
+        Debug.Log($"[Portal] 테스트 계단을 만들었다({shape}) — 단 {StairStepCount}개, 단당 깊이 " +
+                  $"{stepDepth:F4} U / 높이 {StairStepHeight} U(재접지 보정 상한 미만, 도형 공통). " +
+                  "첫 단 앞쪽에 입구 포탈을 놓고 굴리기 모드로 내려가 매끈하게 이어지는지, 어색함 " +
+                  "없이 모드가 유지되는지 확인해라.", root);
+    }
+
+    // 정사면체 전용 천장 게이트(PRD §9.2) — 정육면체 텀블 최고점(√2 = 1.4142 U)은 막고 정사면체
+    // 텀블 최고점(1.2247 U)은 통과시키는 사이 값. 범위 1.25~1.40 U 중 중간보다 살짝 낮은 1.30 U를
+    // 골랐다 — 정사면체 쪽 여유(1.30−1.2247=0.0753)가 정육면체 쪽 여유(1.4142−1.30=0.1142)보다
+    // 빠듯한 게 맞는 방향이다(막아야 하는 쪽에 여유를 더 준다). **폭은 좁히지 않는다** — 정육면체
+    // 전용 게이트(복도 폭 1.0~1.2U)와 정반대로, 정사면체는 직진이 안 되고 좌우로 0.408U 흔들리며
+    // 나아가므로(PRD §9.1) 폭을 좁히면 그 흔들림 자체를 막아버린다. 게이트는 높이로만 걸러야 한다.
+    private const float TetraGateClearance = 1.30f;
+    private const float TetraGateLength = 3.0f;   // 진행 방향(로컬 X) 길이 — 몇 칸이 지나는 동안 낮은 천장 아래에 머물게
+    private const float TetraGateWidth = 3.0f;    // 폭 방향(로컬 Z) — 안전폭(2.04U, PRD §9.1)보다 넉넉히
+    private const float TetraGateThickness = 0.3f;
+
+    /// <summary>
+    /// `Tools/PortalSystem/Create Tetrahedron Ceiling Gate` — 정사면체 전용 천장 게이트(PRD §9.2)
+    /// 테스트용 낮은 천장 하나(측벽 없음). 정육면체는 <i>걸어서는</i> 들어가지만(정지 시 전체 높이
+    /// 1.0U) <i>굴러서는</i> 못 들어가고, 정사면체는 걷든 구르든 들어간다 — 그 차이를 보려면 바닥
+    /// 높이가 일정한 평지 위에 놓아야 한다(계단처럼 바닥 높이가 계속 바뀌는 구간에 놓으면 구간 내내
+    /// 천장 여유가 균일하지 않아 판정이 애매해진다. `Create Tumble Floor (Tetrahedron)`로 만든
+    /// 평지 위에 놓는 것을 권한다). 씬 뷰 피벗의 Y를 "바닥 Y"로 가정하고 그 위
+    /// <see cref="TetraGateClearance"/>만큼 띄운 높이에 게이트 밑면을 맞춘다 — 다른 바닥 위에
+    /// 놓으면 배치 후 Y를 직접 맞춰라.
+    /// </summary>
+    [MenuItem("Tools/PortalSystem/Create Tetrahedron Ceiling Gate")]
+    private static void CreateTetraCeilingGate()
+    {
+        GameObject gate = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        gate.name = "PortalCorridor_TetraGate";
+        gate.transform.localScale = new Vector3(TetraGateLength, TetraGateThickness, TetraGateWidth);
+
+        MeshRenderer renderer = gate.GetComponent<MeshRenderer>();
+        if (renderer != null) renderer.sharedMaterial = CreateFrameMaterial();
+
+        Vector3 floorPivot = SceneView.lastActiveSceneView != null
+            ? SceneView.lastActiveSceneView.pivot
+            : Vector3.zero;
+        float centerY = floorPivot.y + TetraGateClearance + TetraGateThickness * 0.5f;
+        gate.transform.position = new Vector3(floorPivot.x, centerY, floorPivot.z);
+
+        Undo.RegisterCreatedObjectUndo(gate, "Create Tetrahedron Ceiling Gate");
+        Selection.activeGameObject = gate;
+
+        Debug.Log($"[Portal] 정사면체 전용 천장 게이트를 만들었다 — 바닥 위 {TetraGateClearance} U " +
+                  "천장고(정사면체 텀블 최고점 1.2247U는 통과, 정육면체 텀블 최고점 1.4142U는 막힘). " +
+                  $"폭({TetraGateWidth} U)은 안전폭(2.04U)보다 넉넉해 좌우 흔들림을 막지 않는다 — " +
+                  "이 게이트는 높이만 거른다(PRD §9.2).", gate);
     }
 
     private static void AddFramePart(GameObject parent, string name, Material material,

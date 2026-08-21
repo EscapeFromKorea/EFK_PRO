@@ -43,8 +43,12 @@ public class PlayerRollModeReceiver : MonoBehaviour
     public float holdRepeatInterval = 0.03f;
 
     [Tooltip("입력 방향을 유효 방향으로 스냅할 때 허용하는 최대 각도(도). 벗어나면 아무것도 하지 " +
-             "않는다 — 경계에 애매하게 걸친 입력으로 엉뚱한 칸으로 굴러가지 않게 하려는 것이다.")]
-    public float inputSnapTolerance = 30f;
+             "않는다 — 경계에 애매하게 걸친 입력으로 엉뚱한 칸으로 굴러가지 않게 하려는 것이다. " +
+             "⚠ 30° 미만으로 낮추지 마라 — 정사면체는 firstYaw=45(직진 방향엔 유효 텀블 방향이 " +
+             "없다)라, 통로를 걸어 들어가며 계속 누르는 '직진' 입력이 entryYaw와 무관하게 항상 " +
+             "정확히 45° 벗어난다(2026-08-21 정사면체 첫 플레이테스트에서 실측 — 영구 동결로 재현). " +
+             "45° + 여유를 커버해야 한다.")]
+    public float inputSnapTolerance = 46f;
 
     [Tooltip("굴리기 중 발밑이 비면 굴리기 모드를 끄고 기존 이동 방식으로 돌아간다(기본). " +
              "끄면 굴리기 모드를 유지한 채 몸만 놓아 수직으로 떨어진다 — 포탈 뒤에 리스폰 깃발을 둔 맵용.")]
@@ -510,6 +514,12 @@ public class PlayerRollModeReceiver : MonoBehaviour
         PoseAt(geo.tumbleAngle * 0.5f, scale, out midPos, out midRot);
         if (Blocked(midPos, midRot, scale))
         {
+            // [2026-08-21 진단 추가] 이 사전 검사는 원래 "제자리 무반응"이라 로그가 없었다 — 그런데
+            // 정사면체가 매 시도 이 분기에서 막히면 사용자 눈에는 AdvanceTumble 쪽 되감기와 똑같이
+            // "아예 안 움직인다"로 보이면서도 logBlocking이 한 번도 안 찍혀 원인 특정이 안 됐다.
+            // LogBlocking은 blockLogged 가드가 있어 성공적으로 Grab()할 때까지 한 번만 찍는다 —
+            // 계속 막히는 동안 스팸이 안 된다.
+            LogBlocking(geo.tumbleAngle * 0.5f, 0.5f, scale, midPos);
             nextTumbleTime = Time.time + Mathf.Max(0.05f, holdRepeatInterval);
             return;
         }
