@@ -17,16 +17,31 @@ public static class PortalMenuItem
     private const float TriggerDepth = 0.4f;
 
     [MenuItem("Tools/PortalSystem/Create Portal")]
-    private static void CreatePortal()
+    private static void CreatePortalToggle() => CreatePortal(Portal.PortalAction.Toggle, "Portal");
+
+    // [입구·출구를 따로 만드는 메뉴가 왜 필요한가 — 2026-08-23]
+    // Toggle 문 하나로 왕복하면 "몸이 지금 굴리기인지"에 따라 같은 문이 반대로 동작한다. 굴리기
+    // 모드는 문을 지나 맵 전체로 따라다니므로, 다른 굴리기 구간을 먼저 지나온 몸은 이 문에서
+    // 모드가 **꺼진다** — 화면에는 "이 포탈만 인식이 안 된다"로 보인다(2026-08-23 실측: 정사면체가
+    // 정육면체 필드 포탈에서 모드를 켠 채 굴러와, 자기 필드 포탈에서 모드가 꺼졌다).
+    // 입구를 Enable(항상 켬), 출구를 Disable(항상 끔)로 깔면 몸의 이전 상태와 무관하게 결정된다 —
+    // PRD §9·폴더 CLAUDE.md가 권하는 배치가 이것이다. 한 쌍으로 놓아라.
+    [MenuItem("Tools/PortalSystem/Create Portal (Enter — 굴리기 켬)")]
+    private static void CreatePortalEnter() => CreatePortal(Portal.PortalAction.Enable, "Portal_Enter");
+
+    [MenuItem("Tools/PortalSystem/Create Portal (Exit — 원래 이동으로 복귀)")]
+    private static void CreatePortalExit() => CreatePortal(Portal.PortalAction.Disable, "Portal_Exit");
+
+    private static void CreatePortal(Portal.PortalAction action, string name)
     {
-        GameObject root = new GameObject("Portal");
+        GameObject root = new GameObject(name);
 
         BoxCollider trigger = root.AddComponent<BoxCollider>();
         trigger.isTrigger = true;
         trigger.size = new Vector3(Width, Opening, TriggerDepth);
         trigger.center = new Vector3(0f, Opening * 0.5f, 0f);
 
-        root.AddComponent<Portal>();
+        root.AddComponent<Portal>().action = action;
 
         Material frameMaterial = CreateFrameMaterial();
         float halfWidth = Width * 0.5f;
@@ -50,7 +65,7 @@ public static class PortalMenuItem
         Undo.RegisterCreatedObjectUndo(root, "Create Portal");
         Selection.activeGameObject = root;
 
-        Debug.Log("[Portal] 포탈을 만들었다. 입구·출구를 한 쌍으로 놓고 그 사이 구간을 평지로, " +
+        Debug.Log($"[Portal] {name}({action})을 만들었다. 입구·출구를 한 쌍으로 놓고 그 사이 구간을 평지로, " +
                   "천장 여유 1.42 U 이상으로 설계해라(PRD §9.2). 굴리기 구간은 선택 경로 전용이다 — " +
                   "필수 경로에 두면 네모 단독 완주(LD-01)가 깨진다.", root);
     }

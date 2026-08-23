@@ -261,9 +261,20 @@ public class PlayerRollModeReceiver : MonoBehaviour
             // 바로잡아 주지 않아, 모서리로 선 채 굳고 그대로 기존 이동 방식으로 돌아간다.
             // AdvanceTumble의 3단계(되감기도 막힘)가 이미 같은 이유로 같은 처리를 한다 — 위치는
             // 그대로 두고(겹침은 PhysX의 침투 해소가 밀어낸다) 자세만 정준으로 세운 뒤 놓는다.
-            if (state != State.Idle && rb != null) rb.MoveRotation(CanonicalRotation(flipped));
+            bool midTumble = state != State.Idle && rb != null;
 
             Release();
+
+            // ⚠ 자세는 반드시 Release **뒤에** 세운다. MoveRotation은 kinematic 목표를 다음 물리
+            //   스텝에 적용하는 예약이라, 같은 프레임에 Release가 isKinematic을 끄면 그 예약이
+            //   통째로 버려진다 — 그래서 "세우고 놓는다"고 적혀 있던 코드가 실제로는 기울어진
+            //   자세를 그대로 남겼다(FreezeRotation이라 물리도 안 세워 주고, 기운 몸이 문틀에
+            //   물려 조작까지 죽는다). dynamic 상태의 rb.rotation 대입은 즉시 반영된다.
+            if (midTumble)
+            {
+                rb.rotation = CanonicalRotation(flipped);
+                transform.rotation = rb.rotation; // 렌더/즉시 조회 쪽도 같이 맞춘다
+            }
             state = State.Idle;
             rewoundDirValid = false;
             RollModeActive = false;
@@ -327,7 +338,16 @@ public class PlayerRollModeReceiver : MonoBehaviour
             Vector3 travel = Vector3.Cross(Vector3.up, axis).normalized;
             float cell = 2f * geo.inradius * CurrentScale;
             float along = Vector3.Dot(target - portalCenter, travel);
-            target += travel * (Mathf.Round(along / cell) * cell - along);
+
+            // ⚠ 가장 가까운 칸(Mathf.Round)이 아니라 **문에서 멀어지지 않는** 칸이다.
+            // 진입 지점은 문에서 (트리거 반깊이 + 콜라이더 반폭)만큼 떨어져 있어(정육면체 0.7U)
+            // Round는 이걸 뒤쪽 칸으로 물린다. 그러면 몸이 트리거 밖으로 나가 겹침이 끊기고,
+            // 같은 통과를 한 번으로 묶는 Portal의 도장(OnTriggerStay)이 상한다 — Toggle 문에서는
+            // 첫 텀블의 호가 트리거로 다시 들어오는 순간 새 통과로 잡혀 모드가 곧바로 꺼지고,
+            // 그 OFF가 텀블 도중이라 몸이 기울어진 채 남는다(2026-08-23 실측: ON @ x=-18.800 →
+            // 0.72초 뒤 OFF @ x=-18.848). 앞쪽 칸으로만 당기면 겹침이 통과 내내 이어진다.
+            float snapped = Mathf.Sign(along) * Mathf.Floor(Mathf.Abs(along) / cell) * cell;
+            target += travel * (snapped - along);
         }
 
         if ((target - current).sqrMagnitude < 1e-8f) return; // 이미 정렬됨
@@ -624,8 +644,11 @@ public class PlayerRollModeReceiver : MonoBehaviour
             // ⚠ 놓기 전에 회전을 반드시 정준 자세로 세운다. 정육면체·정사면체는 FreezeRotation이라
             //   물리가 자세를 바로잡아 주지 않는다 — 기울어진 채 놓으면 그 각도로 영구히 굳는다.
             //   위치는 그대로 두고(겹침은 PhysX의 침투 해소가 밀어낸다) 자세만 세운다.
-            rb.MoveRotation(CanonicalRotation(flipped));
+            //   (MoveRotation은 Release가 같은 프레임에 isKinematic을 끄면 버려진다 — SetRollMode의
+            //    같은 처리 주석 참고. dynamic 상태의 rb.rotation 대입만 실제로 자세를 세운다.)
             Release();
+            rb.rotation = CanonicalRotation(flipped);
+            transform.rotation = rb.rotation;
             FinishStep();
             return;
         }
@@ -856,9 +879,11 @@ public class PlayerRollModeReceiver : MonoBehaviour
         if (grabbed) return;
         grabbed = true;
         mover.ExternallyDriven = true; // 이동 대입이 텀블을 짓밟는 것을 막는다
-        rb.isKinematic = true;         // 솔버에게 회전 발언권을 주지 않는다
+        // 속도를 먼저 지우고 나서 kinematic으로 넘긴다 — 순서가 반대면 텀블마다 콘솔에
+        // "Setting linear/angular velocity of a kinematic body is not supported" 경고가 쌓인다.
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
+        rb.isKinematic = true;         // 솔버에게 회전 발언권을 주지 않는다
     }
 
     private void Release()
