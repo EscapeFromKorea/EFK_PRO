@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 포탈을 통과한 도형의 이동 방식을 <b>모서리 굴리기(이산 스텝 텀블)</b>로 갈아끼우는 수신자.
@@ -63,6 +63,17 @@ public class PlayerRollModeReceiver : MonoBehaviour
              "\"평지인데 왔다갔다한다\" 같은 증상은 막은 콜라이더의 하이어라키 경로와 침투 깊이를 봐야 " +
              "특정된다. 조사가 끝나면 꺼라.")]
     public bool logBlocking = true;
+
+    [Tooltip("텀블로 올라갈 수 있는 최대 단차(Unit, 스케일 1 기준). 도착 칸 바닥이 지금 칸보다 이 " +
+             "값 이하로 높으면 그 높이에 맞춰 올라가고, 넘으면 지금까지처럼 제자리 무반응이다. " +
+             "0으로 두면 기능이 꺼진다(= 이 수정 이전 동작). ⚠ 내려가는 쪽 허용치" +
+             "(GroundSnapCorrectionCap = 0.25)와 일부러 대칭이 아니다 — 내려가는 건 못 흡수해도 " +
+             "낙하로 자연스럽게 처리되지만, 올라가는 쪽을 크게 잡으면 턱을 타고 기어오르는 꼴이 " +
+             "되므로 훨씬 빡빡해야 한다. 기본 0.05의 근거: 실제로 관측된 단차(2026-08-21 정사면체 " +
+             "플레이테스트의 0.0352U, 리프트 정지 높이 오차)는 넘고, 정사면체 전용 터널 게이트의 " +
+             "천장 여유(1.30U 게이트 기준 0.0753U)는 밑돈다 — 호 전체가 이 값만큼 들리므로 천장 " +
+             "여유를 정확히 그만큼 잠식한다(PRD §9.2 게이트가 깨지지 않는 상한이 곧 0.0753U다).")]
+    public float stepUpCap = 0.05f;
 
     /// <summary>현재 굴리기 모드인가. 포탈이 토글 판정에 쓴다.</summary>
     public bool RollModeActive { get; private set; }
@@ -215,6 +226,12 @@ public class PlayerRollModeReceiver : MonoBehaviour
     {
         if (on == RollModeActive) return;
 
+        // 모드 전환은 한 통과에 한 번뿐이라 스팸이 안 된다. 반대로 이 줄이 물리 스텝 간격으로
+        // 쏟아지면 그 자체가 증상이다 — 2026-08-23 `Portal`의 Toggle 재발화 루프를 이걸로 잡았다.
+        if (logBlocking)
+            Debug.Log($"[RollMode] {name}: 모드 {(on ? "ON " : "OFF")} @ x={transform.position.x:F3} " +
+                      $"z={transform.position.z:F3} t={Time.time:F3}", this);
+
         if (on)
         {
             RollModeActive = true;
@@ -238,6 +255,14 @@ public class PlayerRollModeReceiver : MonoBehaviour
         }
         else
         {
+            // [텀블 도중에 꺼질 수 있다 — 자세를 세우지 않고 놓으면 그 각도로 영구히 굳는다]
+            // 포탈을 되지나면 Toggle이 호 한가운데서 모드를 끈다(계단을 올라 포탈로 되돌아가는
+            // 경로가 정확히 그것이다). 정육면체·정사면체는 FreezeRotation이라 물리가 자세를
+            // 바로잡아 주지 않아, 모서리로 선 채 굳고 그대로 기존 이동 방식으로 돌아간다.
+            // AdvanceTumble의 3단계(되감기도 막힘)가 이미 같은 이유로 같은 처리를 한다 — 위치는
+            // 그대로 두고(겹침은 PhysX의 침투 해소가 밀어낸다) 자세만 정준으로 세운 뒤 놓는다.
+            if (state != State.Idle && rb != null) rb.MoveRotation(CanonicalRotation(flipped));
+
             Release();
             state = State.Idle;
             rewoundDirValid = false;
@@ -249,9 +274,9 @@ public class PlayerRollModeReceiver : MonoBehaviour
 
     public void ToggleRollMode() => SetRollMode(!RollModeActive);
 
-    /// <summary>포탈을 지날 때 진행 방향과 <b>수직인</b> 축(포탈의 로컬 X, 폭 방향)으로만 위치를
-    /// 맞춘다. 진행 방향(관통 축)은 건드리지 않는다 — 플레이어가 실제로 지나간 그 지점을 그대로
-    /// 첫 텀블의 출발점으로 쓴다.
+    /// <summary>포탈을 지날 때 위치를 문 기준으로 맞춘다 — 폭 축(포탈의 로컬 X)은 문 중앙으로
+    /// 통째로 스냅하고, 진행 축은 문 평면을 원점으로 한 <b>칸 격자에 양자화</b>한다(정육면체만,
+    /// 아래 참고). 그래서 굴리기 격자가 매번 같은 자리에 잡힌다.
     ///
     /// [왜 필요한가] 피벗축(<c>Cross(up, dir)</c>)은 항상 폭 방향과 평행이라, 회전 중 그 축과
     /// 나란한 성분(폭 좌표)은 절대 바뀌지 않는다 — 즉 문을 치우쳐 지나간 순간의 좌우 오차가
@@ -263,7 +288,24 @@ public class PlayerRollModeReceiver : MonoBehaviour
     /// 텀블은 여느 때처럼 <see cref="BeginTumble"/>이 그 시점의 접촉 모서리에서 피벗을 다시
     /// 구한다. 순간 스냅인 이유: 텀블 시작 전(아직 dynamic)에 한 번만 일어나는 보정이고, 필요한
     /// 이동량이 트리거 폭(2.4U 기준 최대 ±1.2U, 실사용은 그보다 훨씬 작다) 안으로 제한되어 있어
-    /// 보간 틀어짐이 눈에 띄지 않는다 — 짧은 보간을 얹을 이유가 없다.</summary>
+    /// 보간 틀어짐이 눈에 띄지 않는다 — 짧은 보간을 얹을 이유가 없다.
+    ///
+    /// [왜 진행 축까지 맞추게 됐나 — 2026-08-23, 계단이 매번 다르게 동작했다]
+    /// 원래는 "플레이어가 실제로 지나간 그 지점을 그대로 첫 텀블의 출발점으로 쓴다"였다. 그런데 그
+    /// 지점은 <b>트리거 면 + 콜라이더 반폭 + 그 프레임의 이동량</b>이라 눈에 보이지도 않고 매번
+    /// 흔들린다(이속 5면 물리 스텝당 0.1U). 칸 크기와 트레드 깊이가 같은 계단에서는 그 위상 오차가
+    /// 그대로 "몸 뒤쪽이 윗단 처마 밑에 걸침"이 되고, 재접지가 낙차를 흡수해 몸을 내리는 순간
+    /// 윗단을 파고들어 막힌다(2026-08-23 실측: 위상 어긋남 0.377U → 침투 0.195, 매 단 막힘).
+    /// <c>Blocked</c> 허용치가 0.005라 씬에서 계단을 옮겨 맞춰도 다음 플레이에 또 어긋난다 —
+    /// 원점을 <b>보이는 것</b>(문 평면)에 못박는 것 말고는 재현 가능하게 만들 방법이 없다.
+    /// 대가는 통과 순간 최대 반 칸(정육면체 0.5U) 위치 스냅이다. §5.2의 "격자 원점을 저장하지
+    /// 않는다"와 충돌하지 않는다 — 저장하는 상태는 여전히 없고, 그 순간 위치만 옮긴다.
+    ///
+    /// [정사면체는 제외한다] 정사면체의 유효 방향은 진입 기준 45°/120° 간격이라 <b>문의 진행축과
+    /// 나란한 방향이 아예 없다</b>(§5.3의 지그재그). 그 축으로 0.8165U 격자에 양자화하면 실제
+    /// 이동 격자와 무관한 자리로 옮기는 것이라 안 하느니만 못하다. 정육면체는 유효 방향이 90°
+    /// 간격이라 문을 격자축에 맞춰 놓으면 진행축이 곧 격자축이다 — <b>문을 비스듬히 놓으면 이
+    /// 양자화도 의미가 없다</b>(레벨 디자인 제약).</summary>
     public void AlignAcrossPortal(Vector3 portalCenter, Vector3 widthAxis)
     {
         if (rb == null || state != State.Idle) return; // 텀블 도중엔 피벗 계산을 건드리면 안 된다
@@ -274,10 +316,21 @@ public class PlayerRollModeReceiver : MonoBehaviour
         axis.Normalize();
 
         Vector3 current = rb.isKinematic ? transform.position : rb.position;
-        float offset = Vector3.Dot(portalCenter - current, axis);
-        if (Mathf.Abs(offset) < 1e-4f) return; // 이미 정렬됨
+        Vector3 target = current + axis * Vector3.Dot(portalCenter - current, axis);
 
-        Vector3 target = current + axis * offset;
+        // 진행 축 = 폭 축과 직교하는 수평축. 문 평면을 원점으로 한 칸 격자에서 가장 가까운 칸
+        // 중심으로 양자화한다(이동량은 항상 반 칸 이하). 위 요약의 [왜 진행 축까지…] 참고.
+        // ⚠ 격자 원점은 **칸 중심이 문 평면에 오는** 규약이다 — 계단·통로는 문 평면에서 칸 정수배
+        //   거리에 트레드 중심이 오도록 놓아라(정육면체 1.0U). 반 칸 어긋나면 매 단 걸린다.
+        if (geo.flipYaw <= 0f)
+        {
+            Vector3 travel = Vector3.Cross(Vector3.up, axis).normalized;
+            float cell = 2f * geo.inradius * CurrentScale;
+            float along = Vector3.Dot(target - portalCenter, travel);
+            target += travel * (Mathf.Round(along / cell) * cell - along);
+        }
+
+        if ((target - current).sqrMagnitude < 1e-8f) return; // 이미 정렬됨
         if (rb.isKinematic)
         {
             transform.position = target;
@@ -630,22 +683,53 @@ public class PlayerRollModeReceiver : MonoBehaviour
         // 안쪽 판정을 절대 벗어나지 않는다. 평지에서는 이 정도 수평 이동으로 바닥 높이가 거의 안
         // 바뀐다(SampleScene 바닥 기울기 0.16° 기준 오차 0.0001U 수준). pivotPoint 자체(회전축
         // 위치)는 이 지점에서 손대지 않는다 — 아래 top 비교·대입 전부 pivotPoint.y만 쓴다.
-        Vector3 rayXZ = pivotPoint - tumbleDir * (GroundSnapRayBackoff * scale);
+        float top = SampleGroundTop(pivotPoint - tumbleDir * (GroundSnapRayBackoff * scale), scale);
 
-        // 피벗은 정의상 바닥 평면 위의 점이라 그 자리에서 쏘면 시작점이 이미 바닥 안쪽일 수 있다
-        // (가라앉은 경우). 도형 반높이만큼 띄워서 쏘고, 사거리는 띄운 만큼 + 아래 여유로 한 칸.
-        // 아래 여유(0.5×scale)는 아래 보정 상한(0.25×scale)의 두 배라, 받아들일 보정은 항상 사거리 안이다.
-        int n = Physics.RaycastNonAlloc(rayXZ + Vector3.up * (0.5f * scale), Vector3.down,
-                                        groundHitBuffer, 1.0f * scale, ~0, QueryTriggerInteraction.Ignore);
-
-        // RaycastNonAlloc은 거리순 정렬을 보장하지 않는다. 아래로 쏜 것 중 가장 높은 히트가 곧
-        // "지금 딛고 선 면"이라 순서와 무관하게 그것만 고른다.
-        float top = float.NegativeInfinity;
-        for (int i = 0; i < n; i++)
+        // [전방 프로브 — "오르는 단차"만, 그것도 아주 얕게 흡수한다 (2026-08-23 리프트 플레이테스트)]
+        // 위 백오프는 지금 칸만 보게 만든 장치라(원인 3), 도착 칸이 δ만큼 **높을 때** 그 높이를
+        // 코드 어디서도 보지 않는다. 도착 밑면 평면은 pivotPoint.y로 확정되므로(CanonicalPoseOf)
+        // 몸이 회전 내내 그 높은 바닥을 파고들고, 그대로 BeginTumble의 **사전 검사**(호 중간 자세)에
+        // 걸려 "제자리 무반응"이 된다 — 되감기까지 가지도 않는다. 사전 검사 침투는 정육면체 δ,
+        // 정사면체 0.707δ라 Blocked 허용치(0.005×scale) 기준 δ가 5~7 mm만 넘어도 시작조차 못 한다.
+        // 반대로 도착 칸이 **낮으면** 회전 호가 피벗 평면 아래로 내려가는 일이 없어 막힐 게 없다
+        // (정육면체 y'(θ) = a·cosθ + b·sinθ ≥ 0) — 내려가는 단차는 되고 올라가는 단차만 안 되던
+        // 비대칭의 전부가 여기다. 피벗 Y를 도착 바닥까지 끌어올리면 몸 전체가 δ만큼 들린 채 돌아
+        // 호가 도착 평면 위에 머물고, 끝나면 정확히 그 위에 앉는다.
+        //
+        // 샘플 지점 = 도착 밑면의 중심(피벗에서 진행 방향으로 내접원 반지름). 도착 칸은 피벗에서
+        // 0~2×inradius를 차지하므로 정확히 그 한가운데라 다음다음 칸으로 절대 안 샌다. 후방과
+        // 대칭으로 GroundSnapRayBackoff(0.05)만 나가는 것은 안 된다 — 피벗은 격자가 아니라 그때그때
+        // 몸 위치에서 나오므로, 단의 모서리가 피벗보다 0.05U 넘게 앞에 있으면 그대로 놓친다.
+        //
+        // ⚠ **지금 칸보다 낮은 값은 절대 채택하지 않는다(ahead > top).** 낮은 쪽을 받아들이는 순간
+        //   원인 3(경계에서 옆 칸을 짚어 몸이 아래층으로 내려앉는 오판)이 그대로 되살아난다.
+        // ⚠ 상한(stepUpCap) 검사를 여기서 따로 도는 이유: 앞이 벽이라 상한을 넘을 때 뭉뚱그려
+        //   대입하면 아래 최종 검사가 통째로 실패해 **지금 칸의 정상 보정까지 잃는다**.
+        // 평지 드리프트는 생기지 않는다 — pivotPoint.y는 누적 가산이 아니라 매 텀블 실측값 절대
+        // 대입이라(아래 한 줄) 이전 보정이 다음 측정에 되먹임되는 경로 자체가 없다. 그래서 데드존도
+        // 두지 않는다(데드존을 두면 "그 문턱 미만 단차는 여전히 못 오른다"는 원래 버그가 남는다).
+        if (stepUpCap > 0f)
         {
-            if (IsOwn(groundHitBuffer[i].collider)) continue;   // 피벗은 자기 몸 바로 밑이다 — 필터 없으면 자기를 때린다
-            if (groundHitBuffer[i].normal.y <= 0.5f) continue;  // PlayerGroundContact의 기본 문턱과 같은 감각. 벽 옆면은 바닥이 아니다
-            if (groundHitBuffer[i].point.y > top) top = groundHitBuffer[i].point.y;
+            // 두 점을 짚는다 — 도착 칸 **한가운데**와 **먼 끝**. 한 점(한가운데)만으로는 단의 모서리가
+            // 도착 칸의 먼 절반에 있을 때 통째로 놓친다: 2026-08-23 리프트가 정확히 그 배치였다
+            // (리프트 동쪽 끝 X=-20.2, 메인 지면 서쪽 면 X=-20.0875 — 정사면체가 가장자리에서 0.3U
+            // 넘게 떨어져 서면 한가운데 점이 아직 리프트 위라 단차를 못 본다. 텀블은 0.8165U 단위라
+            // 가장자리에 더 붙을 수도 없어 그 자리에 영영 갇힌다).
+            // 먼 끝은 백오프만큼 물러나 짚는다 — 도착 칸의 리딩 엣지 그 자체를 짚으면 원인 3과 같은
+            // 이유로 다음다음 칸을 잘못 짚을 수 있다. 두 점 다 도착 칸(피벗에서 0~2×inradius) 안이라
+            // 계단처럼 트레드가 셀 크기와 같은 지형에서도 다음 단을 넘겨보지 않는다.
+            float ahead = Mathf.Max(
+                SampleGroundTop(pivotPoint + tumbleDir * (geo.inradius * scale), scale),
+                SampleGroundTop(pivotPoint + tumbleDir * ((2f * geo.inradius - GroundSnapRayBackoff) * scale), scale));
+
+            // 채택하면 여기서 바로 확정하고 나간다. 아래 하강용 상한(GroundSnapCorrectionCap)을
+            // 다시 통과시키면 **stepUpCap을 0.25보다 크게 잡아도 아무 일이 안 일어난다** — 노브가
+            // 조용히 죽는다. 오르는 쪽 상한은 stepUpCap 하나뿐이고, 그 검사는 이미 여기서 끝났다.
+            if (ahead > top && ahead > pivotPoint.y && ahead - pivotPoint.y <= stepUpCap * scale)
+            {
+                pivotPoint.y = ahead;
+                return;
+            }
         }
 
         // 보정 상한 — 피벗이 절벽 모서리나 계단 턱에 걸치면 히트가 아래층 바닥이라, 보정했다간 몸이
@@ -655,6 +739,30 @@ public class PlayerRollModeReceiver : MonoBehaviour
         // 1/4칸이라는 값: 칸당 높이차가 그만큼이면 경사 약 14°다. 그보다 가파른 면은 굴리기 격자로
         // 다룰 지형이 아니고, 계단·턱과 구분되지도 않는다.
         if (Mathf.Abs(top - pivotPoint.y) <= GroundSnapCorrectionCap * scale) pivotPoint.y = top;
+    }
+
+    /// <summary>주어진 XZ에서 아래로 쏴 "딛고 설 수 있는 면" 중 가장 높은 Y. 히트가 없으면 -inf.</summary>
+    // 피벗은 정의상 바닥 평면 위의 점이라 그 자리에서 쏘면 시작점이 이미 바닥 안쪽일 수 있다
+    // (가라앉은 경우). 도형 반높이만큼 띄워서 쏘고, 사거리는 띄운 만큼 + 아래 여유로 한 칸.
+    // 아래 여유(0.5×scale)는 아래 보정 상한(0.25×scale)의 두 배라, 받아들일 보정은 항상 사거리 안이다.
+    // 띄우는 높이 0.5×scale은 전방 프로브에도 그대로 유효하다 — stepUpCap(≤0.25) 이하로 높은 도착
+    // 바닥은 언제나 시작점보다 아래에 있다. 그보다 높은 벽은 시작점이 콜라이더 안이라 Unity가 히트를
+    // 주지 않고, 그 결과 -inf가 되어 "오를 수 없는 것"으로 저절로 걸러진다.
+    private float SampleGroundTop(Vector3 rayXZ, float scale)
+    {
+        int n = Physics.RaycastNonAlloc(rayXZ + Vector3.up * (0.5f * scale), Vector3.down,
+                                        groundHitBuffer, 1.0f * scale, ~0, QueryTriggerInteraction.Ignore);
+
+        // RaycastNonAlloc은 거리순 정렬을 보장하지 않는다. 아래로 쏜 것 중 가장 높은 히트가 곧
+        // "딛고 선 면"이라 순서와 무관하게 그것만 고른다.
+        float top = float.NegativeInfinity;
+        for (int i = 0; i < n; i++)
+        {
+            if (IsOwn(groundHitBuffer[i].collider)) continue;   // 피벗은 자기 몸 바로 밑이다 — 필터 없으면 자기를 때린다
+            if (groundHitBuffer[i].normal.y <= 0.5f) continue;  // PlayerGroundContact의 기본 문턱과 같은 감각. 벽 옆면은 바닥이 아니다
+            if (groundHitBuffer[i].point.y > top) top = groundHitBuffer[i].point.y;
+        }
+        return top;
     }
 
     private void PoseAt(float theta, float scale, out Vector3 pos, out Quaternion rot) =>

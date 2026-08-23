@@ -1,3 +1,4 @@
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -58,10 +59,39 @@ public class Portal : MonoBehaviour
              "조사용이며, 끝나면 꺼라.")]
     public bool logBlocking = true;
 
+    [Tooltip("텀블로 올라갈 수 있는 최대 단차(Unit, 스케일 1 기준). 도착 칸 바닥이 지금 칸보다 이 " +
+             "값 이하로 높으면 그 높이에 맞춰 올라가고, 넘으면 제자리 무반응이다. 0 = 기능 끔. " +
+             "⚠ 내려가는 쪽 허용치(0.25)와 일부러 대칭이 아니다 — 크게 잡으면 턱을 타고 기어오른다. " +
+             "천장이 낮은 정사면체 전용 게이트(1.30U)를 쓰는 구간에서는 0.0753U를 넘기지 마라 " +
+             "(호 전체가 이 값만큼 들려 천장 여유를 그만큼 잠식한다). 상세: PlayerRollModeReceiver 참고.")]
+    public float stepUpCap = 0.05f;
+
     private void Reset()
     {
         Collider col = GetComponent<Collider>();
         if (col != null) col.isTrigger = true;
+    }
+
+    // [같은 통과 안에서의 재발화를 무시한다 — Toggle이 멱등이 아니라서 필수]
+    // 리시버는 텀블을 시작할 때 isKinematic을 켜고(Grab) 끝날 때 끈다(Release). 이 몸이 트리거에
+    // 겹쳐 있는 동안 그 플립이 일어나면 **PhysX가 액터를 다시 등록하면서 OnTriggerExit와
+    // OnTriggerEnter를 새로 쏜다.** action이 Toggle이면 그 재발화가 그대로 모드를 꺼 버리고,
+    // 꺼지면 Release가 또 플립을 만들어 ON↔OFF가 물리 스텝마다 무한 반복된다. 그동안 몸은
+    // 모드가 꺼진 스텝에 평범하게 걸으므로, 화면에는 "포탈 위에서만 굴리기 없이 미끄러지다가
+    // 다 지나면 굴러간다"로 보인다(2026-08-23 실측: 0.020초 간격 OFF/ON 반복).
+    // 위 OnTriggerEnter의 이중 발화 방지(솔리드 콜라이더 하나만 받기)는 **한 스텝 안의 콜라이더
+    // 중복**만 막는다 — 스텝을 건너뛰며 오는 이 재발화는 못 막는다. 그래서 겹침이 이어지는 동안
+    // OnTriggerStay가 매 스텝 도장을 찍어 두고, 도장이 아직 살아 있는 Enter는 흘려보낸다.
+    // 진짜로 문을 나갔다 다시 들어오면 그사이 Stay가 끊겨 도장이 상해 있으므로 정상 동작한다.
+    private readonly Dictionary<Rigidbody, float> lastOverlapTime = new Dictionary<Rigidbody, float>();
+
+    // 도장은 이 문에 닿아 본 플레이어 몸 수만큼만 늘어난다(씬 전체 3개) — 별도 청소가 필요 없다.
+    private void OnTriggerStay(Collider other)
+    {
+        // Enter와 달리 솔리드/트리거를 가리지 않는다 — 도장은 "이 몸이 아직 겹쳐 있다"는 사실만
+        // 남기면 되고, 어느 콜라이더가 찍든 같은 Rigidbody다.
+        Rigidbody body = other.attachedRigidbody;
+        if (body != null) lastOverlapTime[body] = Time.time;
     }
 
     private void OnTriggerEnter(Collider other)
@@ -83,6 +113,20 @@ public class Portal : MonoBehaviour
         // 아무 일도 일어나지 않는다 — 막지 않고 그냥 지나간다(PRD §4.3).
         if (identity.Kind == PlayerShapeStats.ShapeKind.Sphere) return;
 
+        // 도장이 직전 스텝 것이면 같은 통과의 재발화다(위 주석). 여유 2.5스텝은 재발화가 Exit와
+        // 같은 스텝에 오든 다음 스텝에 오든 덮으면서, 진짜 재통과(문을 나갔다 오는 데 최소 수백 ms)
+        // 와는 자릿수가 달라 절대 겹치지 않는다. 흘려보내기 전에 도장을 갱신해야 연속 재발화가
+        // 도장을 상하게 두지 않는다.
+        Rigidbody body = other.attachedRigidbody;
+        if (body != null)
+        {
+            float seen;
+            bool samePass = lastOverlapTime.TryGetValue(body, out seen)
+                            && Time.time - seen <= Time.fixedDeltaTime * 2.5f;
+            lastOverlapTime[body] = Time.time;
+            if (samePass) return;
+        }
+
         PlayerRollModeReceiver receiver = identity.GetComponent<PlayerRollModeReceiver>();
         if (receiver == null) receiver = identity.gameObject.AddComponent<PlayerRollModeReceiver>();
 
@@ -93,6 +137,7 @@ public class Portal : MonoBehaviour
         receiver.exitRollModeOnFall = exitRollModeOnFall;
         receiver.fallExitGrace = fallExitGrace;
         receiver.logBlocking = logBlocking;
+        receiver.stepUpCap = stepUpCap;
 
         // [포탈 중앙 정렬] 굴리기 모드로 켜지거나 유지될 때만, 진행 방향과 수직인 폭 축(로컬 X)으로
         // 위치를 맞춘다 — 문을 치우쳐 지나가면 그 좌우 오차가 이후 몇 칸을 굴러도 그대로 보존되어
