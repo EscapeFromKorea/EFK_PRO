@@ -1,29 +1,32 @@
 using UnityEngine;
 
 /// <summary>
-/// 투석기의 조향 손잡이(구 전용) — 22차 개편(2026-08-06)으로 도입된 "도킹 후 직접 조작" 방식.
-/// 이 컴포넌트는 손잡이(그립/고리) 오브젝트가 아니라 **투석기 루트 자신**에 붙는다
-/// (`CatapultLoadController`/`Rigidbody`와 같은 자리) — 물리 충돌이나 트리거를 하나도 다루지
-/// 않고, C키 도킹 상태머신과 조향 회전만 담당하는 순수 스크립트다.
+/// 투석기의 조향 손잡이(구 전용) — "도킹 후 직접 조작" 방식. 이 컴포넌트는 손잡이(그립/고리)
+/// 오브젝트가 아니라 **투석기 루트 자신**에 붙는다(`CatapultLoadController`/`Rigidbody`와 같은
+/// 자리) — 물리 충돌이나 트리거를 하나도 다루지 않고, C키 도킹 상태머신과 조향 회전만 담당하는
+/// 순수 스크립트다.
 ///
-/// [22차 개편 — 왜 21차(순수 충돌 기반)를 전면 폐기했나]
-/// 9~20차(12라운드)에 걸친 SpringJoint 조향 실패 끝에 21차는 손잡이를 진짜 솔리드 블록으로 바꿔
-/// 표준 강체 충돌이 힘을 전달하게 하는 방식으로 전환했다 — 그러나 21차는 씬에서 한 번도
-/// 테스트되지 못한 채 사용자가 방향을 완전히 바꿨다: 조준을 "부딪혀서 미는/당기는" 물리 반응이
-/// 아니라 **"구가 손잡이에 도킹해 투석기를 직접 조작하는"** 방식으로 하기로 확정했다. 이 방식은
-/// 이 저장소가 이미 신뢰하는 세 패턴을 그대로 조합한다 — `ThreadPinPlacer`의 벽 부착
-/// (`isKinematic=true`로 완전 고정, 조인트 없음), `CatapultBucket`의 C키 탑승(거리 기반 판정,
-/// 물리적 겹침 불필요), 5차 개편의 `Rigidbody.MoveRotation`(논카인매틱 Rigidbody 위에 얹는 스크립트
-/// 회전). SpringJoint의 damper/spring 튜닝, `maxDistance` 재검산, `enableCollision`,
-/// 트리거 부착/해제 상태 관리, 콜라이더 충돌 임펄스 튜닝이 전부 필요 없어져 코드가 다시 한번
-/// 극적으로 단순해졌다 — 9~21차의 실패 이력 자체는 `CatapultSystem/CLAUDE.md`에 그대로 남겨 뒀다
-/// (같은 접근을 다시 시도하지 않기 위한 기록).
+/// 개편 이력(라운드별로 무엇을 왜 바꿨는지)은 코드가 아니라 `CatapultSystem/CLAUDE.md`에 기록돼
+/// 있다 — 이 요약은 "지금 코드가 왜 이렇게 동작하는가"만 담는다.
+///
+/// [**경고 — SpringJoint 기반 조향을 다시 시도하지 마라.**]
+/// 이 파일은 원래 구가 손잡이를 물리적으로 밀거나(충돌) SpringJoint로 당기는 방식이었다. 12라운드에
+/// 걸쳐 damper/spring 튜닝, `maxDistance` 재검산, `enableCollision`, 트리거 부착/해제 상태 관리,
+/// 콜라이더 충돌 임펄스 튜닝을 모두 시도했지만 "구가 밀어도 투석기가 안 움직인다"는 증상이 매번
+/// 다른 근본 원인(터널링·물리적 도달 불가·마찰·좁은 자유 구간의 폭력적 가속 등)으로 재현됐다 —
+/// 진단 키(F9)로 "Rigidbody 자체는 힘/velocity에 정상 반응한다"는 것까지 확인했는데도 SpringJoint를
+/// 거치면 매번 실패했다. 순수 콜라이더 충돌 방식(21차)도 시도했지만 씬에서 검증되기 전에 폐기됐다.
+/// **지금 쓰는 "C로 도킹 후 직접 조작" 방식은 이 두 접근을 전부 버리고 나온 결론이다** — 물리
+/// 조인트/충돌이 아니라 이 저장소가 이미 신뢰하는 세 패턴을 그대로 조합한다: `ThreadPinPlacer`의
+/// 벽 부착(`isKinematic=true`로 완전 고정, 조인트 없음), `CatapultBucket`의 C키 탑승(거리 기반
+/// 판정, 물리적 겹침 불필요), `Rigidbody.MoveRotation`(논카인매틱 Rigidbody 위에 얹는 스크립트
+/// 회전). **다음에 조향을 또 손보게 되더라도 SpringJoint/충돌 기반으로 되돌아가지 마라** — 실패
+/// 이력의 자세한 진단 과정은 `CatapultSystem/CLAUDE.md`에 그대로 남겨 뒀다.
 ///
 /// [연결/해제 — 거리 기반 C키, 트리거/충돌 아님]
 /// `CatapultLoadController.TryConnect()`/`CatapultBucket`의 C키 탑승과 정확히 같은 패턴 —
 /// `Vector3.Distance(sphereBody.position, dockAnchor.position) &lt;= dockRange`를 C가 눌린 순간에만
-/// 확인한다. `OnTriggerEnter` 자체가 필요 없어, 9~21차가 겪은 모든 물리/충돌 함정을 원천적으로
-/// 비껴간다.
+/// 확인한다. `OnTriggerEnter` 자체가 필요 없어, 위 경고의 모든 물리/충돌 함정을 원천적으로 비껴간다.
 ///
 /// [역할 게이트 — 구 전용]
 /// 이 파일이 조향 전반에서 계속 써 온 `Kind == PlayerShapeStats.ShapeKind.Sphere` 게이트를 그대로
@@ -37,8 +40,13 @@ using UnityEngine;
 ///   위치/회전을 스냅한다 — 투석기가 조향으로 돌 때 도킹된 구도 그 회전을 그대로 따라가야
 ///   "손잡이를 쥐고 함께 도는" 느낌이 난다(`CatapultBucket`이 탑승자를 `armPivot`에 부모화해 당김
 ///   회전을 따라가게 하는 것과 같은 이유). `dockAnchor`의 스케일이 항상 균일(1,1,1)이라
-///   `CatapultBucket`이 10차 개편에서 겪은 "비균일 스케일 부모에 부모화하면 전단으로 스케일이
-///   왜곡된다"는 함정을 애초에 피한다.
+///   `CatapultBucket`이 겪은 "비균일 스케일 부모에 부모화하면 전단으로 스케일이 왜곡된다"는
+///   함정을 애초에 피한다.
+/// - 도킹 중엔 `Rigidbody.interpolation`도 `None`으로 끈다(`Undock()`에서 원래 값으로 복원) — 킨네마틱
+///   Rigidbody가 `Interpolate` 모드인 채로 부모(dockAnchor) Transform 회전에 간접적으로 끌려가면
+///   Unity의 보간 버퍼가 그 변화를 제대로 못 쫓아가 렌더링용 Transform이 실제 자세와 어긋나거나
+///   지연될 수 있다(Unity 알려진 함정, `CatapultBucket`의 탑승자가 겪은 것과 같은 종류 — 회전량이
+///   클수록 어긋남이 커진다). 가설 기반 수정이라 실측으로 완전히 검증되지는 않았다.
 /// - `PlayerMover.ExternallyDriven = true`(`mover.enabled`는 절대 건드리지 않는다 — Tab 로스터를
 ///   깨는 것은 이 저장소의 하드룰이다, `Assets/CLAUDE.md` 참고).
 /// - 구를 "링에 맞게" 확대한다 — `PlayerShapeController.ToggleScale(EScaleState.Grown)`을 재사용한다
@@ -47,13 +55,17 @@ using UnityEngine;
 ///   필드라 불필요하다. 호출 직전에 `shapeController.growMultiplier = dockedScaleMultiplier`로
 ///   확대 배율을 이 컴포넌트가 정하고, 이후 `ToggleScale`을 그대로 호출한다 — 전환 보간
 ///   (`lerpSpeed`)은 `PlayerShapeController`가 스스로 처리하므로 여기서 새 스무딩 코드가
-///   필요 없다.
+///   필요 없다. `growMultiplier`는 도킹 해제 후에도 원래 값으로 복원하지 않는다(사용자 확정 —
+///   `ScalePad` 등 다른 기믹과 공유하는 필드라, 씬에 두 기믹이 공존하면 영향을 줄 수 있다).
 ///
-/// [입력 게이트 — 도킹된 플레이어가 조작 대상이 아니면 다른 플레이어의 C를 무시]
-/// `DreamThreadController`/`CatapultLoadController`가 이미 쓰는 패턴을 처음부터 반영했다(이
-/// 저장소의 2026-07-30 입력 게이트 감사가 지적한 클래스의 버그를 이번엔 처음부터 만들지 않는다).
-/// 구가 도킹된 채 Tab으로 다른 플레이어에게 조작권이 넘어간 동안(`dockedMover.IsControlled ==
-/// false`), 다른 플레이어가 아무 데서나 C를 눌러도 로그만 남기고 도킹을 풀거나 새로 걸지 않는다.
+/// [입력 게이트 — 도킹된 플레이어가 조작 대상이 아니면 다른 플레이어의 C/A/D를 무시]
+/// `DreamThreadController`/`CatapultLoadController`가 이미 쓰는 패턴이다(2026-07-30 입력 게이트
+/// 감사가 지적한 종류의 버그를 처음부터 만들지 않기 위함). 구가 도킹된 채 Tab으로 다른 플레이어에게
+/// 조작권이 넘어간 동안(`dockedMover.IsControlled == false`), 다른 플레이어가 아무 데서나 C를 눌러도
+/// 로그만 남기고 도킹을 풀거나 새로 걸지 않는다. `Input.GetAxis("Horizontal")`은 전역 축이라 C키
+/// 게이트만으로는 부족하다 — 조향 입력을 읽는 지점에도 `dockedMover.IsControlled`를 함께 확인해야
+/// "지금 실제로 이 구를 조작 중"일 때만 반응한다(그렇지 않으면 파킹된 도킹 세션에도 다른 플레이어의
+/// A/D가 새어 들어와 투석기가 제멋대로 돈다).
 ///
 /// [다중 투석기 안전장치 — 가장 가까운 것에만 도킹]
 /// `CatapultLoadController.IsNearestCatapult`/`CatapultBucket.IsNearestBucket`과 같은 아이디어를
@@ -64,31 +76,29 @@ using UnityEngine;
 /// 도킹돼 있는 동안 `Input.GetAxis("Horizontal")`(플레이어가 평소 이동에 쓰는 것과 같은 전역 축 —
 /// `ExternallyDriven=true`가 `PlayerMover`의 이 값 처리를 막아 주므로 여기서 재사용해도 안전하다)를
 /// 매 프레임 읽어 `Update()`에 캐시하고, 실제 회전 대입은 `FixedUpdate()`에서
-/// `Rigidbody.MoveRotation`으로 한다 — 이 파일의 5차 개편이 이미 정립한 이유 그대로다(물리 스텝에
-/// 반영되는 값이라 프레임레이트와 무관하게 일관되려면 고정 타임스텝에서 처리해야 한다).
-/// `baseYaw`(스폰 시점 요, "링이 있는 방향")는 `Awake()`에서 한 번만 캡처한다. 매 스텝
-/// `Mathf.DeltaAngle(baseYaw, candidateYaw)`로 부호 있는 오프셋을 구해 `[-steerYawRange,
-/// +steerYawRange]`로 클램프한 뒤 `baseYaw + clampedOffset`을 다시 대입한다 — 원시 오일러 각도를
-/// 그대로 `Mathf.Clamp`하면 0°/360° 경계에서 랩어라운드 버그가 나므로 `DeltaAngle`이 반드시
-/// 필요하다. 전후 이동은 없다(사용자 확정 — 회전만) — 위치는 기존 루트 Rigidbody 물리(중력/접지)에
-/// 완전히 맡긴다.
-/// **23차 개편(2026-08-06) — 목표 요는 더 이상 `rootBody.rotation`(물리 시뮬레이션 결과)에서 다시
-/// 읽지 않는다.** 22차 코드는 매 스텝 `rootBody.rotation.eulerAngles.y`를 다음 목표의 기준으로 삼았는데,
-/// `pendingHorizontal == 0`이어도 이 값은 바퀴 접지 노이즈 등으로 미세하게 계속 드리프트할 수 있고,
-/// 스크립트가 그 드리프트를 매 스텝 "새 목표"로 그대로 재확인해 버려 도킹된 채 정지해 있어도 서서히
-/// -Y로 계속 회전하는 버그가 났다(드리프트가 교정되지 않고 매 스텝 앞으로 전달됐다). 지금은
-/// `dockedYawOffset`(`baseYaw` 기준 오프셋, 항상 `[-steerYawRange, +steerYawRange]`로 클램프된 채
-/// 스크립트 자신이 들고 있다)이 유일한 진실이다 — 매 스텝 이 필드에만 입력을 누적하고,
-/// `rootBody.rotation`은 다음 계산의 입력으로 두 번 다시 읽지 않는다. `Dock()` 순간에는 그 시점의
-/// 실제 요(이전 도킹 세션에서 남은 회전이 있을 수 있다)로 `dockedYawOffset`을 한 번 초기화해 도킹
-/// 스냅 때 시각적으로 튀지 않게 한다. 도킹 중에는 매 `FixedUpdate`마다 `rootBody.angularVelocity`도
-/// `Vector3.zero`로 강제한다 — `MoveRotation`이 그 프레임의 목표 자세를 정확히 대입해도, 논카인매틱
-/// Rigidbody에 남아 있는 시뮬레이션 각속도가 같은 스텝 안에서 다음 프레임의 실제 자세를 살짝 더
-/// 밀 수 있기 때문이다(Unity가 `MoveRotation`과 시뮬레이션 적분을 같은 스텝에 함께 적용한다) —
-/// 도킹은 회전의 소유권을 스크립트에 완전히 넘기는 것이므로, 물리 엔진이 만든 잔여 토크가 다음
-/// 스텝까지 살아남을 여지를 아예 남기지 않는다. `dockedBody != null`일 때만 이 강제 리셋을 하고,
-/// 도킹된 사람이 없을 때는 `angularVelocity`를 전혀 건드리지 않는다 — 아무도 조향하지 않는 동안의
-/// 기존 물리 거동(충돌·안착 등)은 그대로 유지한다.
+/// `Rigidbody.MoveRotation`으로 한다 — 물리 스텝에 반영되는 값이라 프레임레이트와 무관하게
+/// 일관되려면 고정 타임스텝에서 처리해야 한다. `baseYaw`(스폰 시점 요, "링이 있는 방향")는
+/// `Awake()`에서 한 번만 캡처한다. 매 스텝 `Mathf.DeltaAngle(baseYaw, candidateYaw)`로 부호 있는
+/// 오프셋을 구해 `[-steerYawRange, +steerYawRange]`로 클램프한 뒤 `baseYaw + clampedOffset`을 다시
+/// 대입한다 — 원시 오일러 각도를 그대로 `Mathf.Clamp`하면 0°/360° 경계에서 랩어라운드 버그가 나므로
+/// `DeltaAngle`이 반드시 필요하다. 전후 이동은 없다(사용자 확정 — 회전만) — 위치는 기존 루트
+/// Rigidbody 물리(중력/접지)에 완전히 맡긴다.
+/// **목표 요는 `rootBody.rotation`(물리 시뮬레이션 결과)에서 다시 읽지 않는다.** 매 스텝
+/// `rootBody.rotation.eulerAngles.y`를 다음 목표의 기준으로 삼으면, 입력이 0이어도 이 값은 바퀴
+/// 접지 노이즈 등으로 미세하게 계속 드리프트할 수 있고 스크립트가 그 드리프트를 매 스텝 "새 목표"로
+/// 그대로 재확인해 버려 도킹된 채 정지해 있어도 서서히 회전하는 버그가 난다(드리프트가 교정되지
+/// 않고 매 스텝 앞으로 전달된다). 대신 `dockedYawOffset`(`baseYaw` 기준 오프셋, 항상
+/// `[-steerYawRange, +steerYawRange]`로 클램프된 채 스크립트 자신이 들고 있다)이 유일한 진실이다 —
+/// 매 스텝 이 필드에만 입력을 누적하고, `rootBody.rotation`은 다음 계산의 입력으로 두 번 다시 읽지
+/// 않는다. `Dock()` 순간에는 그 시점의 실제 요(이전 도킹 세션에서 남은 회전이 있을 수 있다)로
+/// `dockedYawOffset`을 한 번 초기화해 도킹 스냅 때 시각적으로 튀지 않게 한다. 도킹 중에는 매
+/// `FixedUpdate`마다 `rootBody.angularVelocity`도 `Vector3.zero`로 강제한다 — `MoveRotation`이 그
+/// 프레임의 목표 자세를 정확히 대입해도, 논카인매틱 Rigidbody에 남아 있는 시뮬레이션 각속도가 같은
+/// 스텝 안에서 다음 프레임의 실제 자세를 살짝 더 밀 수 있기 때문이다(Unity가 `MoveRotation`과
+/// 시뮬레이션 적분을 같은 스텝에 함께 적용한다) — 도킹은 회전의 소유권을 스크립트에 완전히 넘기는
+/// 것이므로, 물리 엔진이 만든 잔여 토크가 다음 스텝까지 살아남을 여지를 아예 남기지 않는다.
+/// `dockedBody != null`일 때만 이 강제 리셋을 하고, 도킹된 사람이 없을 때는 `angularVelocity`를
+/// 전혀 건드리지 않는다 — 아무도 조향하지 않는 동안의 기존 물리 거동(충돌·안착 등)은 그대로 유지한다.
 ///
 /// [해제 — 자동 이탈 없음]
 /// 도킹된 플레이어가 다시 C를 누르면 링크 시의 모든 단계를 역순으로 되돌린다 —
@@ -96,39 +106,13 @@ using UnityEngine;
 /// 않는다), `isKinematic = false`, `mover.ExternallyDriven = false`. **자동 "튕겨나가기"는 없다
 /// (사용자 명시적 확정)** — 구는 현재(도킹된, 확대된) 위치에서 그대로 다시 조작 가능해질 뿐이고,
 /// 걸어/뛰어 나가는 것은 플레이어 몫이다.
-///
-/// [25차 개편(2026-08-06) — 도킹된 구가 조작 대상이 아닐 때 다른 플레이어의 A/D가 새는 버그 수정]
-/// `Update()`가 조향 입력을 `dockedBody != null`일 때만 읽었는데, `Input.GetAxis("Horizontal")`은
-/// 전역 축이라 이 조건만으로는 "지금 실제로 도킹된 구를 조작 중인가"를 걸러내지 못했다 — 구가
-/// 도킹된 채 Tab으로 다른 플레이어에게 조작권이 넘어가도(`dockedMover.IsControlled == false`)
-/// 그 다른 플레이어가 A/D를 누르면 값이 그대로 들어와 투석기가 제멋대로 돌았다(사용자 재현
-/// 보고). `HandleDockInput()`의 C키 해제 게이트가 이미 `dockedMover.IsControlled`를 확인하던 것과
-/// 똑같은 조건을 조향 입력 읽기에도 추가했다 — 두 입력 경로(C키/좌우 이동)가 이제 정확히 같은
-/// "조작 대상 확인" 기준을 공유한다.
-///
-/// [26차 개편(2026-08-06) — 도킹 중 구가 각도에 따라 링 위치에 안 맞는 버그, 가설 기반 수정]
-/// 사용자 재현 보고: "구가 C키를 눌러 링크했을 때, 각도(조향 회전량)에 따라 구가 링 위치에 맞게
-/// 움직이지 않는다." `Dock()`은 구를 `dockAnchor`(회전하는 투석기 루트의 자식)에 부모화하고
-/// `localPosition/localRotation`을 identity로 스냅하므로, 순수 Transform 계층 규칙상으로는 조향
-/// 각도와 무관하게 항상 정확히 링 위치를 따라가야 한다 — 그런데 구 Rigidbody는
-/// `PlayerObjectMenuItem.cs:140`이 기본으로 `RigidbodyInterpolation.Interpolate`를 켜 둔다. 이건
-/// `CatapultBucket`의 탑승자가 16차 개편에서 겪은 것과 정확히 같은 함정이다 — 킨네마틱
-/// Rigidbody가 Interpolate 모드인 채로 부모 Transform 회전에 "간접적으로" 끌려가면 Unity의 보간
-/// 버퍼가 그 변화를 제대로 못 쫓아가 `Update()`가 읽는 렌더링용 Transform이 실제 물리 자세와
-/// 어긋나거나 지연될 수 있다 — 회전량(각도)이 클수록 어긋남이 커지므로 "각도에 따라 안 맞는다"는
-/// 보고와 정확히 일치한다. `CatapultBucket.Board()`/`ConsumeOccupant()`가 이미 쓰는
-/// `occupantOriginalInterpolation` 저장→복원 패턴을 `Dock()`/`Undock()`에 그대로 이식했다 —
-/// 도킹 시작 시 `body.interpolation`을 `None`으로 끄고 `dockedOriginalInterpolation`에 원래 값을
-/// 저장했다가, `Undock()`(비킨네마틱으로 복귀)에서 되돌린다. **이건 가설 기반 수정이다 —
-/// `CatapultBucket`이 겪은 것과 같은 코드 구조(킨네마틱+회전 부모+Interpolate)라는 정황 근거로
-/// 판단했을 뿐, 이 증상을 실측으로 재현·확인하지는 못했다** — 다음 플레이테스트로 검증이 필요하다.
 /// </summary>
 public class CatapultSteerHandle : MonoBehaviour
 {
     [Header("도킹 대상 (구 전용)")]
     [Tooltip("도킹 지점 — 고리 시각 장식의 중심(또는 그 안의 빈 자식). CatapultMenuItem이 자동으로 " +
              "연결한다. 로컬 스케일이 항상 (1,1,1)이어야 한다 — 아니면 도킹된 구가 부모화 시 " +
-             "전단으로 왜곡된다(CatapultBucket이 10차 개편에서 겪은 함정).")]
+             "전단으로 왜곡된다(CatapultBucket이 겪은 함정과 같음).")]
     public Transform dockAnchor;
 
     [Tooltip("투석기 루트의 Rigidbody. 조향 회전(MoveRotation)의 대상이자 baseYaw(스폰 시점 방향)의 " +
@@ -156,17 +140,17 @@ public class CatapultSteerHandle : MonoBehaviour
 
     private float baseYaw;
     private float pendingHorizontal;
-    // 23차 개편 — `baseYaw` 기준 오프셋(항상 [-steerYawRange, +steerYawRange] 안). 조향 요 회전의
-    // 유일한 진실이다 — `rootBody.rotation`을 다음 계산의 입력으로 다시 읽지 않는다(클래스 상단
-    // "23차 개편" 주석 참고, 드리프트 되먹임 방지).
+    // `baseYaw` 기준 오프셋(항상 [-steerYawRange, +steerYawRange] 안). 조향 요 회전의 유일한
+    // 진실이다 — `rootBody.rotation`을 다음 계산의 입력으로 다시 읽지 않는다(클래스 상단 "조향"
+    // 주석 참고, 드리프트 되먹임 방지).
     private float dockedYawOffset;
 
     private Rigidbody dockedBody;
     private PlayerMover dockedMover;
     private PlayerShapeController dockedShapeController;
     private Transform dockedOriginalParent;
-    // 26차 개편 — 도킹 중 보간을 끈다(CatapultBucket.occupantOriginalInterpolation과 같은 이유·
-    // 패턴, 클래스 상단 "26차 개편" 주석 참고). Undock()에서 원래 값으로 되돌린다.
+    // 도킹 중 보간을 끈다(CatapultBucket.occupantOriginalInterpolation과 같은 이유·패턴, 클래스
+    // 상단 "도킹 시 하는 일" 주석 참고). Undock()에서 원래 값으로 되돌린다.
     private RigidbodyInterpolation dockedOriginalInterpolation;
 
     void Awake()
@@ -178,12 +162,12 @@ public class CatapultSteerHandle : MonoBehaviour
     {
         HandleDockInput();
 
-        // 입력은 여기서 읽고, 실제 회전 대입은 FixedUpdate에서 한다(클래스 상단 "조향" 주석 참고 —
-        // 5차 개편이 이미 정립한 이유와 같다). 25차 개편 — `dockedBody != null`만으로는 부족했다.
-        // Input.GetAxis("Horizontal")은 전역 축이라, 도킹된 구가 Tab으로 파킹된 동안 다른 플레이어가
-        // A/D를 눌러도 그 값이 그대로 여기 들어와 투석기가 제멋대로 돌았다(사용자 재현 보고) —
-        // `dockedMover.IsControlled`까지 함께 확인해야 "지금 실제로 이 구를 조작 중"일 때만 반응한다
-        // (HandleDockInput의 C키 게이트가 이미 쓰는 것과 같은 조건, 클래스 상단 "입력 게이트" 주석 참고).
+        // 입력은 여기서 읽고, 실제 회전 대입은 FixedUpdate에서 한다(클래스 상단 "조향" 주석 참고).
+        // `dockedBody != null`만으로는 부족하다 — Input.GetAxis("Horizontal")은 전역 축이라, 도킹된
+        // 구가 Tab으로 파킹된 동안 다른 플레이어가 A/D를 눌러도 그 값이 그대로 여기 들어와 투석기가
+        // 제멋대로 돈다 — `dockedMover.IsControlled`까지 함께 확인해야 "지금 실제로 이 구를 조작
+        // 중"일 때만 반응한다(HandleDockInput의 C키 게이트가 이미 쓰는 것과 같은 조건, 클래스 상단
+        // "입력 게이트" 주석 참고).
         pendingHorizontal = (dockedBody != null && dockedMover != null && dockedMover.IsControlled)
             ? Input.GetAxis("Horizontal") : 0f;
     }
@@ -192,9 +176,9 @@ public class CatapultSteerHandle : MonoBehaviour
     {
         if (rootBody == null || dockedBody == null) return;
 
-        // 23차 개편 — `rootBody.rotation`을 다시 읽지 않는다. 이번 스텝의 델타를 스크립트가 이미
-        // 들고 있는 `dockedYawOffset`(baseYaw 기준, 클램프됨)에만 누적한다 — 물리 시뮬레이션이 만든
-        // 드리프트가 다음 목표로 되먹임되는 경로 자체를 없앤다(클래스 상단 "23차 개편" 주석 참고).
+        // `rootBody.rotation`을 다시 읽지 않는다. 이번 스텝의 델타를 스크립트가 이미 들고 있는
+        // `dockedYawOffset`(baseYaw 기준, 클램프됨)에만 누적한다 — 물리 시뮬레이션이 만든 드리프트가
+        // 다음 목표로 되먹임되는 경로 자체를 없앤다(클래스 상단 "조향" 주석 참고).
         dockedYawOffset = Mathf.Clamp(
             dockedYawOffset + pendingHorizontal * steerRotateSpeed * Time.fixedDeltaTime,
             -steerYawRange, steerYawRange);
@@ -202,8 +186,8 @@ public class CatapultSteerHandle : MonoBehaviour
 
         // 도킹 중엔 회전을 스크립트가 전적으로 소유한다 — 논카인매틱 Rigidbody에 남은 시뮬레이션
         // 각속도(바퀴 접지 노이즈 등)가 이번 MoveRotation과 같은 스텝에 함께 적분돼 다음 프레임의
-        // 자세를 살짝 더 미는 것을 막는다(위 "23차 개편" 주석 참고). 아무도 도킹하지 않았을 때는
-        // 이 줄 자체가 실행되지 않으므로(위 조기 반환) 기존 물리 거동을 그대로 둔다.
+        // 자세를 살짝 더 미는 것을 막는다(위 "조향" 주석 참고). 아무도 도킹하지 않았을 때는 이 줄
+        // 자체가 실행되지 않으므로(위 조기 반환) 기존 물리 거동을 그대로 둔다.
         rootBody.angularVelocity = Vector3.zero;
     }
 
@@ -274,21 +258,16 @@ public class CatapultSteerHandle : MonoBehaviour
         dockedShapeController = identity.GetComponent<PlayerShapeController>();
         dockedOriginalParent = body.transform.parent;
 
-        // 23차 개편 — 도킹 순간의 실제 요(이전 도킹 세션에서 남은 회전이 있을 수 있다)로
-        // dockedYawOffset을 초기화한다. 그래야 회전 소유권을 스크립트로 넘기는 순간 투석기가
-        // 시각적으로 튀지 않는다(클래스 상단 "23차 개편" 주석 참고).
+        // 도킹 순간의 실제 요(이전 도킹 세션에서 남은 회전이 있을 수 있다)로 dockedYawOffset을
+        // 초기화한다. 그래야 회전 소유권을 스크립트로 넘기는 순간 투석기가 시각적으로 튀지 않는다
+        // (클래스 상단 "조향" 주석 참고).
         dockedYawOffset = Mathf.Clamp(
             Mathf.DeltaAngle(baseYaw, rootBody.rotation.eulerAngles.y), -steerYawRange, steerYawRange);
 
         body.isKinematic = true; // ThreadPinPlacer의 벽 부착과 같은 선택 — 조인트도 velocity 다툼도 없다.
 
-        // 26차 개편 — 탑승 중엔 보간을 끈다(CatapultBucket.Board()와 같은 이유). 구는
-        // PlayerObjectMenuItem.cs가 기본으로 RigidbodyInterpolation.Interpolate를 켜 두는데, 킨네마틱
-        // Rigidbody가 이 모드인 채로 부모(dockAnchor) Transform 회전에 간접적으로 끌려가면 Unity의
-        // 보간 버퍼가 그 변화를 제대로 못 쫓아가 렌더링용 Transform이 실제 자세와 어긋나거나 지연될
-        // 수 있다(Unity 알려진 함정, CatapultBucket이 16차 개편에서 겪은 것과 같은 종류 — 조향 회전이
-        // 클수록 어긋남이 커져 "각도에 따라 링 위치에 안 맞는다"는 증상과 일치한다). Undock()에서
-        // 원래 값으로 되돌린다.
+        // 탑승 중엔 보간을 끈다(CatapultBucket.Board()와 같은 이유, 클래스 상단 "도킹 시 하는 일"
+        // 주석 참고). Undock()에서 원래 값으로 되돌린다.
         dockedOriginalInterpolation = body.interpolation;
         body.interpolation = RigidbodyInterpolation.None;
 
@@ -327,9 +306,9 @@ public class CatapultSteerHandle : MonoBehaviour
             // 명시적 확정, 클래스 상단 "해제" 주석 참고).
             dockedBody.transform.SetParent(dockedOriginalParent, true);
             dockedBody.isKinematic = false;
-            // 26차 개편 — 도킹 중 꺼뒀던 보간을 해제 즉시 원래 값으로 되돌린다(CatapultBucket.
-            // ConsumeOccupant()와 같은 이유 — 해제 후엔 다시 비킨네마틱 실제 물리로 움직이므로 시각적
-            // 떨림 방지가 필요하다).
+            // 도킹 중 꺼뒀던 보간을 해제 즉시 원래 값으로 되돌린다(CatapultBucket.ConsumeOccupant()
+            // 와 같은 이유 — 해제 후엔 다시 비킨네마틱 실제 물리로 움직이므로 시각적 떨림 방지가
+            // 필요하다).
             dockedBody.interpolation = dockedOriginalInterpolation;
         }
 
