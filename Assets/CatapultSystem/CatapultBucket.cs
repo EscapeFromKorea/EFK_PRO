@@ -163,6 +163,20 @@ public class CatapultBucket : MonoBehaviour
              "1.2로 잡았다 — 감각적 기본값.")]
     public float heavyBoardBlockScaleRatio = 1.2f;
 
+    [Header("미니 투석기 전용 — 축소 상태만 탑승 허용 [TBD, 임시값, 2026-08-31 신규]")]
+    [Tooltip("true면 위 스케일 비율이 shrunkBoardMaxScaleRatio 이하(=Shrunk 상태)일 때만 탑승을 " +
+             "허용한다 — 버킷 캐비티가 축소 정육면체 기준으로 작게 지어진 미니 투석기에서, 정상 " +
+             "크기 정육면체가 캐비티에 물리적으로 파묻혀 탑승하는 것을 막는다(정상 크기는 이미 " +
+             "물리 크기만으로도 대개 걸러지지만, 억지로 밀어 넣으면 벽을 뚫고 낄 수 있어 이 코드 " +
+             "게이트로 확실히 막는다). 기본값 false — 기존 투석기(손수레형·Sling)는 전혀 영향받지 " +
+             "않는다. `MiniCatapultMenuItem`이 미니 투석기의 버킷에서만 true로 세팅한다.")]
+    public bool requireShrunkOccupant = false;
+
+    [Tooltip("`requireShrunkOccupant`가 켜졌을 때 '축소 상태'로 인정하는 상한 — shrinkMultiplier " +
+             "기본값(0.5)과 Normal(1.0)의 중간값으로 잡았다(위 heavyBoardBlockScaleRatio=1.2가 " +
+             "Normal과 Grown 사이에 있는 것과 같은 방식).")]
+    public float shrunkBoardMaxScaleRatio = 0.75f;
+
     // PlayerObjectMenuItem.cs가 정육면체에 쓰는 BoxCollider.size = Vector3.one(1×1×1, 이 기믹의 Scale과
     // 무관하게 고정) 기준 반높이 — 이 프로젝트에서 바뀔 여지가 거의 없어 하드코딩한다.
     private const float OccupantHalfHeight = 0.5f;
@@ -215,6 +229,16 @@ public class CatapultBucket : MonoBehaviour
     {
         if (identity == null || identity.stats == null || identity.stats.mass <= 0f) return false;
         return (body.mass / identity.stats.mass) >= heavyBoardBlockScaleRatio;
+    }
+
+    // 미니 투석기 전용 게이트(2026-08-31 신규) — requireShrunkOccupant가 꺼져 있으면(기존
+    // 투석기) 항상 통과한다. stats를 못 찾으면(수동 조립 등) 게이트를 걸지 않는다 — 이 파일의
+    // 다른 게이트들과 같은 방어적 폴백 원칙.
+    private bool IsNotShrunkEnoughToBoard(Rigidbody body, PlayerShapeIdentity identity)
+    {
+        if (!requireShrunkOccupant) return false;
+        if (identity == null || identity.stats == null || identity.stats.mass <= 0f) return false;
+        return (body.mass / identity.stats.mass) > shrunkBoardMaxScaleRatio;
     }
 
     // 벽이 사라진 대신 이 거리 게이트가 "가장자리를 스치기만 해도 탑승"을 막는다(클래스 상단
@@ -278,6 +302,11 @@ public class CatapultBucket : MonoBehaviour
         if (IsTooHeavyToBoard(body, identity))
         {
             Debug.Log("[Catapult] 커진 상태로는 버킷에 탑승할 수 없습니다.");
+            return;
+        }
+        if (IsNotShrunkEnoughToBoard(body, identity))
+        {
+            Debug.Log("[Catapult] 이 투석기는 축소(Shrunk) 상태에서만 탑승할 수 있습니다.");
             return;
         }
 
@@ -355,6 +384,7 @@ public class CatapultBucket : MonoBehaviour
 
         // ScalePad 연동 — 커진 상태면 탑승 자체를 거부한다(클래스 상단 "ScalePad 연동" 주석 참고).
         if (IsTooHeavyToBoard(body, identity)) return;
+        if (IsNotShrunkEnoughToBoard(body, identity)) return; // 미니 투석기 전용 게이트(위 필드 주석 참고).
 
         // 각도 게이트. 미달이면 지금은 탑승시키지 않는다(overlapCount도 건드리지 않는다 — 탑승
         // 자체가 아직 성립하지 않았으므로). 정육면체가 각도 미달 상태로 먼저 들어와 트리거 안에
@@ -384,6 +414,7 @@ public class CatapultBucket : MonoBehaviour
 
         // ScalePad 연동 — 커진 상태면 탑승 자체를 거부한다(클래스 상단 "ScalePad 연동" 주석 참고).
         if (IsTooHeavyToBoard(body, identity)) return;
+        if (IsNotShrunkEnoughToBoard(body, identity)) return; // 미니 투석기 전용 게이트(위 필드 주석 참고).
 
         if (!ArmAngleAllowsBoard()) return;
 

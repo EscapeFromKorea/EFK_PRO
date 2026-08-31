@@ -26,9 +26,12 @@ public class PlayerGroundContact : MonoBehaviour
     public float groundedGraceTime = 0.1f;
 
     [Header("아래 방향 SphereCast 보조 판정")]
-    [Tooltip("콜라이더 중심에서 아래로 쏘는 구의 반지름. 살짝 기울어 굴러도 바닥을 놓치지 않게 한다.")]
+    [Tooltip("콜라이더 중심에서 아래로 쏘는 구의 반지름(Normal 스케일 기준). 살짝 기울어 굴러도 " +
+             "바닥을 놓치지 않게 한다 — 실제로 캐스트에 쓰는 값은 FixedUpdate가 이 값에 현재 " +
+             "transform.lossyScale.y를 곱해서 구한다(아래 '2026-08-31 ScalePad 연동' 주석 참고).")]
     public float groundCheckRadius = 0.25f;
-    [Tooltip("콜라이더 중심에서 아래로 확인할 거리. 도형 절반 높이 + 여유(≈0.6)면 접지/근접을 잡는다.")]
+    [Tooltip("콜라이더 중심에서 아래로 확인할 거리(Normal 스케일 기준). 도형 절반 높이 + 여유(≈0.6)면 " +
+             "접지/근접을 잡는다 — 실제로 캐스트에 쓰는 값은 위와 같은 방식으로 스케일된다.")]
     public float groundCheckDistance = 0.6f;
 
     // 마지막으로 접지를 확인한 시각. 이 시각으로부터 grace 이내면 접지로 본다.
@@ -54,10 +57,27 @@ public class PlayerGroundContact : MonoBehaviour
 
     private void FixedUpdate()
     {
+        // 2026-08-31 ScalePad 연동 — groundCheckRadius/groundCheckDistance는 원래 절대(월드) 단위
+        // 고정값이라 ScalePad로 축소(Shrunk)된 플레이어에게는 자기 몸 크기 대비 과도하게 긴
+        // 캐스트가 됐다(예: 반높이 0.25인 축소 정육면체에 0.6유닛 캐스트 = 자기 크기의 2.4배).
+        // CatapultSystem의 미니 투석기(버킷/팔이 전부 조밀하게 붙어 있다)에서 발사 직후 이 캐스트가
+        // 투석기 자신의 구조물에 걸려 "착지"로 오판되고, `CatapultBucket.Update()`가 그 순간
+        // `PlayerMover.ExternallyDriven`을 풀어버려 발사 속도(수평 성분)가 `PlayerMover.
+        // DampWhenUncontrolled()`에 조용히 감쇠당하는 버그로 실측됐다(진단 로그로 확인 —
+        // `CatapultArm.cs`/`CatapultBucket.cs`는 건드리지 않는다, 원인이 이 컴포넌트에 있었다).
+        // Player_Collider(이 컴포넌트가 붙는 곳)는 Player_Root의 자식이라, PlayerShapeController가
+        // Root에 적용하는 배율이 `transform.lossyScale`에 그대로 반영된다 — 그 배율만큼 캐스트
+        // 반지름/거리를 함께 줄이면(Grown 상태는 늘어나면) 캐스트가 항상 "지금 이 몸 크기 기준"으로
+        // 일관되게 반응한다. 스케일이 0/음수가 될 일은 없지만(PlayerShapeController.minScale=0.2가
+        // 하한을 보장) 방어적으로 최소값을 둔다.
+        float scale = Mathf.Max(0.01f, transform.lossyScale.y);
+        float scaledRadius = groundCheckRadius * scale;
+        float scaledDistance = groundCheckDistance * scale;
+
         // (2) 아래 방향 SphereCast 보조 판정. 자기 콜라이더는 무시하고, 위를 향한 면에 닿으면 접지.
         int hitCount = Physics.SphereCastNonAlloc(
-            transform.position, groundCheckRadius, Vector3.down, hitBuffer,
-            groundCheckDistance, ~0, QueryTriggerInteraction.Ignore);
+            transform.position, scaledRadius, Vector3.down, hitBuffer,
+            scaledDistance, ~0, QueryTriggerInteraction.Ignore);
 
         for (int i = 0; i < hitCount; i++)
         {

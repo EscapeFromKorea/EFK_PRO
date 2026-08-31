@@ -124,7 +124,14 @@ public class CatapultSteerHandle : MonoBehaviour
     public float dockRange = 1.2f;
 
     [Header("도킹 시 크기 확대 [TBD, 임시값]")]
-    [Tooltip("도킹한 구를 '링에 맞게' 키우는 배율. PlayerShapeController.growMultiplier에 이 값을 " +
+    [Tooltip("도킹 시 구를 '링에 맞게' 키울지 여부(2026-08-31 신규). 미니 투석기처럼 링 자체가 " +
+             "작게 지어진 경우 확대 연출이 오히려 어색해 끌 수 있다 — 기본 true(기존 손수레형/ " +
+             "Sling 투석기와 동일한 동작을 유지). `MiniCatapultMenuItem`이 미니 투석기의 조향 " +
+             "손잡이에서만 false로 세팅한다.")]
+    public bool growOnDock = true;
+
+    [Tooltip("도킹한 구를 '링에 맞게' 키우는 배율(growOnDock이 true일 때만 쓰인다). " +
+             "PlayerShapeController.growMultiplier에 이 값을 " +
              "대입한 뒤 ToggleScale(Grown)을 호출한다 — growMultiplier는 ScalePad 등 다른 기믹과도 " +
              "공유하는 필드라, 도킹 중 이 값으로 덮어써진다(해제 후에도 원래 값으로 복원하지 " +
              "않는다 — 스펙 확정, 문제가 되면 CatapultSystem/CLAUDE.md TBD 참고).")]
@@ -283,7 +290,10 @@ public class CatapultSteerHandle : MonoBehaviour
         // ScalingSystem 파일은 건드리지 않는다 — growMultiplier가 이미 public 필드라 이 값만
         // 투석기가 원하는 배율로 바꿔 두고 기존 ToggleScale을 그대로 호출한다. lerpSpeed 보간은
         // PlayerShapeController가 이미 스스로 처리하므로 추가 스무딩 코드가 필요 없다.
-        if (dockedShapeController != null)
+        // growOnDock=false(미니 투석기)면 이 블록을 통째로 건너뛴다 — Undock()도 같은 조건으로
+        // 막아야 한다(안 그러면 "키운 적 없는데 Undock의 토글이 Grown을 새로 켜는" 반대 방향 버그가
+        // 난다, 아래 Undock() 참고).
+        if (growOnDock && dockedShapeController != null)
         {
             dockedShapeController.growMultiplier = dockedScaleMultiplier;
             dockedShapeController.ToggleScale(PlayerShapeController.EScaleState.Grown);
@@ -294,7 +304,9 @@ public class CatapultSteerHandle : MonoBehaviour
 
     private void Undock()
     {
-        if (dockedShapeController != null)
+        // Dock()과 같은 growOnDock 조건이어야 한다 — Dock()에서 키운 적이 없는데 여기서
+        // ToggleScale(Grown)을 부르면 토글이 반대로 작동해 Normal→Grown으로 새로 켜버린다.
+        if (growOnDock && dockedShapeController != null)
         {
             // 토글이라 Grown 상태에서 다시 호출하면 Normal로 되돌아간다 — 새 축소 로직 불필요.
             dockedShapeController.ToggleScale(PlayerShapeController.EScaleState.Grown);
