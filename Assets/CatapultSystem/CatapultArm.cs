@@ -68,11 +68,19 @@ using UnityEngine;
 /// 감쇠시켜 "스윙백 → 잦아듦 → 작은 덜컥 → 정지"의 2단계 정착이 된다. `recoilJolted` 플래그로 한
 /// 발사당 클런크가 정확히 한 번만 나가게 막는다(`Fire()`에서 초기화).
 ///
-/// [ScalePad 연동 — 작아지면 더 멀리]
+/// [ScalePad 연동 — 작아지면 더 멀리, 높이/사거리를 따로 맞춘다]
 /// 탑승자의 `rb.mass / PlayerShapeIdentity.stats.mass` 비율의 역수를 `[1, maxWeightSpeedMultiplier]`
-/// 범위로 clamp해 발사 속도에 곱한다 — 가벼울수록(비율&lt;1) 더 멀리 날아가고, 하한 1로 정상 이상
-/// 무거워도 페널티는 없다(실전에서는 `CatapultBucket.heavyBoardBlockScaleRatio`가 무거운 탑승 자체를
-/// 막아 이 경우가 안 생긴다).
+/// 범위로 clamp한 값(`weightSpeedMultiplier`)이 "얼마나 가벼운가"의 진행도(0=Normal, 1=최대로
+/// 가벼움)를 결정한다. **2026-08-31까지는 이 배율을 발사 속도 크기에 그대로 곱했는데, 포물선
+/// 운동에서 최고 높이는 vy²에, 사거리는 vx·vy에 비례해 배율의 **제곱**으로 뻥튀기됐다(예: 배율 2배
+/// → 높이·사거리 전부 4배) — 씬 테스트에서 "Y축으로 너무 높이 올라간다"는 지적을 받아, 수직(vy)·
+/// 수평(vx) 성분에 서로 다른 배율을 걸어 원하는 높이 배율(`maxLaunchHeightMultiplier`, 기본 1.3)과
+/// 사거리 배율(`maxLaunchRangeMultiplier`, 기본 2)을 각각 정확히 맞추는 방식으로 바꿨다** — `vy`를
+/// `√heightMultiplier`배, `vx`를 `rangeMultiplier/√heightMultiplier`배 하면(높이를 먼저 정하고
+/// 사거리는 남은 몫을 수평에 배분) 최고 높이는 정확히 `heightMultiplier`배, 사거리는 정확히
+/// `rangeMultiplier`배가 된다(`Fire()` 참고, 유도 과정은 그 안 주석에도 남겼다). 하한 1(진행도 0)로
+/// 정상 이상 무거워도 페널티는 없다(실전에서는 `CatapultBucket.heavyBoardBlockScaleRatio`가 무거운
+/// 탑승 자체를 막아 이 경우가 안 생긴다).
 /// </summary>
 public class CatapultArm : MonoBehaviour
 {
@@ -154,11 +162,23 @@ public class CatapultArm : MonoBehaviour
 
     [Header("ScalePad 연동 — 작아지면(가벼워지면) 더 멀리 (신규, 2026-08-06) [TBD, 임시값]")]
     [Tooltip("탑승자의 rb.mass / PlayerShapeIdentity.stats.mass 비율의 역수(1/비율)를 [1, 이 값] 범위로 " +
-             "clamp해 발사 속도에 곱한다 — 가벼울수록(비율<1) 배율이 1보다 커져 더 멀리 날아가고, " +
-             "정상 이상 무거워도 하한을 1로 둬 페널티 없이 최소 1배를 보장한다(CatapultBucket." +
-             "heavyBoardBlockScaleRatio가 커진 상태는 탑승 자체를 막아 실전에서는 그 경우가 안 생기지만, " +
-             "방어적으로 하한을 둔다). 감각적 기본값.")]
+             "clamp한 값이 \"얼마나 가벼운가\"의 진행도(0~1)를 결정한다 — 이 필드 자체는 더 이상 " +
+             "속도에 직접 곱해지지 않는다(아래 maxLaunchHeightMultiplier/maxLaunchRangeMultiplier가 " +
+             "실제 배율을 정한다, 클래스 상단 \"ScalePad 연동\" 주석 참고). 정상 이상 무거워도 하한을 " +
+             "1로 둬 페널티 없이 진행도 0을 보장한다(CatapultBucket.heavyBoardBlockScaleRatio가 커진 " +
+             "상태는 탑승 자체를 막아 실전에서는 그 경우가 안 생기지만, 방어적으로 하한을 둔다). " +
+             "감각적 기본값.")]
     public float maxWeightSpeedMultiplier = 2f;
+
+    [Tooltip("위 진행도가 1(최대로 가벼움)일 때 최고 높이가 정상 대비 몇 배가 되게 할지 " +
+             "(2026-08-31, 씬 테스트 피드백 반영 — \"너무 높이 올라간다\"는 지적으로 1.3배로 " +
+             "제한했다). 진행도가 0~1 사이면 1~이 값 사이로 선형 보간된다.")]
+    public float maxLaunchHeightMultiplier = 1.3f;
+
+    [Tooltip("위 진행도가 1(최대로 가벼움)일 때 사거리(수평 비행 거리)가 정상 대비 몇 배가 되게 " +
+             "할지(2026-08-31, 씬 테스트 피드백 반영 — \"멀리 가도록\" 요청으로 2배로 잡았다). " +
+             "진행도가 0~1 사이면 1~이 값 사이로 선형 보간된다.")]
+    public float maxLaunchRangeMultiplier = 2f;
 
     [Tooltip("탑승자를 보관하는 버킷. 발사 시 이 버킷에서 탑승자를 꺼낸다(빈 버킷이면 null).")]
     public CatapultBucket bucket;
@@ -348,10 +368,10 @@ public class CatapultArm : MonoBehaviour
         float angleRatio = Mathf.InverseLerp(restAngle, pulledAngle, launchStartAngle);
         float speed = Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, angleRatio);
 
-        // ScalePad 연동 신규(2026-08-06) — 탑승자가 작아진(가벼워진) 상태면 더 멀리 날아가게 배율을
-        // 곱한다. bucket.HasOccupant가 true인 시점부터 실제 ConsumeOccupant()(스윙 종료)까지는
-        // 탑승자가 바뀌지 않으므로, 소비하지 않는 OccupantBody로 미리 들여다봐도 안전하다(클래스
-        // 상단 "ScalePad 연동" 헤더 참고, 실제 게이트/식 근거는 CatapultBucket.cs 상단 주석에 있다).
+        // ScalePad 연동 신규(2026-08-06) — 탑승자가 작아진(가벼워진) 상태면 더 멀리 날아가게 한다.
+        // bucket.HasOccupant가 true인 시점부터 실제 ConsumeOccupant()(스윙 종료)까지는 탑승자가
+        // 바뀌지 않으므로, 소비하지 않는 OccupantBody로 미리 들여다봐도 안전하다(클래스 상단
+        // "ScalePad 연동" 헤더 참고, 실제 게이트/식 근거는 CatapultBucket.cs 상단 주석에 있다).
         Rigidbody occupantForSpeed = bucket.OccupantBody;
         PlayerShapeIdentity occupantIdentity = occupantForSpeed != null
             ? occupantForSpeed.GetComponent<PlayerShapeIdentity>() : null;
@@ -361,12 +381,29 @@ public class CatapultArm : MonoBehaviour
             float scaleRatio = occupantForSpeed.mass / occupantIdentity.stats.mass; // 1=Normal, <1=Shrunk(가벼움)
             weightSpeedMultiplier = Mathf.Clamp(1f / Mathf.Max(0.01f, scaleRatio), 1f, maxWeightSpeedMultiplier);
         }
-        speed *= weightSpeedMultiplier;
 
         // 15차 개편 — 앵커 쪽(-Z)으로 발사하도록 기준 방향과 회전 부호를 함께 뒤집었다(클래스 상단
         // "왜 발사 방향을" 주석 참고 — 둘 중 하나만 뒤집으면 위/아래가 반대로 나온다).
         Vector3 dir = Quaternion.AngleAxis(launchPitch, aimRoot.right) * (-aimRoot.forward);
-        pendingLaunchVelocity = dir.normalized * speed;
+        Vector3 baseVelocity = dir.normalized * speed; // 배율 적용 전(정상/진행도 0 기준) 속도 벡터.
+
+        // 2026-08-31 개편 — 예전에는 weightSpeedMultiplier를 speed에 그대로 곱했는데, 포물선
+        // 운동에서 최고 높이는 vy²에, 사거리는 vx·vy에 비례해 배율의 **제곱**으로 뻥튀기됐다(배율
+        // 2배 → 높이·사거리 전부 4배) — 씬 테스트에서 "너무 높이 올라간다"는 지적을 받았다. 대신
+        // 수직(vy)·수평(vx) 성분에 서로 다른 배율을 걸어 원하는 높이/사거리 배율을 각각 정확히
+        // 맞춘다: aimRoot는 요(Y) 회전만 하므로 baseVelocity.y가 곧 수직 성분, (x,z)가 수평 성분이다.
+        // vy를 √heightMultiplier배 하면 최고 높이(∝vy²)가 정확히 heightMultiplier배가 되고, 그
+        // 상태에서 사거리(∝vx·vy)를 rangeMultiplier배로 맞추려면 vx를
+        // rangeMultiplier/√heightMultiplier배 해야 한다(vx·vy의 최종 배율 = 수평배율×√height배율 =
+        // rangeMultiplier가 되도록 역산).
+        float boostProgress = Mathf.InverseLerp(1f, maxWeightSpeedMultiplier, weightSpeedMultiplier);
+        float heightMultiplier = Mathf.Lerp(1f, maxLaunchHeightMultiplier, boostProgress);
+        float rangeMultiplier = Mathf.Lerp(1f, maxLaunchRangeMultiplier, boostProgress);
+        float verticalFactor = Mathf.Sqrt(heightMultiplier);
+        float horizontalFactor = rangeMultiplier / verticalFactor;
+
+        Vector3 horizontal = new Vector3(baseVelocity.x, 0f, baseVelocity.z) * horizontalFactor;
+        pendingLaunchVelocity = new Vector3(horizontal.x, baseVelocity.y * verticalFactor, horizontal.z);
 
         State = ArmState.Launching;
         launchElapsed = 0f;
