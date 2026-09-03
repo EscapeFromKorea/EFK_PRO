@@ -2,11 +2,15 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 딱딱 블록 시스템의 씬 진입점. 조작 중인 플레이어의 조준을 읽어 결합 후보를 찾고 하이라이트하며,
+/// 딱딱 블록 시스템의 씬 진입점. 조작 중인 플레이어 근처의 블록을 잡아 결합 후보를 찾고 하이라이트하며,
 /// 키 입력으로 결합/해제를 실행한다. 상태(조인트)는 각 <see cref="SnapBlock"/>이 갖는다.
 ///
+/// [타겟팅 — 근접] 카메라 조준이 아니라 "플레이어에서 aimRange 안, 가장 가까운 SnapBlock"을 대상으로
+/// 삼는다(마찰 스티커·DreamThreadController와 동일). 플레이어가 블록 A를 블록 B에 밀어붙이면 A가
+/// 대상이 되고, B가 정렬 후보로 잡힌다. 두 맞물릴 면에 하이라이트 구가 뜬다.
+///
 /// [씬에 안 놔도 동작] Tools 메뉴로 만들어 튜닝할 수 있지만, 없으면 RuntimeInitializeOnLoadMethod가
-/// 기본값 인스턴스를 자동 생성한다(FrictionStickerController와 같은 방식). 씬 무수정.
+/// 기본값 인스턴스를 자동 생성한다. 씬 무수정.
 ///
 /// [규약] PlayerSystem·씬 무수정. 플레이어에서 IsControlled만 읽는다. 전역 Physics.* 미변경(MP-01).
 /// </summary>
@@ -21,12 +25,10 @@ public class SnapBlockController : MonoBehaviour
     [Tooltip("한 구조물(조인트로 이어진 블록 묶음)의 최대 블록 수. 초과하는 결합은 거부한다.")]
     public int maxBlocksPerStructure = 12;
 
-    [Header("조준 / 입력")]
-    [Tooltip("카메라 화면 중앙에서 블록을 조준하는 최대 거리(Unit).")]
-    public float aimRange = 5f;
-    [Tooltip("조준 레이캐스트가 부딪힐 레이어.")]
-    public LayerMask aimMask = ~0;
-    [Tooltip("결합 / 해제 키. 조준한 블록에 결합이 있으면 해제, 없으면 후보와 결합.")]
+    [Header("타겟팅 (근접) / 입력")]
+    [Tooltip("플레이어에서 이 거리(Unit) 안, 가장 가까운 SnapBlock을 대상으로 삼는다.")]
+    public float aimRange = 4f;
+    [Tooltip("결합 / 해제 키. 대상 블록에 결합이 있으면 해제, 없으면 후보와 결합.")]
     public KeyCode weldKey = KeyCode.E;
 
     [Header("결합 조인트")]
@@ -34,9 +36,9 @@ public class SnapBlockController : MonoBehaviour
     public float jointBreakForce = Mathf.Infinity;
 
     [Header("하이라이트 색")]
-    public Color candidateColor = new Color(0.3f, 1f, 0.5f, 0.9f);
-    public Color blockedColor = new Color(1f, 0.3f, 0.3f, 0.9f);
-    public Color detachColor = new Color(1f, 1f, 1f, 0.9f);
+    public Color candidateColor = new Color(0.3f, 1f, 0.5f, 0.95f);
+    public Color blockedColor = new Color(1f, 0.3f, 0.3f, 0.95f);
+    public Color detachColor = new Color(1f, 1f, 1f, 0.95f);
 
     private static SnapBlockController instance;
 
@@ -44,11 +46,10 @@ public class SnapBlockController : MonoBehaviour
     private readonly List<SnapBlock.Face> facesB = new List<SnapBlock.Face>();
     private readonly List<SnapBlock> sceneBlocks = new List<SnapBlock>();
 
-    private Camera aimCamera;
     private Transform hlA, hlB;                 // 후보 면 하이라이트 2개
     private Renderer hlARenderer, hlBRenderer;
 
-    // 이번 프레임 조준 결과
+    // 이번 프레임 대상 결과
     private SnapBlock aimedBlock;
     private SnapBlock candBlock;
     private SnapBlock.Face aimedFace, candFace;
@@ -85,7 +86,7 @@ public class SnapBlockController : MonoBehaviour
             return;
         }
 
-        UpdateAim(controlled);
+        UpdateTarget(controlled);
 
         if (Input.GetKeyDown(weldKey))
             HandleWeldKey();
@@ -98,15 +99,25 @@ public class SnapBlockController : MonoBehaviour
         return null;
     }
 
-    private void UpdateAim(PlayerMover controlled)
+    // 플레이어에서 aimRange 안, 가장 가까운 SnapBlock을 대상으로 잡고 결합 후보를 찾는다.
+    private void UpdateTarget(PlayerMover controlled)
     {
         aimedBlock = null;
         candBlock = null;
         hasCandidate = false;
 
-        Ray ray = BuildAimRay(controlled);
-        if (Physics.Raycast(ray, out RaycastHit hit, aimRange, aimMask, QueryTriggerInteraction.Ignore))
-            aimedBlock = hit.collider.GetComponentInParent<SnapBlock>();
+        CollectSceneBlocks();
+        Vector3 me = controlled.transform.position;
+        float bestSqr = aimRange * aimRange;
+        foreach (SnapBlock b in sceneBlocks)
+        {
+            Collider col = b != null ? b.GetComponent<Collider>() : null;
+            if (col == null) continue;
+            float sqr = (col.ClosestPoint(me) - me).sqrMagnitude;
+            if (sqr > bestSqr) continue;
+            bestSqr = sqr;
+            aimedBlock = b;
+        }
 
         if (aimedBlock == null)
         {
@@ -118,8 +129,8 @@ public class SnapBlockController : MonoBehaviour
 
         if (aimedBlock.HasConnections)
         {
-            // 해제 대상 — 조준한 블록 중심에 흰색 표시.
-            SetHighlight(hlA, hlARenderer, aimedBlock.transform.position, Vector3.up, detachColor);
+            // 해제 대상 — 블록 중심에 흰색 표시.
+            SetHighlight(hlA, hlARenderer, aimedBlock.transform.position, detachColor);
             HideOne(hlB);
             return;
         }
@@ -130,8 +141,8 @@ public class SnapBlockController : MonoBehaviour
         {
             bool fits = CountStructureWith(candBlock, aimedBlock) <= maxBlocksPerStructure;
             Color c = fits ? candidateColor : blockedColor;
-            SetHighlight(hlA, hlARenderer, aimedFace.center, aimedFace.normal, c);
-            SetHighlight(hlB, hlBRenderer, candFace.center, candFace.normal, c);
+            SetHighlight(hlA, hlARenderer, aimedFace.center, c);
+            SetHighlight(hlB, hlBRenderer, candFace.center, c);
         }
         else
         {
@@ -139,11 +150,10 @@ public class SnapBlockController : MonoBehaviour
         }
     }
 
-    // 조준한 블록의 6면 × 씬의 다른 모든 블록의 6면 중, 거리·각도 조건을 통과하는 가장 가까운 쌍.
+    // 대상 블록의 6면 × 씬의 다른 모든 블록의 6면 중, 거리·각도 조건을 통과하는 가장 가까운 쌍.
     private void FindBestCandidate()
     {
         aimedBlock.GetFaces(facesA);
-        CollectSceneBlocks();
 
         float bestSqr = snapDistance * snapDistance;
         float cosTol = Mathf.Cos(Mathf.Deg2Rad * Mathf.Clamp(snapAngleToleranceDeg, 0f, 179f));
@@ -176,7 +186,11 @@ public class SnapBlockController : MonoBehaviour
 
     private void HandleWeldKey()
     {
-        if (aimedBlock == null) return;
+        if (aimedBlock == null)
+        {
+            Debug.Log($"[SnapBlock] {aimRange}칸 안에 블록이 없습니다 — 블록 가까이 서세요.");
+            return;
+        }
 
         if (aimedBlock.HasConnections)
         {
@@ -184,7 +198,11 @@ public class SnapBlockController : MonoBehaviour
             return;
         }
 
-        if (!hasCandidate) return;
+        if (!hasCandidate)
+        {
+            Debug.Log("[SnapBlock] 결합할 상대 블록이 없습니다 — 다른 블록의 면을 " + snapDistance + "칸 안, 나란히 맞대세요.");
+            return;
+        }
         if (CountStructureWith(candBlock, aimedBlock) > maxBlocksPerStructure)
         {
             Debug.Log($"[SnapBlock] 구조물이 최대 {maxBlocksPerStructure}개를 넘어 결합할 수 없습니다.");
@@ -219,34 +237,13 @@ public class SnapBlockController : MonoBehaviour
         sceneBlocks.AddRange(Object.FindObjectsOfType<SnapBlock>());
     }
 
-    // --- 조준 레이 / 카메라 ---
+    // --- 하이라이트 구 2개 ---
 
-    private Ray BuildAimRay(PlayerMover controlled)
-    {
-        if (aimCamera == null || !aimCamera.isActiveAndEnabled)
-            aimCamera = ResolveCamera();
-
-        if (aimCamera != null)
-            return aimCamera.ScreenPointToRay(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
-
-        return new Ray(controlled.transform.position + Vector3.up * 0.2f, controlled.transform.forward);
-    }
-
-    private static Camera ResolveCamera()
-    {
-        if (Camera.main != null) return Camera.main;
-        return Camera.current != null ? Camera.current : Object.FindObjectOfType<Camera>();
-    }
-
-    // --- 하이라이트 판 2개 ---
-
-    private static void SetHighlight(Transform t, Renderer r, Vector3 pos, Vector3 normal, Color c)
+    private static void SetHighlight(Transform t, Renderer r, Vector3 pos, Color c)
     {
         if (t == null) return;
         t.gameObject.SetActive(true);
-        Vector3 n = normal.sqrMagnitude > 1e-6f ? normal.normalized : Vector3.up;
-        t.position = pos + n * 0.01f;
-        t.rotation = Quaternion.LookRotation(n);
+        t.position = pos;
         if (r != null)
         {
             if (r.material.HasProperty("_BaseColor")) r.material.SetColor("_BaseColor", c);
@@ -256,16 +253,16 @@ public class SnapBlockController : MonoBehaviour
 
     private void EnsureHighlights()
     {
-        if (hlA == null) { hlA = MakeQuad("SnapHL_A"); hlARenderer = hlA.GetComponent<Renderer>(); }
-        if (hlB == null) { hlB = MakeQuad("SnapHL_B"); hlBRenderer = hlB.GetComponent<Renderer>(); }
+        if (hlA == null) { hlA = MakeMarker("SnapHL_A"); hlARenderer = hlA.GetComponent<Renderer>(); }
+        if (hlB == null) { hlB = MakeMarker("SnapHL_B"); hlBRenderer = hlB.GetComponent<Renderer>(); }
     }
 
-    private static Transform MakeQuad(string name)
+    private static Transform MakeMarker(string name)
     {
-        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         go.name = name;
         Destroy(go.GetComponent<Collider>());
-        go.transform.localScale = Vector3.one * 0.5f;
+        go.transform.localScale = Vector3.one * 0.28f;
         Shader shader = Shader.Find("Standard") ?? Shader.Find("Sprites/Default");
         go.GetComponent<Renderer>().material = new Material(shader);
         go.SetActive(false);
