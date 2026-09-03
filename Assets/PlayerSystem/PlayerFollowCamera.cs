@@ -85,6 +85,19 @@ public class PlayerFollowCamera : MonoBehaviour
 
     private float orbitYaw;    // 누적 yaw(도). Start에서 cameraYawOffset으로 초기화.
     private float orbitPitch;  // 누적 pitch(도). minPitch~maxPitch로 클램프.
+
+    /// <summary>PlayerMover가 카메라 상대 이동에 쓰는 현재 시점 yaw(도). 씬에 이 카메라가 없으면
+    /// null → PlayerMover가 기존 inputYawOffset로 폴백한다.</summary>
+    public static float? ViewYaw => instance != null ? instance.orbitYaw : (float?)null;
+
+    /// <summary>씬에 이 카메라가 있고 마우스 궤도 회전이 켜져 있는가. PlayerMover가 "궤도 카메라가
+    /// 활성이면 이동도 카메라 상대"를 자동으로 성립시키는 데 쓴다(둘은 한 세트 — 궤도 카메라 +
+    /// 월드축 고정 이동은 방향이 어긋나 못 쓴다).</summary>
+    public static bool MouseOrbitActive => instance != null && instance.enableMouseOrbit;
+
+    // 타깃 추적 지점(offset 적용 전). 마우스로 시점을 홱 돌릴 때 카메라 최종 위치 전체를 SmoothDamp하면
+    // 궤도 원의 현을 가로질러 미끄러지므로, 추적 지점만 SmoothDamp하고 offset은 즉시 얹는다.
+    private Vector3 smoothedFollowPoint;
     // ═══════════ [mnppi 추가 끝] ═══════════
 
     private Vector3 followVelocity;
@@ -109,7 +122,10 @@ public class PlayerFollowCamera : MonoBehaviour
             target = PlayerControlSwitcher.ActiveTarget;
 
         if (target != null)
+        {
             smoothedTargetY = target.position.y;
+            smoothedFollowPoint = target.position;   // [mnppi] 첫 프레임 카메라가 원점에서 날아오지 않게
+        }
 
         // ─── [mnppi 추가] 궤도 각도 초기화 + 커서 락 ───
         // orbitYaw를 cameraYawOffset으로 시작하면 마우스를 안 움직인 첫 프레임의 위치/시선이
@@ -148,14 +164,17 @@ public class PlayerFollowCamera : MonoBehaviour
         smoothedTargetY = Mathf.SmoothDamp(smoothedTargetY, target.position.y, ref targetYVelocity, verticalTime);
         Vector3 smoothedTargetPos = new Vector3(target.position.x, smoothedTargetY, target.position.z);
 
-        // 위치: offset을 궤도 각도(yaw/pitch)만큼 회전시켜 적용한 뒤 부드럽게 추적한다.
+        // 위치: offset을 궤도 각도(yaw/pitch)만큼 회전시켜 적용한다.
         // 타깃의 회전은 여전히 쓰지 않으므로(월드 고정), 시점 각도만 돌아갈 뿐 구르기에 휩쓸리지 않는다.
         // [mnppi 수정] 기존: Vector3 rotatedOffset = Quaternion.AngleAxis(cameraYawOffset, Vector3.up) * offset;
-        //   → yaw만 돌리던 것을 pitch(상하)까지 포함한 궤도 회전으로 교체. enableMouseOrbit=false여도
-        //     Start에서 orbitYaw=cameraYawOffset / orbitPitch=0이라 결과가 기존과 동일하다.
+        //             그리고 transform.position = SmoothDamp(transform.position, smoothedTargetPos + rotatedOffset, ...)
+        //   (1) yaw만 → pitch 포함 궤도 회전(enableMouseOrbit=false여도 Start 초기화로 기존과 동일).
+        //   (2) 카메라 최종 위치 전체를 SmoothDamp하면 마우스로 시점을 홱 돌릴 때 카메라가 궤도 원의
+        //       현을 가로질러 미끄러져 "붕 뜨는" 이질감이 난다 → 추적 지점만 SmoothDamp하고 offset은
+        //       그 위에 즉시 얹어, 궤도는 즉각 반영하되 타깃 추적 부드러움(상하 튐 감쇠 포함)은 유지.
         Vector3 rotatedOffset = Quaternion.Euler(orbitPitch, orbitYaw, 0f) * offset;
-        Vector3 desired = smoothedTargetPos + rotatedOffset;
-        transform.position = Vector3.SmoothDamp(transform.position, desired, ref followVelocity, followSmoothness);
+        smoothedFollowPoint = Vector3.SmoothDamp(smoothedFollowPoint, smoothedTargetPos, ref followVelocity, followSmoothness);
+        transform.position = smoothedFollowPoint + rotatedOffset;
 
         // 회전: 실제 카메라 위치에서 타깃 위치(살짝 위)를 바라보되, 위치처럼 Slerp로 부드럽게
         // 따라붙는다(예전엔 즉시 스냅 — 부드러운 위치와 즉각 회전의 불일치가 출렁임을 더했다).
@@ -186,9 +205,10 @@ public class PlayerFollowCamera : MonoBehaviour
         instance.smoothedTargetY = t.position.y;
         instance.targetYVelocity = 0f;
         instance.followVelocity = Vector3.zero;
+        instance.smoothedFollowPoint = t.position;   // [mnppi] 추적 지점도 함께 스냅(다음 LateUpdate가 여기서 SmoothDamp 시작)
 
-        // LateUpdate의 목표 위치·시선 계산과 같은 식이다(offset을 궤도 각도만큼 돌린 지점에서
-        // 몸통을 본다). 여기서 식이 갈라지면 스냅 직후 한 프레임 튄다.
+        // LateUpdate의 목표 위치·시선 계산과 같은 식이다(추적 지점 + 궤도 각도만큼 돌린 offset).
+        // 여기서 식이 갈라지면 스냅 직후 한 프레임 튄다.
         // [mnppi 수정] 기존: t.position + Quaternion.AngleAxis(instance.cameraYawOffset, Vector3.up) * instance.offset;
         //   → LateUpdate와 동일하게 궤도 회전(yaw/pitch) 식으로 교체.
         instance.transform.position =
@@ -215,6 +235,9 @@ public class PlayerFollowCamera : MonoBehaviour
         // 전환 즉시 새 타깃의 실제 높이로 스냅 — 그러지 않으면 이전 플레이어 높이에서 새 플레이어
         // 높이까지 verticalDampingMultiplier만큼 느리게 따라잡아 전환 직후 부자연스럽게 떠 보인다.
         if (newTarget != null)
+        {
             instance.smoothedTargetY = newTarget.position.y;
+            instance.smoothedFollowPoint = newTarget.position;   // [mnppi] 추적 지점도 함께 스냅
+        }
     }
 }
