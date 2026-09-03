@@ -21,12 +21,10 @@ public class FrictionStickerController : MonoBehaviour
     public FrictionStickerSettings frictionSettings = new FrictionStickerSettings();
 
     [Header("플레이어 캐리어 기본값 (붙일 때 주입)")]
-    [Tooltip("스티커를 붙일 수 있는 최대 거리(Unit).")]
+    [Tooltip("플레이어에서 이 거리(Unit) 안, 가장 가까운 StickerSurface를 대상으로 삼는다(근접 방식).")]
     public float aimRange = 4f;
-    [Tooltip("조준 레이캐스트가 부딪힐 레이어.")]
-    public LayerMask aimMask = ~0;
-    [Tooltip("부착 / 회수 키.")]
-    public KeyCode attachKey = KeyCode.F;
+    [Tooltip("부착 / 교체 / 회수 키. (F·G는 꿈의 실타래와 겹쳐 V 사용)")]
+    public KeyCode attachKey = KeyCode.V;
     [Tooltip("미끄럼 ↔ 벨크로 전환 키.")]
     public KeyCode switchKindKey = KeyCode.Q;
     [Tooltip("도형별 미끄럼 스티커 보유 개수. -1이면 무한(그레이박스 기본).")]
@@ -96,7 +94,6 @@ public class FrictionStickerController : MonoBehaviour
     {
         carrier.settings = frictionSettings;
         carrier.aimRange = aimRange;
-        carrier.aimMask = aimMask;
         carrier.attachKey = attachKey;
         carrier.switchKindKey = switchKindKey;
 
