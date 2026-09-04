@@ -19,6 +19,7 @@ public static class Map1CodexBuilder
     private static readonly Dictionary<string, Material> Materials = new Dictionary<string, Material>();
     private static Transform worldRoot, systemsRoot, playersRoot, environmentRoot;
     private static Material grassMat, stoneMat, accentMat, dangerMat, cloudMat, threadMat, glassMat;
+    private static Material[] rainbowBridgeMats;
 
     [MenuItem("Tools/Map1 Codex/Build Complete Level")]
     public static void Build()
@@ -111,6 +112,42 @@ public static class Map1CodexBuilder
                   $"{decorations.Length} scaled environment models, planned gimmick counts present.");
     }
 
+    [MenuItem("Tools/Map1 Codex/Replace Greybox Gameplay Visuals")]
+    public static void ReplaceGreyboxGameplayVisuals()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid() || scene.path != ScenePath)
+            scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+
+        var replaced = new HashSet<GameObject>();
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<AccelPad>(true), "Gimmick_SpeedPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<JumpPad>(true), "Gimmick_JumpPad", replaced);
+
+        foreach (ScalePad pad in UnityEngine.Object.FindObjectsOfType<ScalePad>(true))
+        {
+            string model = pad.padType == ScalePad.EPadType.Grow ? "Gimmick_GrowPad" : "Gimmick_ShrinkPad";
+            ReplaceGameplayVisual(pad.gameObject, model);
+            replaced.Add(pad.gameObject);
+        }
+
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<PadTrigger>(true), "Gimmick_DoorSwitchPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<ExitWeightPlate>(true), "Gimmick_DoorSwitchPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<RainbowBridgeSwitch>(true), "Gimmick_BridgeSustainPad", replaced);
+
+        foreach (Transform candidate in scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Transform>(true)))
+        {
+            if (candidate.name.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            if (candidate.GetComponent<BoxCollider>() == null || candidate.GetComponent<MeshRenderer>() == null) continue;
+            ReplaceGameplayVisual(candidate.gameObject, "Wall_LevelBoundary");
+            replaced.Add(candidate.gameObject);
+        }
+
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene, ScenePath);
+        ValidateGameplayVisuals(replaced);
+        Debug.Log($"Map1 Codex gameplay visuals replaced: {replaced.Count} greybox objects now use linked FBX models.");
+    }
+
     public static void CaptureReview()
     {
         EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
@@ -201,7 +238,7 @@ public static class Map1CodexBuilder
     {
         Transform p = Phase(6, "Sleepwalker_Wall");
         Platform(p, "P06_Base", new Vector3(0, 2.8f, 193f), new Vector3(18, 2, 10));
-        SolidBox(p, "P06_ClimbWall", new Vector3(0, 9f, 199f), new Vector3(12, 12, 1.2f), stoneMat);
+        VisualBox(p, "P06_ClimbWall", new Vector3(0, 9f, 199f), new Vector3(12, 12, 1.2f), stoneMat, "Wall_LevelBoundary");
         ThreadAnchorAt(p, "P06_WallMarker_Low", new Vector3(-2.5f, 7f, 198.2f), 3.2f);
         ThreadAnchorAt(p, "P06_WallMarker_High", new Vector3(2.5f, 12f, 198.2f), 3.2f);
         Platform(p, "P06_Top", new Vector3(0, 13f, 204f), new Vector3(16, 2, 9));
@@ -286,10 +323,10 @@ public static class Map1CodexBuilder
         Transform p = Phase(12, "Dream_Summit_Finale");
         Platform(p, "P12_Staging", new Vector3(0, 4.8f, 367f), new Vector3(20, 2, 12));
         ScalePadAt(p, "P12_ShrinkPad", new Vector3(0, 5.9f, 364f), ScalePad.EPadType.Shrink, dangerMat);
-        SolidBox(p, "P12_TunnelWall_L", new Vector3(-3.1f, 8f, 375f), new Vector3(5.45f, 6f, 12f), stoneMat);
-        SolidBox(p, "P12_TunnelWall_R", new Vector3(3.1f, 8f, 375f), new Vector3(5.45f, 6f, 12f), stoneMat);
+        VisualBox(p, "P12_TunnelWall_L", new Vector3(-3.1f, 8f, 375f), new Vector3(5.45f, 6f, 12f), stoneMat, "Wall_LevelBoundary");
+        VisualBox(p, "P12_TunnelWall_R", new Vector3(3.1f, 8f, 375f), new Vector3(5.45f, 6f, 12f), stoneMat, "Wall_LevelBoundary");
         Platform(p, "P12_Mid", new Vector3(0, 4.8f, 385f), new Vector3(18, 2, 9));
-        SolidBox(p, "P12_FinalClimbWall", new Vector3(0, 10f, 391f), new Vector3(12, 10, 1f), stoneMat);
+        VisualBox(p, "P12_FinalClimbWall", new Vector3(0, 10f, 391f), new Vector3(12, 10, 1f), stoneMat, "Wall_LevelBoundary");
         ThreadAnchorAt(p, "P12_ClimbMarker_Low", new Vector3(-2f, 8f, 390.4f), 3.5f);
         ThreadAnchorAt(p, "P12_ClimbMarker_High", new Vector3(2f, 13f, 390.4f), 3.5f);
         Platform(p, "P12_UpperDeck", new Vector3(0, 14f, 397f), new Vector3(18, 2, 10));
@@ -404,11 +441,19 @@ public static class Map1CodexBuilder
         return go;
     }
 
+    private static GameObject VisualBox(Transform parent, string name, Vector3 center, Vector3 size, Material material, string model)
+    {
+        GameObject box = SolidBox(parent, name, center, size, material);
+        ReplaceGameplayVisual(box, model);
+        return box;
+    }
+
     private static void JumpPadAt(Transform parent, string name, Vector3 center, float height)
     {
         GameObject pad = SolidBox(parent, name, center, new Vector3(2.4f, 0.2f, 2.4f), accentMat);
         JumpPad jump = pad.AddComponent<JumpPad>();
         jump.jumpHeight = height;
+        ReplaceGameplayVisual(pad, "Gimmick_JumpPad");
     }
 
     private static void AccelPadAt(Transform parent, string name, Vector3 center, Vector3 direction, float speed)
@@ -422,8 +467,7 @@ public static class Map1CodexBuilder
         box.size = new Vector3(2.8f, 0.2f, 3.2f);
         AccelPad accel = root.AddComponent<AccelPad>();
         accel.boostSpeed = speed;
-        GameObject visual = SolidBox(root.transform, "Visual", center, box.size, accentMat);
-        UnityEngine.Object.DestroyImmediate(visual.GetComponent<Collider>());
+        ReplaceGameplayVisual(root, "Gimmick_SpeedPad");
     }
 
     private static void CloudAt(Transform parent, string name, Vector3 center)
@@ -498,6 +542,7 @@ public static class Map1CodexBuilder
         pad.GetComponent<Collider>().isTrigger = true;
         PadTrigger trigger = pad.AddComponent<PadTrigger>();
         trigger.doorPhysicsScript = target;
+        ReplaceGameplayVisual(pad, "Gimmick_DoorSwitchPad");
         return pad;
     }
 
@@ -525,6 +570,7 @@ public static class Map1CodexBuilder
         weight.targetDoor = door;
         weight.requiredWeight = 2.75f;
         weight.latchOpen = latch;
+        ReplaceGameplayVisual(plate, "Gimmick_DoorSwitchPad");
     }
 
     private static void RainbowBridge(Transform parent, string name, Vector3 switchCenter, int segments, bool hold, float duration)
@@ -536,10 +582,12 @@ public static class Map1CodexBuilder
         RainbowBridgeSwitch sw = pad.AddComponent<RainbowBridgeSwitch>();
         sw.activatorRequiresHold = hold;
         if (!hold) sw.activeDurationSec = duration;
+        ReplaceGameplayVisual(pad, "Gimmick_BridgeSustainPad");
         var targets = new GameObject[segments];
         for (int i = 0; i < segments; i++)
         {
-            GameObject segment = SolidBox(root.transform, $"Segment_{i + 1}", switchCenter + new Vector3(0, 0, 2.6f + i * 2.1f), new Vector3(2.5f, 0.25f, 2.2f), glassMat);
+            Material segmentMaterial = rainbowBridgeMats[i % rainbowBridgeMats.Length];
+            GameObject segment = SolidBox(root.transform, $"Segment_{i + 1}", switchCenter + new Vector3(0, 0, 2.6f + i * 2.1f), new Vector3(2.5f, 0.25f, 2.2f), segmentMaterial);
             segment.GetComponent<Collider>().enabled = false;
             segment.GetComponent<Renderer>().enabled = false;
             targets[i] = segment;
@@ -571,6 +619,7 @@ public static class Map1CodexBuilder
         ScalePad scale = pad.AddComponent<ScalePad>();
         scale.padType = type;
         scale.defaultColor = mat.color;
+        ReplaceGameplayVisual(pad, type == ScalePad.EPadType.Grow ? "Gimmick_GrowPad" : "Gimmick_ShrinkPad");
     }
 
     private static void Checkpoint(Transform parent, string name, Vector3 floorPoint)
@@ -645,6 +694,91 @@ public static class Map1CodexBuilder
         return go;
     }
 
+    private static void ReplaceVisualsForComponents<T>(IEnumerable<T> components, string model, HashSet<GameObject> replaced)
+        where T : Component
+    {
+        foreach (T component in components)
+        {
+            if (component == null || !replaced.Add(component.gameObject)) continue;
+            ReplaceGameplayVisual(component.gameObject, model);
+        }
+    }
+
+    private static void ReplaceGameplayVisual(GameObject host, string model)
+    {
+        BoxCollider gameplayCollider = host.GetComponent<BoxCollider>();
+        if (gameplayCollider == null)
+            throw new InvalidOperationException($"{host.name} needs a BoxCollider before its visual can be replaced.");
+
+        Transform oldVisual = host.transform.Find("GameplayVisual");
+        if (oldVisual != null)
+            UnityEngine.Object.DestroyImmediate(oldVisual.gameObject);
+
+        foreach (Renderer renderer in host.GetComponentsInChildren<Renderer>(true))
+            renderer.enabled = false;
+
+        GameObject visual = InstantiateModel(model, "GameplayVisual", host.transform);
+        StripColliders(visual);
+        FitVisualToCollider(visual, gameplayCollider);
+    }
+
+    private static void FitVisualToCollider(GameObject visual, BoxCollider target)
+    {
+        Transform host = target.transform;
+        visual.transform.SetParent(host, false);
+        visual.transform.localPosition = Vector3.zero;
+        visual.transform.localRotation = Quaternion.identity;
+        visual.transform.localScale = Vector3.one;
+
+        Bounds source = RendererBoundsInLocalSpace(visual.GetComponentsInChildren<Renderer>(true), host);
+        visual.transform.localScale = new Vector3(
+            target.size.x / Mathf.Max(source.size.x, 0.0001f),
+            target.size.y / Mathf.Max(source.size.y, 0.0001f),
+            target.size.z / Mathf.Max(source.size.z, 0.0001f));
+
+        Bounds fitted = RendererBoundsInLocalSpace(visual.GetComponentsInChildren<Renderer>(true), host);
+        visual.transform.localPosition += target.center - fitted.center;
+    }
+
+    private static Bounds RendererBoundsInLocalSpace(Renderer[] renderers, Transform space)
+    {
+        if (renderers.Length == 0) throw new InvalidOperationException("Model has no renderer.");
+        bool initialized = false;
+        Bounds result = default;
+        foreach (Renderer renderer in renderers)
+        {
+            Bounds world = renderer.bounds;
+            Vector3 min = world.min;
+            Vector3 max = world.max;
+            for (int x = 0; x <= 1; x++)
+            for (int y = 0; y <= 1; y++)
+            for (int z = 0; z <= 1; z++)
+            {
+                Vector3 corner = new Vector3(x == 0 ? min.x : max.x, y == 0 ? min.y : max.y, z == 0 ? min.z : max.z);
+                Vector3 local = space.InverseTransformPoint(corner);
+                if (!initialized) { result = new Bounds(local, Vector3.zero); initialized = true; }
+                else result.Encapsulate(local);
+            }
+        }
+        return result;
+    }
+
+    private static void ValidateGameplayVisuals(IEnumerable<GameObject> hosts)
+    {
+        foreach (GameObject host in hosts)
+        {
+            if (host == null || host.GetComponent<BoxCollider>() == null)
+                throw new InvalidOperationException("Gameplay visual replacement removed a required collider.");
+            Transform visual = host.transform.Find("GameplayVisual");
+            if (visual == null || PrefabUtility.GetCorrespondingObjectFromSource(visual.gameObject) == null)
+                throw new InvalidOperationException($"{host.name} is missing its linked FBX GameplayVisual.");
+            if (visual.GetComponentsInChildren<Collider>(true).Length != 0)
+                throw new InvalidOperationException($"{host.name} GameplayVisual must remain visual-only.");
+            if (visual.GetComponentsInChildren<Renderer>(true).Length == 0)
+                throw new InvalidOperationException($"{host.name} GameplayVisual has no renderer.");
+        }
+    }
+
     private static void FitRendererBounds(GameObject visual, Vector3 targetCenter, Vector3 targetSize)
     {
         visual.transform.position = Vector3.zero;
@@ -703,6 +837,15 @@ public static class Map1CodexBuilder
         cloudMat = MaterialAsset("Cloud", new Color(0.92f, 0.96f, 1f));
         threadMat = MaterialAsset("Thread", new Color(0.4f, 0.9f, 1f));
         glassMat = MaterialAsset("DreamGlass", new Color(0.45f, 0.78f, 1f, 0.28f), true);
+        rainbowBridgeMats = new[]
+        {
+            MaterialAsset("DreamGlass_Red", new Color(1f, 0.18f, 0.22f, 1f), true),
+            MaterialAsset("DreamGlass_Orange", new Color(1f, 0.48f, 0.08f, 1f), true),
+            MaterialAsset("DreamGlass_Yellow", new Color(1f, 0.88f, 0.1f, 1f), true),
+            MaterialAsset("DreamGlass_Green", new Color(0.12f, 0.82f, 0.3f, 1f), true),
+            MaterialAsset("DreamGlass_Blue", new Color(0.12f, 0.5f, 1f, 1f), true),
+            MaterialAsset("DreamGlass_Violet", new Color(0.62f, 0.2f, 1f, 1f), true)
+        };
     }
 
     private static Material MaterialAsset(string name, Color color, bool transparent = false)
