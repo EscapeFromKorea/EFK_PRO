@@ -82,6 +82,13 @@ public class PlayerRollModeReceiver : MonoBehaviour
     /// isKinematic이라, 몸의 회전·정지 여부를 밖에서 봐야 하는 기믹(실타래 네모 닻)이 이걸 읽는다.</summary>
     public bool IsTumbling => state != State.Idle;
 
+    /// <summary>진행 중인 텀블의 수평 진행 방향(단위벡터, 없으면 Vector3.zero). 텀블 중엔
+    /// <c>rb.velocity</c>가 항상 0이라(굴리기 모드의 수평 이동 출처는 텀블의 <c>MovePosition</c>
+    /// 뿐이고, 그 사이엔 이 컴포넌트가 매 스텝 수평 velocity를 직접 지운다) velocity로 밀린 방향을
+    /// 읽으려는 다른 기믹은 항상 0을 본다 — 실제 이동 방향이 필요한 기믹(태엽 축 패들)은 이걸
+    /// 읽는다.</summary>
+    public Vector3 CurrentTumbleDirection => state != State.Idle ? tumbleDir : Vector3.zero;
+
     // ── 도형별 기하 (PRD §5.3) ────────────────────────────────────────────────────────────
     //
     // [콜라이더 bounds에서 재면 안 된다] 정사면체의 솔리드 콜라이더는 뾰족한 정사면체가 아니라
