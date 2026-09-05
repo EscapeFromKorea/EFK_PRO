@@ -19,8 +19,31 @@ public class PadTrigger : MonoBehaviour
 
     void Start()
     {
+        EnsureP04TriggerReachesAboveFloor();
         padStartPosition = transform.position;
         padPressedPosition = padStartPosition - new Vector3(0, padPressDepth, 0);
+    }
+
+    private void EnsureP04TriggerReachesAboveFloor()
+    {
+        if (gameObject.name != "P04_HoldPad") return;
+        if (!(GetComponent<Collider>() is BoxCollider box)) return;
+
+        float worldScaleY = Mathf.Abs(transform.lossyScale.y);
+        if (worldScaleY <= Mathf.Epsilon) return;
+
+        const float minimumWorldHeight = 0.5f;
+        float currentWorldHeight = box.size.y * worldScaleY;
+        if (currentWorldHeight >= minimumWorldHeight) return;
+
+        // Preserve the trigger bottom and extend only its top above the courtyard floor.
+        float addedLocalHeight = (minimumWorldHeight - currentWorldHeight) / worldScaleY;
+        Vector3 size = box.size;
+        Vector3 center = box.center;
+        size.y += addedLocalHeight;
+        center.y += addedLocalHeight * 0.5f;
+        box.size = size;
+        box.center = center;
     }
 
     void FixedUpdate()
