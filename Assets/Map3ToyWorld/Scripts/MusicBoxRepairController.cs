@@ -18,7 +18,7 @@ public sealed class MusicBoxRepairController : MonoBehaviour
         if (director == null) return;
 
         if (!director.IsMusicBoxActivated && director.AllItemsInstalled && activationLever != null &&
-            Mathf.Abs(activationLever.GetCurrentAngle()) >= activationAngle)
+            activationLever.GetCurrentAngle() >= activationAngle)
             director.TryActivateMusicBox();
 
         if (activationDoor != null)

@@ -116,13 +116,14 @@ public static class ToyWorldPrototypeBuilder
         doll.item.director = director;
         BuildWorldSafety(safety);
         BuildRouteMarkers(debug);
+        ToyWorldArtDirector.Apply(generated);
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Selection.activeGameObject = root;
-        Debug.Log($"[ToyWorldBuilder] Built functional graybox at {ScenePath}. Manual subtree was preserved.");
+        Debug.Log($"[ToyWorldBuilder] Built playable stylized ToyWorld at {ScenePath}. Manual subtree was preserved.");
     }
 
     private static Camera BuildLightingAndCamera(Transform parent)
@@ -229,7 +230,7 @@ public static class ToyWorldPrototypeBuilder
         Walkway("GEO_Path_Plaza_To_DollHouse", areas, new Vector3(10f, 0f, -12f), new Vector3(24f, 0f, -25f), 5f);
         Walkway("GEO_Path_Plaza_To_Final", areas, new Vector3(0f, 0f, 15f), new Vector3(0f, 0f, 27f), 6f);
 
-        Checkpoint("CP_ToyPlaza", safety, new Vector3(0f, 5.5f, -10f));
+        Checkpoint("CP_ToyPlaza", safety, new Vector3(0f, 2f, -10f));
         return new PlazaRefs { returnPoint = returnPoint, progress = progress };
     }
 
@@ -242,15 +243,16 @@ public static class ToyWorldPrototypeBuilder
         Box("GEO_ToyBoxRightWall", area, new Vector3(14f, 3f, -42f), new Vector3(1f, 6f, 22f), Mat("Wall"));
         Box("GEO_BrokenShelf_Left", area, new Vector3(-9f, 2f, -35f), new Vector3(12f, 4f, 2f), Mat("Wall"));
         Box("GEO_BrokenShelf_Right", area, new Vector3(9f, 2f, -35f), new Vector3(12f, 4f, 2f), Mat("Wall"));
+        Box("GEO_BrokenShelf_Center", area, new Vector3(0f, 2f, -34.5f), new Vector3(6f, 4f, 1f), Mat("Wall"));
 
         LiftPad shelfPad;
         LiftPlatform shelfLift = LiftSet("ExistingLift_ToyBoxShelf", area,
-            new Vector3(0f, 0.25f, -37f), new Vector3(-7f, 0.15f, -42f), 5f, out shelfPad);
+            new Vector3(0f, 0.25f, -37f), new Vector3(-7f, 0.15f, -42f), 3.5f, out shelfPad);
         shelfLift.moveSpeed = 1.4f;
         shelfPad.lightWeightGate = 2f;
 
         Portal enable = PortalObject("TRG_ToyBox_RollModeEnable", area, new Vector3(-7f, 2f, -46f), Portal.PortalAction.Enable);
-        PortalObject("TRG_ToyBox_RollModeDisable", area, new Vector3(0f, 2f, -31.5f), Portal.PortalAction.Disable);
+        PortalObject("TRG_ToyBox_RollModeDisable", area, new Vector3(-7f, 2f, -43.5f), Portal.PortalAction.Disable);
 
         for (int i = 0; i < 8; i++)
         {
@@ -260,7 +262,7 @@ public static class ToyWorldPrototypeBuilder
         }
 
         Seesaw("DYN_ToyBox_Seesaw_Bypass", area, new Vector3(7f, 0.7f, -43f), Quaternion.Euler(0f, 90f, 0f), true);
-        Checkpoint("CP_ToyBox_Start", safety, new Vector3(0f, 5.5f, -50f));
+        Checkpoint("CP_ToyBox_Start", safety, new Vector3(0f, 2f, -50f));
         enable.name = "TRG_ToyBox_RollModeEnable_ExistingPortal";
     }
 
@@ -271,169 +273,146 @@ public static class ToyWorldPrototypeBuilder
         Box("GEO_BlockFortWall", area, new Vector3(-37f, 2.5f, 18f), new Vector3(2f, 5f, 22f), Mat("Wall"));
         Box("GEO_BlockFortBattlement", area, new Vector3(-37f, 5.25f, 18f), new Vector3(3f, 0.5f, 24f), Mat("Accent"));
 
-        Vector3[] stairPositions =
+        for (int i = 0; i < 5; i++)
         {
-            new Vector3(-30.7f, 0.5f, 17f), new Vector3(-32f, 1.5f, 17f),
-            new Vector3(-33.3f, 2.5f, 17f), new Vector3(-34.7f, 3.5f, 17f)
-        };
-        for (int i = 0; i < stairPositions.Length; i++)
-            SnapBlockObject("DYN_BlockFort_StairBlock_" + (i + 1), shared, stairPositions[i], new Vector3(2.4f, 1f, 3f));
+            float height = i + 1f;
+            GameObject step = SnapBlockObject("DYN_BlockFort_StairBlock_" + (i + 1), shared,
+                new Vector3(-25.75f - i * 2.25f, height * 0.5f, 17f), new Vector3(2.2f, height, 3f));
+            step.GetComponent<Rigidbody>().mass = 4f + i * 2f;
+        }
         for (int i = 0; i < 4; i++)
             SnapBlockObject("DYN_BlockFort_LooseBlock_" + (i + 1), shared, new Vector3(-30f + i * 1.7f, 0.55f, 23f), new Vector3(1.4f, 1.1f, 1.4f));
 
         GameObject slipRamp = Ramp("GEO_BlockFort_SlipRamp_Bypass", area,
-            new Vector3(-31f, 0.2f, 27f), new Vector3(-38f, 3.9f, 27f), 3.2f, Mat("Slip"));
+            new Vector3(-26f, 0.2f, 27f), new Vector3(-37f, 5.65f, 27f), 3.2f, Mat("Slip"));
         slipRamp.AddComponent<StickerSurface>();
         Seesaw("DYN_BlockFort_Seesaw_Bypass", area, new Vector3(-31f, 0.7f, 10f), Quaternion.identity, true);
 
-        Checkpoint("CP_BlockFort", safety, new Vector3(-47f, 5.5f, 18f));
+        Checkpoint("CP_BlockFort", safety, new Vector3(-47f, 2f, 18f));
         ToyWorldRepairItem item = RepairItem("GOAL_WindUpSpring", area, ToyWorldRepairItemType.WindUpSpring,
             new Vector3(-47f, 1.2f, 18f), Mat("Spring"));
         return new BranchRefs { item = item };
     }
 
-    private static BranchRefs BuildTrainYard(Transform areas, Transform shared, Transform safety, Transform hubReturn)
+
+    private static BranchRefs BuildTrainYard(Transform areas, Transform shared, Transform safety)
     {
         Transform area = Node("Branch_TrainYard", areas);
         Box("GEO_TrainWestBank", area, new Vector3(31f, -0.5f, 18f), new Vector3(14f, 1f, 26f), Mat("Ground"));
         Box("GEO_TrainEastBank", area, new Vector3(53f, -0.5f, 18f), new Vector3(14f, 1f, 26f), Mat("Ground"));
         Box("VIS_TrainCanyonDanger", area, new Vector3(42f, -5.5f, 18f), new Vector3(9f, 0.4f, 26f), Mat("Danger"), false);
-
         CreateRailSegment(area, 35f, 40.5f, 18f);
         CreateRailSegment(area, 44f, 57f, 18f);
-        for (float x = 35f; x <= 57f; x += 2f)
-            if (x < 40.5f || x > 44f)
-                Box("GEO_RailTie_" + x.ToString("0"), area, new Vector3(x, 0.15f, 18f), new Vector3(0.35f, 0.3f, 4f), Mat("Rail"));
 
-        Transform railReference = Node("RailReference_Forward", area);
-        railReference.position = new Vector3(35f, 0f, 18f);
-        railReference.rotation = Quaternion.Euler(0f, 90f, 0f);
-        GameObject switchObject = Box("DYN_RailBranchSwitch", area, new Vector3(39f, 0.65f, 18f),
-            new Vector3(4f, 0.3f, 1.6f), Mat("Gold"));
-        Rigidbody switchBody = switchObject.AddComponent<Rigidbody>();
-        switchBody.isKinematic = true;
-        ToyRailSwitch railSwitch = switchObject.AddComponent<ToyRailSwitch>();
-        switchObject.AddComponent<PuzzleResettable>().autoResetBelowY = -7f;
-        ToyRailCart cart = RailCart("DYN_ToyRailCart", area, new Vector3(35f, 1.05f, 18f), railReference);
-        cart.railSwitch = railSwitch;
-
-        GameObject switchPadObject = Box("TRG_RailBranchSwitchPad_NormalRoute", area,
-            new Vector3(31f, 0.15f, 23f), new Vector3(3f, 0.3f, 3f), Mat("Gold"), true, true);
-        ToyRailSwitchPad switchPad = switchPadObject.AddComponent<ToyRailSwitchPad>();
-        switchPad.railSwitch = railSwitch;
-        switchPad.latch = true;
-
-        Portal("TRG_Train_TorqueEnable", area, new Vector3(30f, 2f, 13f), TorquePortalMode.Enable);
-        WindUpAxis axis = Axis("DYN_Train_WindUpAxis", area, new Vector3(34f, 1.5f, 13f));
-        axis.receivers = new MonoBehaviour[] { cart };
-        Portal("TRG_Train_TorqueDisable", area, new Vector3(53f, 2f, 13f), TorquePortalMode.Disable);
-
-        GameObject derailPadObject = Box("TRG_IntentionalDerailPad_Bypass", area, new Vector3(38f, 0.15f, 23f), new Vector3(3f, 0.3f, 3f), Mat("Danger"), true, true);
-        ToyRailDerailPad derailPad = derailPadObject.AddComponent<ToyRailDerailPad>();
-        derailPad.cart = cart;
-        derailPad.lateralImpulse = new Vector3(0f, 1f, 5f);
-
+        // Existing CloudTrampoline movement variant. This is a shuttle platform,
+        // not an implementation of the absent wind-up/derailing rail cart.
+        Transform pointA = Node("Shuttle_PointA", area);
+        Transform pointB = Node("Shuttle_PointB", area);
+        pointA.position = new Vector3(36f, 0.8f, 18f);
+        pointB.position = new Vector3(49f, 0.8f, 18f);
+        CloudTrampoline shuttle = MovingBox<CloudTrampoline>("PLATFORM_Train_ExistingCloudShuttle", area,
+            pointA.position, new Vector3(4f, 0.5f, 4f), Mat("Dynamic"), true);
+        shuttle.GetComponent<BoxCollider>().size = new Vector3(4f, 0.5f, 4f);
+        shuttle.pointA = pointA;
+        shuttle.pointB = pointB;
+        shuttle.movePeriodSec = 12f;
+        shuttle.restMassThreshold = 0f;
+        shuttle.collapseMassThreshold = 100f;
+        shuttle.maxBoostSteps = 0;
+        shuttle.GetComponent<Rigidbody>().interpolation = RigidbodyInterpolation.Interpolate;
+        shuttle.gameObject.AddComponent<StickerSurface>();
         ThreadAnchorObject("WIRE_TrainGapAnchor", area, new Vector3(42f, 7f, 18f), 9f);
-        AccelJumpBypass(area, new Vector3(35f, 0.35f, 24f), Vector3.right, 7f);
+        AccelJumpBypass(area, new Vector3(34f, 0.2f, 25f), Vector3.right, 7f);
+        AccelJumpBypass(area, new Vector3(50f, 0.2f, 25f), Vector3.left, 7f);
+        RotatingBoard("DYN_Train_Bridge_Bypass", area, new Vector3(36.5f, 0.8f, 10f),
+            new Vector3(47.5f, 0.8f, 10f), 3.5f);
 
-        Checkpoint("CP_TrainYard", safety, new Vector3(54f, 5.5f, 18f));
-        ToyWorldReturnPortal shortcut = ReturnPortal("TRG_Train_ReturnShortcut", area, new Vector3(55f, 2f, 24f), hubReturn);
+        Checkpoint("CP_TrainYard_Entry", safety, new Vector3(30f, 2f, 10f));
+        Checkpoint("CP_TrainYard", safety, new Vector3(54f, 2f, 18f));
         ToyWorldRepairItem item = RepairItem("GOAL_PowerGear", area, ToyWorldRepairItemType.PowerGear,
             new Vector3(55f, 1.2f, 18f), Mat("Gear"));
-        return new BranchRefs { item = item, shortcut = shortcut };
+        return new BranchRefs { item = item };
     }
 
-    private static BranchRefs BuildDollHouse(Transform areas, Transform shared, Transform safety, Transform hubReturn)
+    private static BranchRefs BuildDollHouse(Transform areas, Transform shared, Transform safety)
     {
         Transform area = Node("Branch_DollHouse", areas);
         Box("GEO_DollHouseBase", area, new Vector3(34f, -0.5f, -34f), new Vector3(24f, 1f, 24f), Mat("Ground"));
         Box("GEO_DollHouseBackWall", area, new Vector3(34f, 10f, -46f), new Vector3(24f, 20f, 1f), Mat("Wall"));
-        Box("GEO_DollHouseLeftWall", area, new Vector3(22f, 10f, -34f), new Vector3(1f, 20f, 24f), Mat("Wall"));
+        Box("GEO_DollHouseLeftWall", area, new Vector3(22f, 10f, -37f), new Vector3(1f, 20f, 18f), Mat("Wall"));
+        Box("GEO_DollEntryLintel", area, new Vector3(22f, 12f, -25f), new Vector3(1f, 16f, 6f), Mat("Wall"));
         Box("GEO_DollHouseRightWall", area, new Vector3(46f, 10f, -34f), new Vector3(1f, 20f, 24f), Mat("Wall"));
-        Box("GEO_DollLevel1", area, new Vector3(34f, 5.5f, -41f), new Vector3(22f, 1f, 9f), Mat("Accent"));
-        Box("GEO_DollLevel2", area, new Vector3(34f, 11.5f, -28f), new Vector3(22f, 1f, 9f), Mat("Accent"));
-        Box("GEO_DollAttic", area, new Vector3(34f, 17.5f, -41f), new Vector3(22f, 1f, 9f), Mat("Accent"));
+        Box("GEO_DollLevel1", area, new Vector3(34f, 5.5f, -41f), new Vector3(22f, 1f, 5f), Mat("Accent"));
+        Box("GEO_DollLevel2", area, new Vector3(34f, 11.5f, -27f), new Vector3(22f, 1f, 5f), Mat("Accent"));
+        Box("GEO_DollAttic", area, new Vector3(34f, 17.5f, -41f), new Vector3(22f, 1f, 5f), Mat("Accent"));
 
-        RotatingBoard("DYN_DollBed_Ramp", area, new Vector3(34f, 0.3f, -28f), new Vector3(34f, 5.8f, -38f), 4f);
-        RotatingBoard("DYN_DollLivingBoard_Ramp", area, new Vector3(30f, 6.3f, -38f), new Vector3(30f, 11.8f, -31f), 4f);
-        RotatingBoard("DYN_DollAtticBoard_Ramp", area, new Vector3(38f, 12.3f, -31f), new Vector3(38f, 17.8f, -39f), 4f);
-        Seesaw("DYN_DollShelf_Seesaw", area, new Vector3(39f, 12.8f, -38f), Quaternion.identity, false);
+        RotatingBoard("DYN_DollBed_Ramp", area, new Vector3(34f, 0.3f, -25f), new Vector3(34f, 6.1f, -38.25f), 4f);
+        RotatingBoard("DYN_DollLivingBoard_Ramp", area, new Vector3(25.5f, 6.3f, -38.75f), new Vector3(35f, 12.1f, -29.75f), 4f);
+        RotatingBoard("DYN_DollAtticBoard_Ramp", area, new Vector3(42.5f, 12.3f, -29.25f), new Vector3(33f, 18.1f, -38.25f), 4f);
+        Seesaw("DYN_DollShelf_Seesaw", area, new Vector3(39f, 18.8f, -41f), Quaternion.identity, false);
 
         ThreadAnchorObject("WIRE_DollMobile_Low", area, new Vector3(34f, 10f, -34f), 8f);
         ThreadAnchorObject("WIRE_DollMobile_High", area, new Vector3(34f, 17f, -34f), 8f);
-        AccelJumpBypass(area, new Vector3(27f, 0.35f, -28f), Vector3.up, 7f);
+        AccelJumpBypass(area, new Vector3(27f, 0.35f, -34f), Vector3.up, 8f);
+        AccelJumpBypass(area, new Vector3(25f, 6.2f, -40f), Vector3.up, 16f);
+        AccelJumpBypass(area, new Vector3(42f, 12.2f, -27f), Vector3.up, 16f);
 
-        Checkpoint("CP_DollHouse_Level1", safety, new Vector3(34f, 11.5f, -41f));
-        Checkpoint("CP_DollHouse_Level2", safety, new Vector3(34f, 17.5f, -28f));
-        Checkpoint("CP_DollHouse_Attic", safety, new Vector3(34f, 23.5f, -41f));
+        Checkpoint("CP_DollHouse_Level1", safety, new Vector3(34f, 8f, -41f));
+        Checkpoint("CP_DollHouse_Level2", safety, new Vector3(34f, 14f, -28f));
+        Checkpoint("CP_DollHouse_Attic", safety, new Vector3(34f, 20f, -41f));
 
-        ToyWorldReturnPortal shortcut = ReturnPortal("TRG_Doll_ReturnShortcut", area, new Vector3(41f, 20f, -41f), hubReturn);
         ToyWorldRepairItem item = RepairItem("GOAL_MelodyCylinder", area, ToyWorldRepairItemType.MelodyCylinder,
             new Vector3(34f, 19.2f, -41f), Mat("Cylinder"));
-        return new BranchRefs { item = item, shortcut = shortcut };
+        return new BranchRefs { item = item };
     }
 
+
     private static void BuildFinalRoom(Transform areas, Transform shared, Transform safety,
-        ToyWorldLevelDirector director, out MusicBoxRepairController musicBox, out ToyWorldGate finalGate)
+        ToyWorldLevelDirector director, out MusicBoxRepairController musicBox,
+        out doorPhysics finalGate, out doorPhysics installationGate)
     {
         Transform area = Node("Final_BrokenMusicBox", areas);
         Box("GEO_FinalFloor", area, new Vector3(0f, -0.5f, 40f), new Vector3(30f, 1f, 28f), Mat("MusicBoxDark"));
         Box("GEO_FinalLeftWall", area, new Vector3(-15f, 5f, 40f), new Vector3(1f, 10f, 28f), Mat("Wall"));
         Box("GEO_FinalRightWall", area, new Vector3(15f, 5f, 40f), new Vector3(1f, 10f, 28f), Mat("Wall"));
-
-        finalGate = MovingBox<ToyWorldGate>("DOOR_FinalGate_Requires3Parts", area,
-            new Vector3(0f, 2.5f, 27.5f), new Vector3(7f, 5f, 1f), Mat("Locked"), true);
-        finalGate.openOffset = new Vector3(0f, 6f, 0f);
-        finalGate.moveSpeed = 3f;
-        finalGate.statusRenderer = finalGate.GetComponentInChildren<Renderer>();
-        Box("GEO_FinalGateFrameLeft", area, new Vector3(-5f, 3f, 27.5f), new Vector3(3f, 6f, 1.5f), Mat("Wall"));
-        Box("GEO_FinalGateFrameRight", area, new Vector3(5f, 3f, 27.5f), new Vector3(3f, 6f, 1.5f), Mat("Wall"));
-        Box("GEO_FinalGateBarrierLeft", area, new Vector3(-10.75f, 3f, 27.5f), new Vector3(8.5f, 6f, 1.5f), Mat("Wall"));
-        Box("GEO_FinalGateBarrierRight", area, new Vector3(10.75f, 3f, 27.5f), new Vector3(8.5f, 6f, 1.5f), Mat("Wall"));
+        finalGate = ExistingDoor("DOOR_FinalGate_Requires3Parts", area, new Vector3(0f, 2.5f, 27.5f),
+            new Vector3(7f, 5f, 1f), 6f);
+        Box("GEO_FinalGateBarrierLeft", area, new Vector3(-9.25f, 4f, 27.5f), new Vector3(11.5f, 8f, 1.5f), Mat("Wall"));
+        Box("GEO_FinalGateBarrierRight", area, new Vector3(9.25f, 4f, 27.5f), new Vector3(11.5f, 8f, 1.5f), Mat("Wall"));
 
         musicBox = area.gameObject.AddComponent<MusicBoxRepairController>();
         musicBox.director = director;
         ToyWorldInstallSocket[] sockets = new ToyWorldInstallSocket[3];
-        for (int i = 0; i < 3; i++)
-        {
+        for (int i = 0; i < sockets.Length; i++)
             sockets[i] = InstallSocket("TRG_Install_" + ((ToyWorldRepairItemType)i), area,
-                (ToyWorldRepairItemType)i, new Vector3(-3f + i * 3f, 0.3f, 33f), director);
-        }
+                (ToyWorldRepairItemType)i, new Vector3(-4f + i * 4f, 0.3f, 33f), director);
         musicBox.installSockets = sockets;
+        installationGate = ExistingDoor("DOOR_InstallationGate", area, new Vector3(0f, 2f, 36f),
+            new Vector3(6f, 4f, 0.6f), 5f);
+        Box("GEO_InstallPartitionLeft", area, new Vector3(-9f, 2f, 36f), new Vector3(12f, 4f, 0.6f), Mat("Wall"));
+        Box("GEO_InstallPartitionRight", area, new Vector3(9f, 2f, 36f), new Vector3(12f, 4f, 0.6f), Mat("Wall"));
 
-        Portal("TRG_Final_TorqueEnable", area, new Vector3(0f, 2f, 37f), TorquePortalMode.Enable);
-        WindUpAxis axis = Axis("DYN_Final_MusicBox_WindUpAxis", area, new Vector3(0f, 1.5f, 41f));
-        axis.receivers = new MonoBehaviour[] { musicBox };
+        musicBox.activationLever = ExistingLever("MusicBox_ExistingLever", area, new Vector3(-4f, 0.8f, 40f));
+        musicBox.activationDoor = ExistingDoor("DOOR_MusicBoxExit", area, new Vector3(0f, 10f, 53f),
+            new Vector3(6f, 4f, 0.6f), 5f);
+        musicBox.activationAngle = 20f;
 
-        Rigidbody[] steps = new Rigidbody[6];
-        for (int i = 0; i < steps.Length; i++)
-        {
-            GameObject step = Box("PLATFORM_DeployableStep_" + (i + 1), area,
-                new Vector3(0f, 0.45f + i * 1.25f, 42f + i * 1.55f), new Vector3(5f, 0.8f, 2f), Mat("Dynamic"));
-            Rigidbody body = step.AddComponent<Rigidbody>();
-            body.isKinematic = true;
-            body.useGravity = false;
-            steps[i] = body;
-        }
-        musicBox.deployableSteps = steps;
-        musicBox.activationChargeRequired = 1.75f;
-
-        GameObject spinner = CylinderVisual("VIS_MusicBoxSpinner", area, new Vector3(0f, 2f, 41f), new Vector3(4f, 0.3f, 4f), Mat("Gold"), false);
-        musicBox.activatedSpinner = spinner.transform;
-
+        LiftPad finalPad;
+        LiftSet("ExistingLift_Final", area, new Vector3(0f, 0.25f, 46.5f),
+            new Vector3(-7f, 0.15f, 44f), 7.5f, out finalPad);
+        finalPad.lightWeightGate = 2f;
         Box("GEO_FinalExitPlatform", area, new Vector3(0f, 7.5f, 52f), new Vector3(10f, 1f, 7f), Mat("Accent"));
-        GameObject exit = Box("GOAL_FinalExitTrigger", area, new Vector3(0f, 9.5f, 53f), new Vector3(4f, 4f, 2f), Mat("Goal"), true, true);
-        ToyWorldExitTrigger exitTrigger = exit.AddComponent<ToyWorldExitTrigger>();
-        exitTrigger.director = director;
-
-        AccelJumpBypass(area, new Vector3(7f, 0.35f, 44f), Vector3.up, 9f);
-        RotatingBoard("DYN_Final_FreeBoard_Bypass", area, new Vector3(-9f, 0.3f, 42f), new Vector3(-4f, 7.8f, 50f), 3f);
+        GameObject exit = Box("GOAL_FinalExitTrigger", area, new Vector3(0f, 9.5f, 54.5f),
+            new Vector3(4f, 3f, 1.5f), Mat("Goal"), true, true);
+        exit.AddComponent<ToyWorldExitTrigger>().director = director;
+        AccelJumpBypass(area, new Vector3(7f, 0.2f, 44f), Vector3.up, 10f);
+        RotatingBoard("DYN_Final_FreeBoard_Bypass", area, new Vector3(-11f, 0.3f, 39f),
+            new Vector3(-4f, 8f, 50f), 3f);
         ThreadAnchorObject("WIRE_FinalExitAnchor", area, new Vector3(-2f, 12f, 49f), 10f);
         for (int i = 0; i < 4; i++)
-            SnapBlockObject("DYN_Final_BypassBlock_" + (i + 1), shared, new Vector3(8f + (i % 2) * 1.6f, 0.55f, 37f + (i / 2) * 1.6f), new Vector3(1.4f, 1.1f, 1.4f));
-
-        Portal("TRG_Final_TorqueDisable", area, new Vector3(0f, 9.5f, 50f), TorquePortalMode.Disable);
-        Checkpoint("CP_FinalRoom", safety, new Vector3(0f, 5.5f, 30f));
+            SnapBlockObject("DYN_Final_BypassBlock_" + (i + 1), shared,
+                new Vector3(8f + (i % 2) * 1.6f, 0.55f, 38f + (i / 2) * 1.6f), new Vector3(1.4f, 1.1f, 1.4f));
+        Checkpoint("CP_FinalRoom", safety, new Vector3(0f, 2f, 30f));
     }
 
     private static void BuildWorldSafety(Transform safety)
@@ -465,11 +444,11 @@ public static class ToyWorldPrototypeBuilder
     {
         string[] names =
         {
-            "ROUTE_ToyBox_Normal_TorqueAxisLift", "ROUTE_ToyBox_Bypass_SnapBlockStairs",
+            "ROUTE_ToyBox_Normal_ExistingLiftPad", "ROUTE_ToyBox_Bypass_SnapBlockStairs",
             "ROUTE_BlockFort_Normal_SnapBlockStairs", "ROUTE_BlockFort_Bypass_SeesawOrSlipRamp",
-            "ROUTE_Train_Normal_WindUpRailCart", "ROUTE_Train_Bypass_WireOrAccelJumpOrDerail",
+            "ROUTE_Train_Normal_ExistingCloudShuttle", "ROUTE_Train_Bypass_RotatingBridgeOrAccelJump",
             "ROUTE_Doll_Normal_RotatingFurniture", "ROUTE_Doll_Bypass_WireOrJump",
-            "ROUTE_Final_Normal_DeployableStairs", "ROUTE_Final_Bypass_BlocksOrBoardOrJump"
+            "ROUTE_Final_Normal_ExistingLeverAndLift", "ROUTE_Final_Bypass_BlocksOrBoardOrJump"
         };
         for (int i = 0; i < names.Length; i++) Node(names[i], parent);
     }
@@ -482,71 +461,76 @@ public static class ToyWorldPrototypeBuilder
         Box("RAIL_Right_" + fromX, parent, new Vector3(center, 0.25f, z + 1.2f), new Vector3(length, 0.5f, 0.35f), Mat("Rail"));
     }
 
-    private static ToyRailCart RailCart(string name, Transform parent, Vector3 position, Transform railReference)
+
+    private static LiftPlatform LiftSet(string name, Transform parent, Vector3 platformPosition,
+        Vector3 padPosition, float height, out LiftPad pad)
     {
-        GameObject cartObject = Box(name, parent, position, new Vector3(3.5f, 1.1f, 3.2f), Mat("Dynamic"));
-        Rigidbody body = cartObject.AddComponent<Rigidbody>();
-        body.mass = 5f;
-        ToyRailCart cart = cartObject.AddComponent<ToyRailCart>();
-        cart.railReference = railReference;
-        cart.driveAcceleration = 3f;
-        cart.maxRailSpeed = 12f;
-        cartObject.AddComponent<PuzzleResettable>().autoResetBelowY = -7f;
-        cartObject.AddComponent<StickerSurface>();
-        ThreadAnchorObject("WIRE_CartAnchor", cartObject.transform, position + Vector3.up * 2f, 5f, true);
-        return cart;
+        LiftPlatform lift = MovingBox<LiftPlatform>("PLATFORM_" + name, parent, platformPosition,
+            new Vector3(5f, 0.5f, 4f), Mat("Dynamic"), true);
+        // AddComponent invokes Reset in the editor: reapply dimensions afterwards.
+        foreach (BoxCollider col in lift.GetComponents<BoxCollider>())
+            if (!col.isTrigger) col.size = new Vector3(5f, 0.5f, 4f);
+        BoxCollider sensor = lift.riderSensor as BoxCollider;
+        if (sensor == null) sensor = lift.gameObject.AddComponent<BoxCollider>();
+        sensor.isTrigger = true;
+        sensor.size = new Vector3(5f, 1f, 4f);
+        sensor.center = new Vector3(0f, 0.75f, 0f);
+        lift.riderSensor = sensor;
+        lift.riseHeight = height;
+        lift.moveSpeed = 1.4f;
+        lift.GetComponent<Rigidbody>().interpolation = RigidbodyInterpolation.Interpolate;
+        GameObject padObject = Box("TRG_" + name + "_Pad", parent, padPosition,
+            new Vector3(3f, 0.3f, 3f), Mat("Gold"), true, true);
+        pad = padObject.AddComponent<LiftPad>();
+        pad.targetLift = lift;
+        return lift;
     }
 
-    private static WindUpAxis Axis(string name, Transform parent, Vector3 position)
+    private static doorPhysics ExistingDoor(string name, Transform parent, Vector3 position,
+        Vector3 size, float openHeight)
     {
-        GameObject root = new GameObject(name);
-        root.transform.SetParent(parent, false);
-        root.transform.position = position;
-        CapsuleCollider solid = root.AddComponent<CapsuleCollider>();
-        solid.direction = 1;
-        solid.radius = 0.8f;
-        solid.height = 3f;
-        SphereCollider interaction = root.AddComponent<SphereCollider>();
-        interaction.radius = 3f;
-        interaction.isTrigger = true;
-        Rigidbody body = root.AddComponent<Rigidbody>();
-        body.useGravity = false;
-        body.angularDrag = 1.5f;
-        HingeJoint hinge = root.AddComponent<HingeJoint>();
-        hinge.axis = Vector3.up;
-        WindUpAxis axis = root.AddComponent<WindUpAxis>();
-        axis.localAxis = Vector3.up;
-        axis.maxTurns = 1.5f;
-        axis.outputScale = 8f;
-        GameObject visual = CylinderVisual("VisualMesh", root.transform, position, new Vector3(1.6f, 1.5f, 1.6f), Mat("Gold"), true);
-        axis.energyRenderer = visual.GetComponent<Renderer>();
-        GameObject handle = Box("VIS_WindHandle", root.transform, position + new Vector3(1.4f, 0.8f, 0f), new Vector3(2.8f, 0.25f, 0.3f), Mat("Gold"), false, false, true);
-        handle.transform.SetParent(root.transform, true);
-        root.AddComponent<PuzzleResettable>();
-        return axis;
+        doorPhysics door = MovingBox<doorPhysics>(name, parent, position, size, Mat("Locked"), true);
+        door.doorTargetYOffset = openHeight;
+        door.doorSpeed = 3f;
+        BoxCollider antiCrush = door.gameObject.AddComponent<BoxCollider>();
+        antiCrush.size = size + new Vector3(0.1f, 0.1f, 0.15f);
+        antiCrush.isTrigger = true;
+        return door;
     }
 
-    private static TorquePortal Portal(string name, Transform parent, Vector3 position, TorquePortalMode mode)
+    private static LeverHead ExistingLever(string name, Transform parent, Vector3 position)
     {
-        GameObject root = Box(name, parent, position, new Vector3(5f, 4f, 1f), mode == TorquePortalMode.Disable ? Mat("Disable") : Mat("Torque"), true, true);
-        Renderer main = root.GetComponentInChildren<Renderer>();
-        main.enabled = false;
-        Box("VIS_PortalLeft", root.transform, position + new Vector3(-2.2f, 0f, 0f), new Vector3(0.4f, 4f, 0.5f), mode == TorquePortalMode.Disable ? Mat("Disable") : Mat("Torque"), false, false, true);
-        Box("VIS_PortalRight", root.transform, position + new Vector3(2.2f, 0f, 0f), new Vector3(0.4f, 4f, 0.5f), mode == TorquePortalMode.Disable ? Mat("Disable") : Mat("Torque"), false, false, true);
-        GameObject top = Box("VIS_PortalTop", root.transform, position + new Vector3(0f, 2f, 0f), new Vector3(4.8f, 0.4f, 0.5f), mode == TorquePortalMode.Disable ? Mat("Disable") : Mat("Torque"), false, false, true);
-        TorquePortal portal = root.AddComponent<TorquePortal>();
-        portal.mode = mode;
-        portal.statusRenderer = top.GetComponentInChildren<Renderer>();
-        return portal;
+        Transform pivot = Node(name, parent);
+        pivot.position = position;
+        pivot.localRotation = Quaternion.Euler(0f, -45f, 0f);
+        GameObject handle = Box("GEO_" + name + "_Handle", pivot, position,
+            new Vector3(3f, 0.45f, 0.5f), Mat("Gold"));
+        handle.transform.localPosition = new Vector3(-1.2f, 0f, 0f);
+        handle.transform.localRotation = Quaternion.identity;
+        LeverHead lever = handle.AddComponent<LeverHead>();
+        lever.leverPivot = pivot;
+        lever.returnDelay = 1f;
+        lever.returnSpeed = 0.1f;
+        lever.maxAngle = 45f;
+        Box("GEO_" + name + "_Base", parent, position + Vector3.down * 0.5f,
+            new Vector3(0.65f, 0.6f, 0.65f), Mat("Accent"));
+        return lever;
     }
 
-    private static ToyWorldReturnPortal ReturnPortal(string name, Transform parent, Vector3 position, Transform destination)
+    private static Portal PortalObject(string name, Transform parent, Vector3 position, Portal.PortalAction action)
     {
-        GameObject root = Box(name, parent, position, new Vector3(4f, 4f, 1f), Mat("Inactive"), true, true);
-        Renderer renderer = root.GetComponentInChildren<Renderer>();
-        ToyWorldReturnPortal portal = root.AddComponent<ToyWorldReturnPortal>();
-        portal.destination = destination;
-        portal.statusRenderer = renderer;
+        Material color = action == Portal.PortalAction.Disable ? Mat("Danger") : Mat("Checkpoint");
+        GameObject root = Box(name, parent, position, new Vector3(5f, 4f, 0.6f), color, true, true);
+        root.GetComponentInChildren<Renderer>().enabled = false;
+        Box("VIS_PortalLeft", root.transform, position + new Vector3(-2.2f, 0f, 0f),
+            new Vector3(0.4f, 4f, 0.5f), color, false);
+        Box("VIS_PortalRight", root.transform, position + new Vector3(2.2f, 0f, 0f),
+            new Vector3(0.4f, 4f, 0.5f), color, false);
+        Box("VIS_PortalTop", root.transform, position + new Vector3(0f, 2f, 0f),
+            new Vector3(4.8f, 0.4f, 0.5f), color, false);
+        Portal portal = root.AddComponent<Portal>();
+        portal.action = action;
+        portal.logBlocking = false;
         return portal;
     }
 
@@ -626,8 +610,12 @@ public static class ToyWorldPrototypeBuilder
 
         if (launchPad)
         {
-            GameObject pad = Box("GEO_SeesawLaunchEnd", root.transform, position + root.transform.right * 3f + Vector3.up * 0.3f,
-                new Vector3(1.8f, 0.2f, 2.4f), Mat("Jump"), true, false, true);
+            // JumpPad receives collision callbacks on its own static collider. A child of the
+            // seesaw Rigidbody would route those callbacks to the seesaw root instead.
+            Vector3 padPosition = position - root.transform.right * 3.5f + root.transform.forward * 2.4f;
+            padPosition.y = position.y - 0.5f;
+            GameObject pad = Box("GEO_SeesawSideJump_Bypass", parent, padPosition,
+                new Vector3(1.8f, 0.4f, 2.4f), Mat("Jump"));
             JumpPad jump = pad.AddComponent<JumpPad>();
             jump.jumpHeight = 6f;
         }
@@ -657,11 +645,14 @@ public static class ToyWorldPrototypeBuilder
     private static void AccelJumpBypass(Transform parent, Vector3 position, Vector3 direction, float jumpHeight)
     {
         Quaternion rotation = direction == Vector3.up ? Quaternion.identity : Quaternion.LookRotation(direction, Vector3.up);
-        GameObject accelObject = Box("TRG_AccelBypass", parent, position, new Vector3(3f, 0.3f, 3f), Mat("Accel"), true, true);
-        accelObject.transform.rotation = rotation;
-        AccelPad accel = accelObject.AddComponent<AccelPad>();
-        accel.boostSpeed = 12f;
-        accel.holdDuration = 0.8f;
+        if (direction != Vector3.up)
+        {
+            GameObject accelObject = Box("TRG_AccelBypass", parent, position, new Vector3(3f, 0.6f, 3f), Mat("Accel"), true, true);
+            accelObject.transform.rotation = rotation;
+            AccelPad accel = accelObject.AddComponent<AccelPad>();
+            accel.boostSpeed = 12f;
+            accel.holdDuration = 0.8f;
+        }
         GameObject jumpObject = Box("GEO_JumpBypass", parent, position + (direction == Vector3.up ? Vector3.zero : direction * 2.5f),
             new Vector3(3f, 0.35f, 3f), Mat("Jump"));
         JumpPad jump = jumpObject.AddComponent<JumpPad>();
@@ -688,13 +679,13 @@ public static class ToyWorldPrototypeBuilder
         root.transform.SetParent(parent, false);
         root.transform.position = position;
         BoxCollider trigger = root.AddComponent<BoxCollider>();
-        trigger.size = new Vector3(4f, 11f, 4f);
+        trigger.size = new Vector3(4f, 4f, 4f);
         trigger.isTrigger = true;
         RespawnZone zone = root.AddComponent<RespawnZone>();
-        CylinderVisual("VIS_CheckpointPole", root.transform, position + new Vector3(-1.3f, -3.5f, 0f), new Vector3(0.15f, 2f, 0.15f), Mat("Checkpoint"), true);
-        GameObject flag = Box("VIS_CheckpointFlag", root.transform, position + new Vector3(-0.65f, -2f, 0f), new Vector3(1.3f, 0.7f, 0.1f), Mat("Checkpoint"), false, false, true);
+        CylinderVisual("VIS_CheckpointPole", root.transform, position + new Vector3(-1.3f, -0.7f, 0f), new Vector3(0.15f, 1.3f, 0.15f), Mat("Checkpoint"), true);
+        GameObject flag = Box("VIS_CheckpointFlag", root.transform, position + new Vector3(-0.65f, 0.4f, 0f), new Vector3(1.3f, 0.7f, 0.1f), Mat("Checkpoint"), false, false, true);
         zone.flagRenderer = flag.GetComponentInChildren<Renderer>();
-        zone.raiseFromLocalY = -5f;
+        zone.raiseFromLocalY = -2f;
         return zone;
     }
 

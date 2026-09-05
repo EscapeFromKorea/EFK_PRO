@@ -20,6 +20,18 @@ public static class ToyWorldPlayModeSmokeRunner
         EditorApplication.isPlaying = true;
     }
 
+    public static void BuildAndRunFromCommandLine()
+    {
+        ToyWorldPrototypeBuilder.BuildFromCommandLine();
+        RunFromCommandLine();
+    }
+
+    public static void RunArtVerificationFromCommandLine()
+    {
+        SessionState.SetBool("ToyWorld.ArtCapture", true);
+        RunFromCommandLine();
+    }
+
     private static void OnPlayModeStateChanged(PlayModeStateChange state)
     {
         if (state != PlayModeStateChange.EnteredPlayMode || !SessionState.GetBool(SessionKey, false)) return;

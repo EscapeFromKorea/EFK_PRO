@@ -39,14 +39,15 @@ public static class ToyWorldPrototypeValidator
         if (director != null)
         {
             Require(director.finalGate != null, "Director.finalGate is not wired.", ref errors);
+            Require(director.installationGate != null, "Director.installationGate is not wired.", ref errors);
             Require(director.musicBox != null, "Director.musicBox is not wired.", ref errors);
             Require(director.hubProgress != null, "Director.hubProgress is not wired.", ref errors);
         }
 
         PlayerMover[] players = UnityEngine.Object.FindObjectsOfType<PlayerMover>(true);
-        TorqueStateController[] torqueStates = UnityEngine.Object.FindObjectsOfType<TorqueStateController>(true);
         Require(players.Length == 3, "The scene must contain all three existing PlayerSystem shapes.", ref errors);
-        Require(torqueStates.Length == 3, "Each player must have a TorqueStateController adapter.", ref errors);
+        Require(UnityEngine.Object.FindObjectsOfType<Portal>(true).Length == 2,
+            "Existing PortalSystem entry and exit are required.", ref errors);
         Require(UnityEngine.Object.FindObjectsOfType<RespawnController>(true).Length == 1,
             "Exactly one existing RespawnController is required.", ref errors);
         Require(UnityEngine.Object.FindObjectsOfType<RespawnZone>(true).Length >= 7,
@@ -61,20 +62,24 @@ public static class ToyWorldPrototypeValidator
             Require(index >= 0 && index < 3 && !seenItems[index], "Repair item types must be unique.", ref errors);
             if (index >= 0 && index < 3) seenItems[index] = true;
             Require(item.director != null, item.name + " has no director reference.", ref errors);
-            Require(item.returnShortcut != null, item.name + " has no return shortcut reference.", ref errors);
         }
 
         ToyWorldInstallSocket[] sockets = UnityEngine.Object.FindObjectsOfType<ToyWorldInstallSocket>(true);
         Require(sockets.Length == 3, "Exactly three install sockets are required.", ref errors);
         Require(UnityEngine.Object.FindObjectsOfType<ToyWorldExitTrigger>(true).Length == 1,
             "Exactly one final exit trigger is required.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<WindUpAxis>(true).Length >= 3,
-            "Toy Box, Train Yard, and final room each need a WindUpAxis.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<ToyRailCart>(true).Length == 1,
-            "Train Yard requires one physical rail cart.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<ToyRailSwitch>(true).Length == 1 &&
-                UnityEngine.Object.FindObjectsOfType<ToyRailSwitchPad>(true).Length == 1,
-            "Train Yard requires a functional branch switch and pad.", ref errors);
+        foreach (LiftPlatform lift in UnityEngine.Object.FindObjectsOfType<LiftPlatform>(true))
+            Require(lift.riderSensor != null && lift.riderSensor.isTrigger,
+                lift.name + " has no rider trigger.", ref errors);
+        LiftPad[] pads = UnityEngine.Object.FindObjectsOfType<LiftPad>(true);
+        Require(pads.Length == 2, "Toy Box and final room require existing LiftSystem sets.", ref errors);
+        foreach (LiftPad pad in pads)
+            Require(pad.targetLift != null, pad.name + " has no target lift.", ref errors);
+        CloudTrampoline[] shuttles = UnityEngine.Object.FindObjectsOfType<CloudTrampoline>(true);
+        Require(shuttles.Length == 1 && shuttles[0].pointA != null && shuttles[0].pointB != null,
+            "Train Yard existing CloudTrampoline shuttle endpoints are missing.", ref errors);
+        Require(director != null && director.musicBox != null && director.musicBox.activationLever != null &&
+                director.musicBox.activationDoor != null, "Existing final lever/door are not wired.", ref errors);
         Require(UnityEngine.Object.FindObjectsOfType<RotatingPlate>(true).Length >= 5,
             "Seesaws and free rotating boards were not all generated.", ref errors);
         Require(UnityEngine.Object.FindObjectsOfType<SnapBlock>(true).Length >= 16,
@@ -137,7 +142,7 @@ public static class ToyWorldPrototypeValidator
                 bool enterChildren = true;
                 while (property.NextVisible(enterChildren))
                 {
-                    enterChildren = false;
+                    enterChildren = true;
                     if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
                     if (property.objectReferenceValue == null && property.objectReferenceInstanceIDValue != 0)
                         Require(false, behaviour.GetType().Name + "." + property.propertyPath + " is a Missing Reference.", ref errors);
