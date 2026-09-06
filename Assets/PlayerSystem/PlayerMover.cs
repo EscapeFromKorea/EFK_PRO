@@ -102,8 +102,17 @@ public class PlayerMover : MonoBehaviour
     public float turnAssist = 0.35f;
     [Tooltip("입력 방향을 월드 up 축 기준으로 회전시키는 각도(도). 위에서 내려다본 기준 시계방향이 " +
              "양수. 토크 모드/레거시(구) 모두에 공통 적용되어 세 도형의 방향감을 일치시킨다. 입력 방향이 " +
-             "의도와 어긋날 때 여기서 보정한다 — 앞키가 실제로 '앞'으로 가도록 90 또는 -90 등으로 맞춘다.")]
+             "의도와 어긋날 때 여기서 보정한다 — 앞키가 실제로 '앞'으로 가도록 90 또는 -90 등으로 맞춘다. " +
+             "[mnppi] cameraRelativeInput이 켜져 있으면 이 값 대신 카메라 현재 yaw가 쓰인다.")]
     public float inputYawOffset = 90f;
+
+    // ─── [mnppi 추가] 카메라 상대 이동 (feat/mnppi-orbit-cam #75, 박진수 승인 2026-09-03) ───
+    [Tooltip("[mnppi] 팔로우 카메라의 마우스 궤도 회전(enableMouseOrbit)이 켜져 있으면 이 값과 무관하게 " +
+             "이동이 카메라 시점 기준으로 자동 전환된다(둘은 한 세트). 이 토글은 '궤도 카메라 없이도' " +
+             "카메라 상대 이동을 강제하고 싶을 때만 쓰는 명시적 opt-in. 궤도 카메라도 끄고 이 토글도 " +
+             "끄면 기존 동작(inputYawOffset 고정).")]
+    public bool cameraRelativeInput = true;
+    // ─── [mnppi 추가 끝] ───
     [Tooltip("[useTorqueRolling 전용] ScalingSystem으로 커지거나 납작해지면 관성/무게중심이 커져 " +
              "고정 토크로는 모서리를 넘기 어렵다. 현재 transform 스케일 최댓값의 (이 값)제곱만큼 " +
              "rollTorque를 자동으로 키운다. 0=보정 없음, 1=크기에 비례(선형), 2=크기제곱(관성까지 보정).")]
@@ -264,8 +273,10 @@ public class PlayerMover : MonoBehaviour
         Vector3 move = new Vector3(h, 0f, v) * moveSpeed;
         // 입력 방향 보정을 토크 모드와 공유해 세 도형(구/정육면체/정사면체)의 방향감을 일치시킨다.
         // velocity/각속도 대입 로직 자체는 그대로 두고, 입력 방향 벡터에 회전만 추가한다.
-        if (Mathf.Abs(inputYawOffset) > 0.0001f)
-            move = Quaternion.AngleAxis(inputYawOffset, Vector3.up) * move;
+        // [mnppi 수정] 기존: inputYawOffset 고정. cameraRelativeInput이면 카메라 현재 yaw로 회전(EffectiveInputYaw).
+        float yaw = EffectiveInputYaw();
+        if (Mathf.Abs(yaw) > 0.0001f)
+            move = Quaternion.AngleAxis(yaw, Vector3.up) * move;
 
         if (!IsGrounded())
         {
@@ -455,8 +466,10 @@ public class PlayerMover : MonoBehaviour
         float v = Input.GetAxis("Vertical");
         Vector3 moveDir = new Vector3(h, 0f, v);
         // 입력 방향을 월드 up 축 기준으로 회전 보정(카메라/월드 축과의 어긋남을 씬에서 맞춤).
-        if (Mathf.Abs(inputYawOffset) > 0.0001f)
-            moveDir = Quaternion.AngleAxis(inputYawOffset, Vector3.up) * moveDir;
+        // [mnppi 수정] 기존: inputYawOffset 고정. cameraRelativeInput이면 카메라 현재 yaw로 회전(EffectiveInputYaw).
+        float yaw = EffectiveInputYaw();
+        if (Mathf.Abs(yaw) > 0.0001f)
+            moveDir = Quaternion.AngleAxis(yaw, Vector3.up) * moveDir;
         if (moveDir.sqrMagnitude > 1f) moveDir.Normalize();
 
         if (IsGrounded())
@@ -588,4 +601,20 @@ public class PlayerMover : MonoBehaviour
         Vector3 rayOrigin = transform.position + Vector3.up * 0.05f;
         return Physics.Raycast(rayOrigin, Vector3.down, groundCheckDistance, groundLayer, QueryTriggerInteraction.Ignore);
     }
+
+    // ─── [mnppi 추가] 입력 방향을 회전시킬 각도(도) ───
+    // 팔로우 카메라의 마우스 궤도 회전이 켜져 있으면(MouseOrbitActive) 이동은 무조건 그 카메라의
+    // 현재 시점 yaw(ViewYaw) 기준이다 → WASD가 "지금 보는 방향" 기준(원신/ZZZ식). 궤도 카메라 +
+    // 월드축 고정 이동은 방향이 어긋나 못 쓰는 조합이라 자동으로 짝을 맞춘다. cameraRelativeInput은
+    // 궤도 카메라 없이도 카메라 상대 이동을 강제하고 싶을 때의 명시적 opt-in. 둘 다 아니면(그리고
+    // 씬에 팔로우 카메라가 없으면) 기존 inputYawOffset. ViewYaw는 orbitYaw를 cameraYawOffset(씬
+    // 기본 90)에서 시작하므로 inputYawOffset도 90인 기본값에선 전환 시 방향 불연속이 없다.
+    private float EffectiveInputYaw()
+    {
+        float? viewYaw = PlayerFollowCamera.ViewYaw;
+        if (viewYaw.HasValue && (PlayerFollowCamera.MouseOrbitActive || cameraRelativeInput))
+            return viewYaw.Value;
+        return inputYawOffset;
+    }
+    // ─── [mnppi 추가 끝] ───
 }

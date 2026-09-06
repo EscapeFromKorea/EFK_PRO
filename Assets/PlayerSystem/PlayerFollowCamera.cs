@@ -23,6 +23,12 @@ using UnityEngine;
 /// 타깃을 매 프레임 즉시 스냅해 바라봤는데, "부드럽게 지연된 위치 + 즉각 반응하는 회전"의
 /// 불일치 자체가 출렁이는 느낌을 더했다. 그래서 (1) 타깃의 Y만 더 강하게 감쇠해 상하 튐을
 /// 완화하고(verticalDampingMultiplier), (2) 회전도 Slerp로 부드럽게 따라붙게 했다(lookSmoothness).
+///
+/// [mnppi 추가 — 마우스 궤도 회전 (feat/mnppi-orbit-cam #75, 박진수 승인 2026-09-03)]
+/// offset을 고정 yaw(cameraYawOffset) 하나로만 돌리던 것을, 마우스로 누적하는 궤도 각도
+/// orbitYaw/orbitPitch로 돌리게 확장했다. 여전히 타깃의 "회전"은 읽지 않으므로(궤도 각도는
+/// 카메라 자신의 상태다) 구르기 멀미 방지 특성은 그대로다. enableMouseOrbit=false면 Start의
+/// 초기화(orbitYaw=cameraYawOffset, orbitPitch=0)만 적용돼 기존 고정 팔로우와 동일하게 동작한다.
 /// </summary>
 public class PlayerFollowCamera : MonoBehaviour
 {
@@ -39,10 +45,9 @@ public class PlayerFollowCamera : MonoBehaviour
              "시점이 휩쓸리지 않는다.")]
     public Vector3 offset = new Vector3(0f, 6f, -10f);
 
-    [Tooltip("offset을 월드 up 축 기준으로 회전시키는 시점 각도(도). 위에서 내려다본 기준 시계방향이 " +
-             "양수. 방향키 보정(PlayerMover.inputYawOffset)과 시점을 맞추기 위한 값이며, 타깃 회전과는 " +
-             "무관하게 카메라의 고정 시점 각도만 바꾼다(구르기 멀미 방지 특성은 그대로 유지). " +
-             "방향이 반대면 -90으로 뒤집는다.")]
+    [Tooltip("[mnppi] 이제 '초기 yaw'다 — Start에서 orbitYaw의 시작값으로 쓰인다. enableMouseOrbit이 " +
+             "켜져 있으면 이후 마우스로 orbitYaw가 바뀌고, 꺼져 있으면 이 값에 고정된다(기존 동작). " +
+             "방향키 보정(PlayerMover.inputYawOffset)과 시점을 맞추는 값. 방향이 반대면 -90으로 뒤집는다.")]
     public float cameraYawOffset = 90f;
 
     [Tooltip("위치 추적 부드러움(SmoothDamp 시간, 초). 작을수록 즉각적이고, 클수록 부드럽지만 느리다.")]
@@ -59,6 +64,41 @@ public class PlayerFollowCamera : MonoBehaviour
     [Tooltip("카메라 회전이 목표 방향으로 따라붙는 속도(초당 보간 비율). 낮을수록 부드럽지만 시선이 " +
              "느리게 반응하고, 높을수록 즉각적이지만 타깃의 상하 튐이 회전에도 그대로 묻어난다.")]
     public float lookSmoothness = 8f;
+
+    // ═══════════ [mnppi 추가 시작] 마우스 궤도 회전 — feat/mnppi-orbit-cam (#75), 박진수 승인 2026-09-03 ═══════════
+    // 원신/ZZZ식 3인칭: 마우스로 타깃 주변을 yaw/pitch 궤도 회전한다. 타깃의 "위치"만 읽는 기존 설계는
+    // 그대로다 — 궤도 각도(orbitYaw/orbitPitch)는 카메라 자신의 상태이고 마우스로만 바뀌므로,
+    // 구르는 도형의 회전에 화면이 휩쓸리지 않는 특성이 유지된다. cameraYawOffset은 이제 "초기 yaw"다.
+    [Header("[mnppi] 마우스 궤도 회전")]
+    [Tooltip("끄면 기존 고정 팔로우와 동일하게 동작한다(orbitYaw = cameraYawOffset 고정, 마우스 입력 무시).")]
+    public bool enableMouseOrbit = true;
+    [Tooltip("마우스 이동 1당 회전 각도(도) 계수.")]
+    public float mouseSensitivity = 2f;
+    [Tooltip("상하(pitch) 회전 하한(도). 이 밑으로는 안 내려간다.")]
+    public float minPitch = -50f;
+    [Tooltip("상하(pitch) 회전 상한(도). 이 위로는 안 올라간다(뒤집힘 방지).")]
+    public float maxPitch = 75f;
+    [Tooltip("마우스 Y축 반전.")]
+    public bool invertY = false;
+    [Tooltip("플레이 시작 시 커서를 화면 중앙에 고정(숨김). Game 뷰 클릭 시 재고정, Esc로 해제.")]
+    public bool lockCursorOnPlay = true;
+
+    private float orbitYaw;    // 누적 yaw(도). Start에서 cameraYawOffset으로 초기화.
+    private float orbitPitch;  // 누적 pitch(도). minPitch~maxPitch로 클램프.
+
+    /// <summary>PlayerMover가 카메라 상대 이동에 쓰는 현재 시점 yaw(도). 씬에 이 카메라가 없으면
+    /// null → PlayerMover가 기존 inputYawOffset로 폴백한다.</summary>
+    public static float? ViewYaw => instance != null ? instance.orbitYaw : (float?)null;
+
+    /// <summary>씬에 이 카메라가 있고 마우스 궤도 회전이 켜져 있는가. PlayerMover가 "궤도 카메라가
+    /// 활성이면 이동도 카메라 상대"를 자동으로 성립시키는 데 쓴다(둘은 한 세트 — 궤도 카메라 +
+    /// 월드축 고정 이동은 방향이 어긋나 못 쓴다).</summary>
+    public static bool MouseOrbitActive => instance != null && instance.enableMouseOrbit;
+
+    // 타깃 추적 지점(offset 적용 전). 마우스로 시점을 홱 돌릴 때 카메라 최종 위치 전체를 SmoothDamp하면
+    // 궤도 원의 현을 가로질러 미끄러지므로, 추적 지점만 SmoothDamp하고 offset은 즉시 얹는다.
+    private Vector3 smoothedFollowPoint;
+    // ═══════════ [mnppi 추가 끝] ═══════════
 
     private Vector3 followVelocity;
     private float smoothedTargetY;
@@ -82,12 +122,41 @@ public class PlayerFollowCamera : MonoBehaviour
             target = PlayerControlSwitcher.ActiveTarget;
 
         if (target != null)
+        {
             smoothedTargetY = target.position.y;
+            smoothedFollowPoint = target.position;   // [mnppi] 첫 프레임 카메라가 원점에서 날아오지 않게
+        }
+
+        // ─── [mnppi 추가] 궤도 각도 초기화 + 커서 락 ───
+        // orbitYaw를 cameraYawOffset으로 시작하면 마우스를 안 움직인 첫 프레임의 위치/시선이
+        // 기존 고정 팔로우와 정확히 같다(회귀 없음). orbitPitch=0이라 offset의 위/뒤 각도가 그대로 유지된다.
+        orbitYaw = cameraYawOffset;
+        orbitPitch = 0f;
+        if (lockCursorOnPlay)
+            SetCursorLocked(true);
+        // ─── [mnppi 추가 끝] ───
     }
 
     void LateUpdate()
     {
         if (target == null) return;
+
+        // ─── [mnppi 추가] 마우스 입력 → 궤도 각도 갱신 + 커서 락 유지 ───
+        if (enableMouseOrbit)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+                SetCursorLocked(false);
+            else if (lockCursorOnPlay && Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0))
+                SetCursorLocked(true);
+
+            if (Cursor.lockState == CursorLockMode.Locked)
+            {
+                orbitYaw += Input.GetAxis("Mouse X") * mouseSensitivity;
+                orbitPitch += Input.GetAxis("Mouse Y") * mouseSensitivity * (invertY ? 1f : -1f);
+                orbitPitch = Mathf.Clamp(orbitPitch, minPitch, maxPitch);
+            }
+        }
+        // ─── [mnppi 추가 끝] ───
 
         // 타깃 Y(상하)만 더 강하게 감쇠한 뒤 위치/시선 계산 모두에 이 값을 쓴다 — 모서리를 넘을 때
         // 마다 생기는 실제 물리적 상하 튐을 완화한다(회전을 무시하는 것과 별개의 조치).
@@ -95,11 +164,17 @@ public class PlayerFollowCamera : MonoBehaviour
         smoothedTargetY = Mathf.SmoothDamp(smoothedTargetY, target.position.y, ref targetYVelocity, verticalTime);
         Vector3 smoothedTargetPos = new Vector3(target.position.x, smoothedTargetY, target.position.z);
 
-        // 위치: offset을 cameraYawOffset만큼 월드 up 축 기준으로 회전시켜 적용한 뒤 부드럽게 추적한다.
+        // 위치: offset을 궤도 각도(yaw/pitch)만큼 회전시켜 적용한다.
         // 타깃의 회전은 여전히 쓰지 않으므로(월드 고정), 시점 각도만 돌아갈 뿐 구르기에 휩쓸리지 않는다.
-        Vector3 rotatedOffset = Quaternion.AngleAxis(cameraYawOffset, Vector3.up) * offset;
-        Vector3 desired = smoothedTargetPos + rotatedOffset;
-        transform.position = Vector3.SmoothDamp(transform.position, desired, ref followVelocity, followSmoothness);
+        // [mnppi 수정] 기존: Vector3 rotatedOffset = Quaternion.AngleAxis(cameraYawOffset, Vector3.up) * offset;
+        //             그리고 transform.position = SmoothDamp(transform.position, smoothedTargetPos + rotatedOffset, ...)
+        //   (1) yaw만 → pitch 포함 궤도 회전(enableMouseOrbit=false여도 Start 초기화로 기존과 동일).
+        //   (2) 카메라 최종 위치 전체를 SmoothDamp하면 마우스로 시점을 홱 돌릴 때 카메라가 궤도 원의
+        //       현을 가로질러 미끄러져 "붕 뜨는" 이질감이 난다 → 추적 지점만 SmoothDamp하고 offset은
+        //       그 위에 즉시 얹어, 궤도는 즉각 반영하되 타깃 추적 부드러움(상하 튐 감쇠 포함)은 유지.
+        Vector3 rotatedOffset = Quaternion.Euler(orbitPitch, orbitYaw, 0f) * offset;
+        smoothedFollowPoint = Vector3.SmoothDamp(smoothedFollowPoint, smoothedTargetPos, ref followVelocity, followSmoothness);
+        transform.position = smoothedFollowPoint + rotatedOffset;
 
         // 회전: 실제 카메라 위치에서 타깃 위치(살짝 위)를 바라보되, 위치처럼 Slerp로 부드럽게
         // 따라붙는다(예전엔 즉시 스냅 — 부드러운 위치와 즉각 회전의 불일치가 출렁임을 더했다).
@@ -130,15 +205,26 @@ public class PlayerFollowCamera : MonoBehaviour
         instance.smoothedTargetY = t.position.y;
         instance.targetYVelocity = 0f;
         instance.followVelocity = Vector3.zero;
+        instance.smoothedFollowPoint = t.position;   // [mnppi] 추적 지점도 함께 스냅(다음 LateUpdate가 여기서 SmoothDamp 시작)
 
-        // LateUpdate의 목표 위치·시선 계산과 같은 식이다(offset을 cameraYawOffset만큼 월드 up
-        // 기준으로 돌린 지점에서 몸통을 본다). 여기서 식이 갈라지면 스냅 직후 한 프레임 튄다.
+        // LateUpdate의 목표 위치·시선 계산과 같은 식이다(추적 지점 + 궤도 각도만큼 돌린 offset).
+        // 여기서 식이 갈라지면 스냅 직후 한 프레임 튄다.
+        // [mnppi 수정] 기존: t.position + Quaternion.AngleAxis(instance.cameraYawOffset, Vector3.up) * instance.offset;
+        //   → LateUpdate와 동일하게 궤도 회전(yaw/pitch) 식으로 교체.
         instance.transform.position =
-            t.position + Quaternion.AngleAxis(instance.cameraYawOffset, Vector3.up) * instance.offset;
+            t.position + Quaternion.Euler(instance.orbitPitch, instance.orbitYaw, 0f) * instance.offset;
         Vector3 dir = t.position + Vector3.up * instance.lookHeightOffset - instance.transform.position;
         if (dir.sqrMagnitude > 0.0001f)
             instance.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
     }
+
+    // ─── [mnppi 추가] 커서 락 헬퍼 ───
+    private static void SetCursorLocked(bool locked)
+    {
+        Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+        Cursor.visible = !locked;
+    }
+    // ─── [mnppi 추가 끝] ───
 
     /// <summary>PlayerControlSwitcher가 활성 플레이어를 바꿀 때 호출한다. 씬에 카메라가 없으면 무시된다.</summary>
     public static void SetActiveTarget(Transform newTarget)
@@ -149,6 +235,9 @@ public class PlayerFollowCamera : MonoBehaviour
         // 전환 즉시 새 타깃의 실제 높이로 스냅 — 그러지 않으면 이전 플레이어 높이에서 새 플레이어
         // 높이까지 verticalDampingMultiplier만큼 느리게 따라잡아 전환 직후 부자연스럽게 떠 보인다.
         if (newTarget != null)
+        {
             instance.smoothedTargetY = newTarget.position.y;
+            instance.smoothedFollowPoint = newTarget.position;   // [mnppi] 추적 지점도 함께 스냅
+        }
     }
 }
