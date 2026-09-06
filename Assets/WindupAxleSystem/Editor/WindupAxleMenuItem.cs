@@ -88,6 +88,9 @@ public static class WindupAxleMenuItem
         CreateStickHalf(stick.transform, "Stick_Half_A", StickHalfLength * 0.5f, new Color(0.2f, 0.8f, 0.3f));
         CreateStickHalf(stick.transform, "Stick_Half_B", -StickHalfLength * 0.5f, new Color(0.85f, 0.25f, 0.2f));
 
+        // 발동까지 남은 시간 카운트다운(2026-09-05, 사용자 요청) — 축 자신 위로 띄운다.
+        CreateReleaseTimer(axleObj.transform, axle);
+
         Undo.RegisterCreatedObjectUndo(axleObj, "Create Windup Axle");
         Selection.activeGameObject = axleObj;
     }
@@ -101,6 +104,29 @@ public static class WindupAxleMenuItem
         half.transform.localPosition = new Vector3(localX, 0f, 0f);
         half.transform.localScale = new Vector3(StickHalfLength, StickThickness * 0.9f, StickThickness * 0.9f);
         half.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Standard")) { color = color };
+    }
+
+    private const float ReleaseTimerHeight = 1.6f; // 축 위로 띄우는 높이 — 손잡이 막대보다 위
+    private const float ReleaseTimerCharacterSize = 0.3f;
+
+    // 카운트다운은 처음엔 숨겨져 있어야 하므로(WindupReleaseTimer.Update가 매 프레임 알파를
+    // 계산하지만 lastSwingTime 초기값이 NegativeInfinity라 자연히 alpha=0으로 시작한다) 별도
+    // 초기화가 필요 없다.
+    private static void CreateReleaseTimer(Transform parent, WindupAxle axle)
+    {
+        GameObject timerObj = new GameObject("WindupAxle_ReleaseTimer", typeof(TextMesh));
+        timerObj.transform.SetParent(parent, false);
+        timerObj.transform.localPosition = new Vector3(0f, ReleaseTimerHeight, 0f);
+
+        TextMesh label = timerObj.GetComponent<TextMesh>();
+        label.characterSize = ReleaseTimerCharacterSize;
+        label.anchor = TextAnchor.MiddleCenter;
+        label.alignment = TextAlignment.Center;
+        label.color = Color.black;
+
+        WindupReleaseTimer timer = timerObj.AddComponent<WindupReleaseTimer>();
+        timer.axle = axle;
+        timer.releaseDelay = 3f; // RotatingPlatform/RailCart 기본값과 일치
     }
 
     [MenuItem("Tools/WindupAxleSystem/Create Rotating Platform")]
