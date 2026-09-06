@@ -8124,6 +8124,7 @@ MonoBehaviour:
   steerResponsiveness: 6
   turnAssist: 0.35
   inputYawOffset: 0
+  cameraRelativeInput: 1
   scaleTorqueCompensation: 1.5
   groundCheckDistance: 0.15
   groundLayer:
@@ -14224,6 +14225,7 @@ MonoBehaviour:
   steerResponsiveness: 6
   turnAssist: 0.35
   inputYawOffset: 0
+  cameraRelativeInput: 1
   scaleTorqueCompensation: 1.5
   groundCheckDistance: 0.15
   groundLayer:
@@ -26951,7 +26953,7 @@ Transform:
   m_GameObject: {fileID: 1172412475}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 4.6, z: 125.5}
+  m_LocalPosition: {x: 0, y: 0.1, z: 0.9}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -36246,6 +36248,7 @@ MonoBehaviour:
   steerResponsiveness: 6
   turnAssist: 0.35
   inputYawOffset: 0
+  cameraRelativeInput: 1
   scaleTorqueCompensation: 1.5
   groundCheckDistance: 0.15
   groundLayer:
@@ -46161,6 +46164,12 @@ MonoBehaviour:
   verticalDampingMultiplier: 3
   lookHeightOffset: 1
   lookSmoothness: 8
+  enableMouseOrbit: 1
+  mouseSensitivity: 2
+  minPitch: -50
+  maxPitch: 75
+  invertY: 0
+  lockCursorOnPlay: 1
 --- !u!81 &2004680402
 AudioListener:
   m_ObjectHideFlags: 0
