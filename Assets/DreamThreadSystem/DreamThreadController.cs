@@ -111,6 +111,7 @@ public class DreamThreadController : MonoBehaviour
     private float targetLength;     // 휠이 조절하는 목표 길이. currentLength가 reelSpeed로 여기에 수렴한다.
     private float launchTimer;
     private float overweightTimer; // 무게가 임계를 넘긴 채 흐른 시간. snapGraceSec에 도달하면 실이 끊긴다.
+    private Vector3 lastAnchorPos; // 동적 앵커 추적용 캐시 — 위치가 실제로 바뀔 때만 조인트에 다시 쓴다.
 
     private LineRenderer line;
     private Color baseLineColor;               // 뜯김 연출이 물들이기 전의 원래 실 색(복구 기준).
@@ -202,6 +203,19 @@ public class DreamThreadController : MonoBehaviour
     void FixedUpdate()
     {
         if (state != ThreadState.Hanging || joint == null || activeBody == null || anchor == null) return;
+
+        // 앵커가 움직이는 오브젝트(레일카 등)에 붙어 있으면 물리 구속점도 따라가야 한다. 펌핑 계산과
+        // 실 렌더링은 이미 매 프레임 anchor.transform.position을 읽으므로, 정적 앵커는 매번 같은 값을
+        // 다시 쓰는 것뿐이라 동작 변화가 없다. 조작 대상이 아니어도(Tab으로 파킹된 상태) 갱신한다 —
+        // "실은 그대로 붙어 있고 중력으로 흔들린다"는 기존 동작이 끌림에도 동일하게 적용돼야 한다.
+        // 위치가 실제로 안 바뀌었으면 쓰지 않는다 — 압도적 다수인 정적 앵커에서 조인트 프로퍼티를
+        // 매 틱 다시 써 PhysX의 웜스타트 솔버 상태를 건드릴 위험을 원천 차단한다(PRD가 이미 경고한
+        // "로프형 하드 리밋의 완전 신장 시 미세 지터" 리스크를 동적 앵커 도입으로 넓히지 않기 위함).
+        if (anchor.transform.position != lastAnchorPos)
+        {
+            joint.connectedAnchor = anchor.transform.position;
+            lastAnchorPos = anchor.transform.position;
+        }
 
         // 길이 릴은 조작 여부와 무관하게 계속 수렴시킨다(조인트 리밋의 물리적 상태이므로).
         if (!Mathf.Approximately(currentLength, targetLength))
