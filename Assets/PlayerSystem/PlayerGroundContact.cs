@@ -50,6 +50,16 @@ public class PlayerGroundContact : MonoBehaviour
     /// (2026-08-05 실제로 이동이 구불거리는 버그로 드러남 — 판정 소스를 하나로 합쳤다).</summary>
     public Vector3 GroundNormal { get; private set; } = Vector3.up;
 
+    /// <summary>밟고 있는 접촉점의 월드 속도(바닥이 정적이면 Vector3.zero). 시소처럼 스스로 도는
+    /// dynamic Rigidbody 위에서, PlayerMover가 수평 velocity를 "월드 고정값"으로 대입하면 플레이어가
+    /// 회전하는 표면에 대해 제자리에 붙박여 접촉점이 매 프레임 어긋나고, 그게 다시 판에 토크로
+    /// 되먹임돼 시소가 스스로 계속 왔다갔다 진동하는 문제가 실측으로 확인됐다(2026-09-08, 시소
+    /// 플레이테스트). `Rigidbody.GetPointVelocity`로 선속도+각속도를 모두 반영한 접촉점 속도를 구해
+    /// PlayerMover가 자기 목표 velocity에 더하게 한다 — 이 프로젝트에 회전하는 발판을 딛고 서는
+    /// 첫 사례라 지금까지 안 드러났었다(리프트=수직 이동만이라 이 경로를 안 탐, 레일카=탑승 시
+    /// 부모화라 PlayerMover 자체가 관여하지 않음).</summary>
+    public Vector3 GroundVelocity { get; private set; } = Vector3.zero;
+
     private void Awake()
     {
         ownColliders = transform.root.GetComponentsInChildren<Collider>(true);
@@ -86,6 +96,8 @@ public class PlayerGroundContact : MonoBehaviour
             {
                 lastGroundedTime = Time.time;
                 GroundNormal = hitBuffer[i].normal;
+                Rigidbody groundRb = hitBuffer[i].collider.attachedRigidbody;
+                GroundVelocity = groundRb != null ? groundRb.GetPointVelocity(hitBuffer[i].point) : Vector3.zero;
                 return;
             }
         }
@@ -102,6 +114,9 @@ public class PlayerGroundContact : MonoBehaviour
             {
                 lastGroundedTime = Time.time;
                 GroundNormal = contact.normal;
+                GroundVelocity = collision.rigidbody != null
+                    ? collision.rigidbody.GetPointVelocity(contact.point)
+                    : Vector3.zero;
                 return;
             }
         }
