@@ -22,6 +22,10 @@ Thumbs.db
 # Secrets
 .env
 
+# Loki 토큰이 구워진 생성물 — Assets/TelemetrySystem/Editor/LokiConfigSync.cs가 .env에서 재생성
+Assets/TelemetrySystem/Resources/LokiConfig.asset
+Assets/TelemetrySystem/Resources/LokiConfig.asset.meta
+
 # Local-only editor tooling (NuGet-installed, not shared project content)
 Assets/Plugins/
 Assets/Plugins.meta
