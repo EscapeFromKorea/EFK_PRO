@@ -100,6 +100,27 @@ public class PlayerFollowCamera : MonoBehaviour
     private Vector3 smoothedFollowPoint;
     // ═══════════ [mnppi 추가 끝] ═══════════
 
+    // ═══════════ [SpacePortalSystem 추가] 조준 모드 — 2026-09-10 교차 폴더 수정 허가됨(PRD §4.3) ═══════════
+    // 에너지볼을 든 플레이어가 우클릭으로 포탈을 조준하는 동안 어깨너머 시점으로 잠깐 바꾼다.
+    // 타깃의 "위치"만 읽는 기존 설계(클래스 상단 주석)는 전혀 건드리지 않는다 — offset을 aimOffset으로
+    // 부드럽게 블렌드하는 것뿐이라, 구르기 멀미 방지 특성이 그대로 유지된다.
+    [Header("[SpacePortalSystem] 조준 모드")]
+    [Tooltip("우클릭 조준 중 offset 대신 쓸 값(어깨너머 시점, 월드 공간). PlayerEnergyReceiver.cs가 " +
+             "EnterAimMode()/ExitAimMode()로 전환을 요청한다.")]
+    public Vector3 aimOffset = new Vector3(1.2f, 2.0f, -3.5f);
+    [Tooltip("평소 시점 ↔ 조준 시점을 블렌드하는 데 걸리는 시간(초).")]
+    public float aimTransitionSeconds = 0.25f;
+
+    private bool aiming;
+    private float aimBlend; // 0 = 평소, 1 = 완전 조준
+
+    /// <summary>SpacePortalSystem/PlayerEnergyReceiver.cs가 우클릭을 누르는 동안 호출한다.</summary>
+    public static void EnterAimMode() { if (instance != null) instance.aiming = true; }
+
+    /// <summary>우클릭을 떼거나 조준 권한을 잃으면 호출한다.</summary>
+    public static void ExitAimMode() { if (instance != null) instance.aiming = false; }
+    // ═══════════ [SpacePortalSystem 추가 끝] ═══════════
+
     private Vector3 followVelocity;
     private float smoothedTargetY;
     private float targetYVelocity;
@@ -172,7 +193,13 @@ public class PlayerFollowCamera : MonoBehaviour
         //   (2) 카메라 최종 위치 전체를 SmoothDamp하면 마우스로 시점을 홱 돌릴 때 카메라가 궤도 원의
         //       현을 가로질러 미끄러져 "붕 뜨는" 이질감이 난다 → 추적 지점만 SmoothDamp하고 offset은
         //       그 위에 즉시 얹어, 궤도는 즉각 반영하되 타깃 추적 부드러움(상하 튐 감쇠 포함)은 유지.
-        Vector3 rotatedOffset = Quaternion.Euler(orbitPitch, orbitYaw, 0f) * offset;
+        // [SpacePortalSystem] 조준 모드 블렌드 — offset을 aimOffset으로 부드럽게 갈아탄다.
+        // aimTransitionSeconds<=0이면 즉시 전환(블렌드 없음).
+        float blendStep = aimTransitionSeconds > 0f ? Time.deltaTime / aimTransitionSeconds : 1f;
+        aimBlend = Mathf.MoveTowards(aimBlend, aiming ? 1f : 0f, blendStep);
+        Vector3 effectiveOffset = aimBlend > 0f ? Vector3.Lerp(offset, aimOffset, aimBlend) : offset;
+
+        Vector3 rotatedOffset = Quaternion.Euler(orbitPitch, orbitYaw, 0f) * effectiveOffset;
         smoothedFollowPoint = Vector3.SmoothDamp(smoothedFollowPoint, smoothedTargetPos, ref followVelocity, followSmoothness);
         transform.position = smoothedFollowPoint + rotatedOffset;
 
