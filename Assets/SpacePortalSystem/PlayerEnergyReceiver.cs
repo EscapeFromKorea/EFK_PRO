@@ -325,6 +325,7 @@ public class PlayerEnergyReceiver : MonoBehaviour
             Collider h = overlapBuffer[i];
             if (h.GetComponentInParent<PortalSurface>() == surface) continue; // 패널 자신은 항상 겹친다 — 정상.
             if (h.GetComponentInParent<PlayerMover>() != null) continue;      // 조준 중인 플레이어 자신도 제외.
+            if (h.GetComponentInParent<RespawnZone>() != null) continue;      // 체크포인트는 물리 장애물이 아니다(§13 배치 실측 — 2026-09-11).
             SpacePortal existing = h.GetComponentInParent<SpacePortal>();
             if (existing != null && existing == ownExisting) continue;        // 자기 색 기존 포탈은 제외(§3.2).
             return true;

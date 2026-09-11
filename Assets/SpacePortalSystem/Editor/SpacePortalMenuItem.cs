@@ -17,6 +17,92 @@ public static class SpacePortalMenuItem
     [MenuItem("Tools/SpacePortalSystem/Create Portal Surface")]
     private static void CreatePortalSurfaceMenu() => CreatePortalSurface();
 
+    [MenuItem("Tools/SpacePortalSystem/Create Panel Lever")]
+    private static void CreatePanelLeverMenu()
+    {
+        Vector3 origin = ScenePivot();
+        MovablePortalPanel nearest = FindNearestPanel(origin);
+        GameObject body = BuildPanelLever(origin, nearest);
+        Undo.RegisterCreatedObjectUndo(body, "Create Panel Lever");
+
+        Selection.activeGameObject = body;
+        Debug.Log(nearest != null
+            ? $"[SpacePortalSystem] PanelLever 생성 완료 — 패널 '{nearest.name}'에 연결했습니다. " +
+              "플레이어가 몸통을 미는 방향으로 패널이 구동됩니다."
+            : "[SpacePortalSystem] PanelLever 생성 완료. 씬에 MovablePortalPanel이 없어 연결하지 " +
+              "못했습니다 — 패널을 만든 뒤 PanelLever.panel에 직접 꽂으세요.");
+    }
+
+    /// <summary>격리된 씬 생성기(씬 이식 기법)에서도 그대로 호출할 수 있도록 위치/대상 패널을
+    /// 매개변수로 받는 형태로 분리했다. 메뉴 항목은 씬 뷰 피벗 + 최근접 패널을 넘기는 얇은
+    /// 래퍼일 뿐이다.</summary>
+    public static GameObject BuildPanelLever(Vector3 position, MovablePortalPanel panel)
+    {
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        body.name = "PanelLever_Body";
+        body.transform.position = position;
+        body.transform.localScale = new Vector3(0.4f, 1f, 0.4f);
+        body.GetComponent<Renderer>().sharedMaterial = LoadOrCreateLeverMaterial("Body", new Color(0.45f, 0.45f, 0.5f));
+
+        GameObject arm = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        arm.name = "PanelLever_Arm";
+        arm.transform.SetParent(body.transform, false);
+        // 손잡이 길이 — 처음엔 1.2였는데 플레이테스트에서 너무 짧아 회전이 잘 안 보인다는
+        // 피드백을 받아 늘렸다(2026-09-11). 근쪽 끝(-0.1) 위치는 유지하고 먼 쪽만 늘어난다.
+        arm.transform.localPosition = new Vector3(0f, 0.6f, 0.9f);
+        arm.transform.localScale = new Vector3(0.15f, 0.15f, 2f);
+        arm.GetComponent<Renderer>().sharedMaterial = LoadOrCreateLeverMaterial("Arm", new Color(0.8f, 0.35f, 0.3f));
+        Object.DestroyImmediate(arm.GetComponent<Collider>()); // 충돌 판정은 body가 담당, arm은 시각 전용
+
+        PanelLever lever = body.AddComponent<PanelLever>();
+        lever.leverArm = arm.transform;
+        lever.panel = panel;
+        return body;
+    }
+
+    private static MovablePortalPanel FindNearestPanel(Vector3 from)
+    {
+        MovablePortalPanel best = null;
+        float bestSqr = float.PositiveInfinity;
+        foreach (MovablePortalPanel p in Object.FindObjectsOfType<MovablePortalPanel>())
+        {
+            float sqr = (p.transform.position - from).sqrMagnitude;
+            if (sqr >= bestSqr) continue;
+            bestSqr = sqr;
+            best = p;
+        }
+        return best;
+    }
+
+    private static Material LoadOrCreateLeverMaterial(string key, Color color)
+    {
+        const string dir = "Assets/SpacePortalSystem/Materials";
+        string path = $"{dir}/PanelLever_{key}.mat";
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat != null) return mat;
+
+        EnsureFolder(dir);
+        mat = new Material(Shader.Find("Standard")) { color = color };
+        AssetDatabase.CreateAsset(mat, path);
+        AssetDatabase.SaveAssets();
+        return mat;
+    }
+
+    [MenuItem("Tools/SpacePortalSystem/Add Movable Panel To Selected")]
+    private static void AddMovablePanelToSelected()
+    {
+        GameObject go = Selection.activeGameObject;
+        if (go == null || go.GetComponent<PortalSurface>() == null)
+        {
+            Debug.LogWarning("[SpacePortalSystem] PortalSurface가 붙은 오브젝트를 먼저 선택하세요.");
+            return;
+        }
+        Undo.AddComponent<Rigidbody>(go);
+        Undo.AddComponent<MovablePortalPanel>(go);
+        Debug.Log($"[SpacePortalSystem] {go.name}에 MovablePortalPanel 추가 완료 — Inspector에서 " +
+                  "mode(Rail/Pivot)와 해당 필드를 채워라.");
+    }
+
     private static void CreateEnergyBall(EnergyColor color)
     {
         Vector3 pos = ScenePivot();
@@ -56,10 +142,7 @@ public static class SpacePortalMenuItem
         if (TryRaycastSceneViewSurface(out RaycastHit hit))
         {
             pos = hit.point;
-            // 바닥/천장(법선이 월드 up과 거의 평행)이면 up 힌트로 up을 쓰면 LookRotation이
-            // 퇴화한다 — 그때만 forward를 힌트로 바꾼다.
-            Vector3 upHint = Mathf.Abs(Vector3.Dot(hit.normal, Vector3.up)) > 0.99f ? Vector3.forward : Vector3.up;
-            rot = Quaternion.LookRotation(hit.normal, upHint);
+            rot = SurfaceRotationFromNormal(hit.normal);
         }
         else
         {
@@ -69,20 +152,38 @@ public static class SpacePortalMenuItem
                               "생성했다 — 청록 화살표(바깥 법선)가 방 안쪽을 향하는지 직접 확인해라.");
         }
 
-        // localScale은 항상 (1,1,1)로 유지한다 — 크기는 BoxCollider.size로만 낸다(RailCart 루트와
-        // 같은 규약, PortalSurface.cs 상단 주석 참고). 전단 왜곡 없이 조준 판정 수식이 그대로 맞는다.
-        GameObject root = new GameObject("PortalSurface");
+        GameObject root = BuildPortalSurface(pos, rot, new Vector3(2.4f, 3.0f, 0.2f));
         Undo.RegisterCreatedObjectUndo(root, "Create Portal Surface");
+
+        Selection.activeGameObject = root;
+        Debug.Log("[SpacePortalSystem] PortalSurface 생성 완료 — 시각 자식(PortalSurface_Visual)은 " +
+                  "BoxCollider.size를 씬에서 바꿔도 자동으로 따라오지 않는다(그레이박스 한계, 필요시 손으로 맞춘다).");
+    }
+
+    /// <summary>법선 하나로 패널의 배치 회전을 정한다 — 바닥/천장(법선이 world up과 거의 평행)이면
+    /// up 힌트로 up을 쓰면 LookRotation이 퇴화하므로 그때만 forward를 힌트로 바꾼다. 씬 이식
+    /// 기법에서 바닥용(Rail) 패널을 만들 때도 그대로 재사용한다.</summary>
+    public static Quaternion SurfaceRotationFromNormal(Vector3 normal)
+    {
+        Vector3 upHint = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) > 0.99f ? Vector3.forward : Vector3.up;
+        return Quaternion.LookRotation(normal, upHint);
+    }
+
+    /// <summary>PortalSurface 그레이박스(솔리드 콜라이더 + 시각 큐브 + PortalSurface 컴포넌트)만
+    /// 만든다. 격리된 씬 생성기(씬 이식 기법)에서도 그대로 호출할 수 있도록 위치/회전/크기를
+    /// 매개변수로 받는다 — localScale은 항상 (1,1,1)로 유지하고 크기는 BoxCollider.size로만
+    /// 낸다(RailCart 루트와 같은 규약).</summary>
+    public static GameObject BuildPortalSurface(Vector3 pos, Quaternion rot, Vector3 size)
+    {
+        GameObject root = new GameObject("PortalSurface");
         root.transform.SetPositionAndRotation(pos, rot);
 
-        Vector3 size = new Vector3(2.4f, 3.0f, 0.2f);
         BoxCollider box = root.AddComponent<BoxCollider>();
         box.size = size;
         box.center = Vector3.zero;
         box.isTrigger = false;
 
         GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        Undo.RegisterCreatedObjectUndo(visual, "Create Portal Surface");
         visual.name = "PortalSurface_Visual";
         Object.DestroyImmediate(visual.GetComponent<Collider>());
         visual.transform.SetParent(root.transform, false);
@@ -90,10 +191,29 @@ public static class SpacePortalMenuItem
         visual.GetComponent<MeshRenderer>().sharedMaterial = LoadOrCreateSurfaceMaterial();
 
         root.AddComponent<PortalSurface>();
+        return root;
+    }
 
-        Selection.activeGameObject = root;
-        Debug.Log("[SpacePortalSystem] PortalSurface 생성 완료 — 시각 자식(PortalSurface_Visual)은 " +
-                  "BoxCollider.size를 씬에서 바꿔도 자동으로 따라오지 않는다(그레이박스 한계, 필요시 손으로 맞춘다).");
+    /// <summary>PortalSurface + 킨네마틱 Rigidbody + 라이더 센서(로컬 +Z, PortalSurface 바깥
+    /// 법선과 같은 축) + MovablePortalPanel까지 갖춘 완성형 가변 전이 패널을 만든다. mode별
+    /// 필드(Rail의 startPose/endPose, Pivot의 pivotPoint 등)는 호출자가 반환된 컴포넌트에 이어서
+    /// 채운다.</summary>
+    public static MovablePortalPanel BuildMovablePortalPanel(Vector3 pos, Quaternion rot, Vector3 size)
+    {
+        GameObject root = BuildPortalSurface(pos, rot, size);
+
+        Rigidbody rb = root.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+
+        BoxCollider sensor = root.AddComponent<BoxCollider>();
+        sensor.isTrigger = true;
+        sensor.size = size + new Vector3(0f, 0f, 0.2f);
+        sensor.center = new Vector3(0f, 0f, size.z * 0.5f + 0.1f);
+
+        MovablePortalPanel panel = root.AddComponent<MovablePortalPanel>();
+        panel.riderSensor = sensor;
+        return panel;
     }
 
     private static Material LoadOrCreateBallMaterial(EnergyColor color)
