@@ -39,7 +39,16 @@ public class LokiClient : MonoBehaviour
 
     void OnDestroy() => Application.logMessageReceived -= OnLogMessage;
 
-    void OnApplicationQuit() => Flush();
+    // Flush()의 StartCoroutine(비동기)로는 안 된다 — Unity가 OnApplicationQuit 핸들러 반환 이후
+    // 코루틴 프레임을 더 돌린다는 보장이 없어, 크래시 직전 에러 로그를 담고 있을 확률이 가장 높은
+    // 마지막 배치가 응답도 재시도도 없이 조용히 유실될 수 있다(2026-09-10 리뷰에서 발견). 종료
+    // 경로에서만 동기 전송으로 대체한다.
+    void OnApplicationQuit()
+    {
+        string body = DrainBufferToBody();
+        if (body == null) return;
+        PostSync(body);
+    }
 
     void OnLogMessage(string message, string stackTrace, LogType type)
     {
@@ -69,7 +78,15 @@ public class LokiClient : MonoBehaviour
 
     void Flush()
     {
-        if (_buffer.Count == 0) return;
+        string body = DrainBufferToBody();
+        if (body == null) return;
+        StartCoroutine(PostAsync(body));
+    }
+
+    /// <summary>버퍼를 비우고 Loki push body로 직렬화한다. 버퍼가 비었으면 null.</summary>
+    string DrainBufferToBody()
+    {
+        if (_buffer.Count == 0) return null;
         var toSend = new List<(string key, Dictionary<string, string> labels, long ts, string line)>(_buffer);
         _buffer.Clear();
 
@@ -84,7 +101,7 @@ public class LokiClient : MonoBehaviour
             s.values.Add((e.ts, e.line));
         }
 
-        StartCoroutine(PostAsync(BuildPushBody(streams.Values)));
+        return BuildPushBody(streams.Values);
     }
 
     public static string BuildPushBody(IEnumerable<(Dictionary<string, string> labels, List<(long ts, string line)> values)> streams)
@@ -141,15 +158,33 @@ public class LokiClient : MonoBehaviour
 
     IEnumerator PostAsync(string body)
     {
+        using var req = BuildRequest(body);
+        yield return req.SendWebRequest();
+        if (req.result != UnityWebRequest.Result.Success)
+            Debug.LogWarning($"[LokiClient] push failed: {req.error}");
+    }
+
+    /// <summary>종료 경로 전용 동기 전송. 코루틴 대신 SendWebRequest의 비동기 오퍼레이션을 직접
+    /// 폴링한다 — 이 오퍼레이션은 백그라운드에서 진행되므로 메인 스레드를 잠깐 막는 것 외엔
+    /// 코루틴 없이도 완료까지 기다릴 수 있다.</summary>
+    void PostSync(string body)
+    {
+        using var req = BuildRequest(body);
+        var op = req.SendWebRequest();
+        while (!op.isDone) { }
+        if (req.result != UnityWebRequest.Result.Success)
+            Debug.LogWarning($"[LokiClient] quit-flush failed: {req.error}");
+    }
+
+    UnityWebRequest BuildRequest(string body)
+    {
         var url = _config.url.TrimEnd('/') + "/loki/api/v1/push";
-        using var req = new UnityWebRequest(url, "POST");
+        var req = new UnityWebRequest(url, "POST");
         req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
         var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_config.user}:{_config.token}"));
         req.SetRequestHeader("Authorization", $"Basic {auth}");
-        yield return req.SendWebRequest();
-        if (req.result != UnityWebRequest.Result.Success)
-            Debug.LogWarning($"[LokiClient] push failed: {req.error}");
+        return req;
     }
 }
