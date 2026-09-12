@@ -177,6 +177,15 @@ public class PlayerRollModeReceiver : MonoBehaviour
     private float elapsed;
     private float nextTumbleTime;
 
+    // [카메라 추적 기준점 — PlayerFollowCamera(PlayerSystem)가 SetTrackingAnchor로 매 프레임 받아간다]
+    // 몸의 실제 위치(피벗 회전으로 매 텀블 위아래로 튀는 Root)가 아니라 "출발 칸 중심 → 도착 칸
+    // 중심"을 바닥 높이 고정으로 등속 보간한 가상의 점이다. 텀블/되감기 둘 다 elapsed의 순수 함수라
+    // (§ BeginTumble 상단 주석과 같은 이유) 되감기 전환에도 이 보간이 그대로 역재생돼 팝이 없다.
+    // 기믹(PortalSystem)이 코어(PlayerSystem)의 정적 훅을 호출하는 방향이다 — SpacePortalSystem의
+    // EnterAimMode/ExitAimMode와 같은 기믹→코어 단방향(PlayerFollowCamera는 이 파일의 존재를 모른다).
+    private Vector3 cameraAnchorStart;
+    private Vector3 cameraAnchorEnd;
+
     // [무한 왕복 차단] 되감기로 끝난 텀블의 진행 방향. 키를 누르고 있으면 홀드 간격(0.03초) 뒤
     // 같은 방향으로 곧바로 다시 시도해 같은 지점에서 또 막히고, "한 칸 갔다가 되돌아오기"를 무한
     // 반복해 순 이동이 0이 된다. 그 방향만 기억했다가 흘려보내면 한 번 튕기고 멈춘다.
@@ -248,6 +257,11 @@ public class PlayerRollModeReceiver : MonoBehaviour
             entryYaw = transform.eulerAngles.y;
             nextTumbleTime = 0f;
 
+            // 아직 첫 텀블 전이라 피벗이 없다 — 지금 위치를 그대로 정지 기준점으로 쓴다. 오차가
+            // 있어도 첫 BeginTumble이 pivotPoint.y로 다시 재므로 한 프레임짜리 근사로 충분하다.
+            cameraAnchorStart = cameraAnchorEnd = transform.position;
+            PlayerFollowCamera.SetTrackingAnchor(transform, cameraAnchorStart);
+
             // 부스트 중이면 매 FixedUpdate velocity를 통째 대입해 텀블을 그대로 뚫는다.
             // ExternallyDriven을 안 보는 컴포넌트라 enabled 토글로는 state/holdTimer가 남는다.
             if (accel != null) accel.CancelBoost();
@@ -287,6 +301,7 @@ public class PlayerRollModeReceiver : MonoBehaviour
             RollModeActive = false;
             if (jump != null) jump.enabled = true;
             SetVisualRollNeutralized(false);
+            PlayerFollowCamera.SetTrackingAnchor(transform, null);
         }
     }
 
@@ -417,6 +432,11 @@ public class PlayerRollModeReceiver : MonoBehaviour
             SetRollMode(false);
             return;
         }
+
+        // 위 조기 return들(막힘 무반응·홀드 간격 대기 등) 전부를 통과해 실제로 이번 프레임에
+        // 모드가 유지될 때만 찍는다 — Idle 구간에도 매 프레임 찍어야 착지 직후 정지 지점을 그대로
+        // 보여준다(텀블 중이 아니면 CurrentCameraAnchor가 t=1로 cameraAnchorEnd를 반환).
+        PlayerFollowCamera.SetTrackingAnchor(transform, CurrentCameraAnchor());
 
         // [수평 이동 봉쇄 — 굴리기 모드의 수평 이동 출처는 텀블뿐이어야 한다]
         // 우리가 몸을 붙잡는 구간(ExternallyDriven + isKinematic)은 실질적으로 "텀블 중"뿐이라,
@@ -604,6 +624,14 @@ public class PlayerRollModeReceiver : MonoBehaviour
             return;
         }
 
+        // 카메라 기준점 갱신 — 여기(막힘 사전 검사 통과 후, 실제로 텀블이 시작되는 지점)에서만
+        // 확정한다. 검사 실패로 되돌아가는 경로에서 앞서 손대면 실제로 움직이지 않은 정지 지점이
+        // "도착점"으로 잘못 남는다. X/Z는 지금 위치(실측), Y는 방금 SnapPivotToGround가 잰 바닥
+        // 높이 — pivotPoint가 이미 그 값이라 그대로 가져다 쓴다. 도착점은 진행 방향으로 정확히
+        // 한 칸(inradius×2×scale) 떨어진 칸 중심 — 텀블 각도의 이징(Ease())과 무관하게 등속이다.
+        cameraAnchorStart = new Vector3(transform.position.x, pivotPoint.y, transform.position.z);
+        cameraAnchorEnd = cameraAnchorStart + dir * (2f * geo.inradius * scale);
+
         Grab();
         elapsed = 0f;
         blockLogged = false;
@@ -627,6 +655,7 @@ public class PlayerRollModeReceiver : MonoBehaviour
             rb.MoveRotation(backRot);
             rewoundDir = tumbleDir;
             rewoundDirValid = true;
+            cameraAnchorEnd = cameraAnchorStart; // 출발 칸으로 돌아왔다 — 다음 Idle이 이 자리를 보게 접는다
             FinishStep();
             return;
         }
@@ -656,6 +685,7 @@ public class PlayerRollModeReceiver : MonoBehaviour
             Release();
             rb.rotation = CanonicalRotation(flipped);
             transform.rotation = rb.rotation;
+            cameraAnchorEnd = cameraAnchorStart; // 되감기도 막혀 출발 칸 근처에 그대로 남았다
             FinishStep();
             return;
         }
@@ -793,6 +823,16 @@ public class PlayerRollModeReceiver : MonoBehaviour
             if (groundHitBuffer[i].point.y > top) top = groundHitBuffer[i].point.y;
         }
         return top;
+    }
+
+    /// <summary>카메라용 가상 추적 기준점의 현재 값. 회전각(θ)의 이징(Ease())과는 무관하게
+    /// elapsed/tumbleDuration을 그대로 선형 비율로 써서 등속을 보장한다 — 되감기 중엔 elapsed가
+    /// 그대로 역행하므로 같은 식이 같은 직선을 거꾸로 그려 팝 없이 이어진다. Idle(텀블 없음)일
+    /// 때는 cameraAnchorEnd가 이미 "지금 정지해 있는 칸 중심"이라 t를 1로 고정해 그 값을 낸다.</summary>
+    private Vector3 CurrentCameraAnchor()
+    {
+        float t = state == State.Idle ? 1f : Mathf.Clamp01(elapsed / tumbleDuration);
+        return Vector3.Lerp(cameraAnchorStart, cameraAnchorEnd, t);
     }
 
     private void PoseAt(float theta, float scale, out Vector3 pos, out Quaternion rot) =>
