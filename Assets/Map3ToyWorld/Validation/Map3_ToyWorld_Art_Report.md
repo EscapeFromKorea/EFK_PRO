@@ -1,5 +1,14 @@
 # ToyWorld 로우폴리 아트 구현 기록
 
+## 2026-09-13 정리 및 디버깅
+
+- 맵의 3D 표지판, 방 이름, EXIT, 설치 순서 숫자와 부품명 등 모든 레터링 생성 코드를 제거했다.
+- Map3 전용 IMGUI HUD를 삭제하고, 기존 리스폰 카운터는 다른 씬의 기본 동작을 유지하면서 Map3에서만 숨겼다.
+- 바닥 타일·외곽 림·회전판 인레이·침대 무늬의 겹친 평면을 서로 다른 높이로 분리하고, 림 모서리의 중복 면을 잘라 z-fighting 원인을 제거했다.
+- 동일 메시·동일 월드 행렬의 중복 Renderer와 `Sign_`/`Lettering` 잔존물을 자동 검증 실패로 처리한다.
+- 점프 불능 원인은 중첩된 맵 계층 전체를 플레이어 자신의 Collider로 오인한 접지 검사와 카메라/조작 대상 불일치였다. 자기 플레이어 계층만 제외하고 시작 대상을 Sphere로 명시했다.
+- 검증 로그: `lettering-zfight-build.log`의 `ART_VALIDATION_PASS`, `ART_REAPPLY_PASS`; `lettering-zfight-runtime2.log`의 수동 점프 경로 및 전체 진행 `RUNTIME_SMOKE_PASS`.
+
 작업일: 2026-09-05 / Unity 2022.3.62f3 / Built-in Render Pipeline.
 
 ## 적용 내용
@@ -21,19 +30,18 @@
 
 아래는 모두 `Assets/Map3ToyWorld/` 내부다. 이전 재사용 교체 작업의 변경분도 현재 Git 작업 트리에 남아 있으며, 이번 아트 작업에서 기존 기믹 원본을 변경하지 않았다.
 
-- 신규 `Editor/ToyWorldArtKit.cs`: 베벨 블록, 다면체 실린더, 기어, 링, 아치, 별, 3D 글자 및 프리팹 제작.
+- 신규 `Editor/ToyWorldArtKit.cs`: 베벨 블록, 다면체 실린더, 기어, 링, 아치, 별 및 프리팹 제작. 글자 메시 생성기는 제거했다.
 - 신규 `Editor/ToyWorldArtDirector.cs`: 기존 Collider 크기와 구역에 맞춘 외형 교체, 장식 배치, 조명 설정.
 - 신규 `Editor/ToyWorldArtValidation.cs`: 아트/재적용 검사 및 여덟 시점 중 일곱 편집기 프리뷰 캡처.
 - 생성 `Art/Materials/*.mat`: 단색 팔레트 22종. Standard 셰이더, 텍스처 불필요.
 - 생성 `Art/Meshes/*.asset`: 기본 메시 7종과 키트 프리팹용 병합 메시.
 - 생성 `Art/Prefabs/*.prefab`: 시각 전용 프리팹 11종.
 - 생성 `Art/Baked/*.asset`: 구역/오브젝트별 장식 병합 메시. 원본 기믹의 자식으로 부착.
-- 생성 `Art/Lettering/*.asset`: 깊이 검사를 따르는 실제 글자 메시. 런타임 폰트 아틀라스 의존성 없음.
 - 수정 `Editor/ToyWorldPrototypeBuilder.cs`: 기존 맵 생성 후 아트 패스 자동 실행.
-- 수정 `Scripts/ToyWorldDebugHUD.cs`: 테마 진행 표시, 다음 목표, F1 도움말. 기존 진행 상태를 읽는다.
+- 삭제 `Scripts/ToyWorldDebugHUD.cs`: 시작 시 표시되던 Map3 IMGUI를 제거했다. 리스폰 카운터도 Map3에서는 숨긴다.
 - 수정 `Editor/ToyWorldPlayModeSmokeRunner.cs`, `Scripts/ToyWorldPlayModeSmokeProbe.cs`: 아트 씬의 실제 카메라 캡처를 동반한 물리 테스트 진입점.
 - 수정 `Scenes/Map3_ToyWorld.unity`: 검증된 아트 적용 씬.
-- 생성 `Validation/ArtPreviews/*.png`: 전체·6개 구역 렌더 및 Play Mode 실제 팔로우 카메라 뷰. 마지막 카메라 캡처에는 IMGUI HUD가 포함되지 않는다.
+- 생성 `Validation/ArtPreviews/*.png`: 전체·6개 구역 렌더 및 Play Mode 실제 팔로우 카메라 뷰. Map3 런타임 IMGUI는 제거됐다.
 - 수정 `README.md`, 신규 본 기록과 각 Unity meta.
 
 프리팹: `CastleTurret`, `PortalFrame`, `ToyKey`, `ClockworkMedallion`, `Bookcase`, `DollDresser`, `ToyBanner`, `RailSleeper`, `MobileStar`, `CorePedestal`, `ToyCrate`.
@@ -41,7 +49,7 @@
 ## 실행·재생성
 
 1. Unity에서 `Scenes/Map3_ToyWorld.unity`를 다시 열고 Play.
-2. WASD/마우스/Space/Tab 등 기존 조작을 사용한다. F1으로 도움말을 켠다.
+2. WASD/마우스/Space/Tab 등 기존 조작을 사용한다. Map3 전용 화면 UI는 표시하지 않는다.
 3. 전체 재생성: `Tools > The Axiom > Build Map3 ToyWorld Prototype` — 이름은 기존 메뉴 호환성을 위해 유지한다. 이제 아트까지 적용한다.
 4. 아트만 재생성: `Tools > The Axiom > Art > Apply ToyWorld Low Poly Art`.
 5. 검사: `Tools > The Axiom > Art > Validate ToyWorld Art`.
@@ -68,9 +76,9 @@
 - 기존 Missing Script/직렬화 참조, 모든 시각 Mesh/Material/Shader 유효성 검사.
 - 아트 연속 재적용 후 오브젝트 수 일치 검사.
 - 별도 프로젝트의 Unity Play Mode에서 기존 수집·문·설치·레버·리프트·왕복판·포탈·블록 복구·24개 점프 조합·스티커·회전판·리스폰·최종 완료 테스트.
-- 렌더 이미지로 글자 크기, 재질, 배치와 시야 확인.
+- 렌더 이미지로 레터링이 남지 않았는지, 재질, 배치와 시야를 확인.
 
-이는 수동 키보드 완주를 대체하지 않는다. 테스트는 실제 플레이어를 접촉 위치에 옮겨 물리/진행을 검사한다. 모든 우회 경로의 조향·착지, 자유 회전 카메라의 모든 각도, HUD의 다양한 해상도, 프레임레이트 실측은 수동 QA가 남아 있다. 장식이 추가됐다고 기존에 없던 태엽/탈선/전용 귀환 기능이 생긴 것은 아니다.
+이는 수동 키보드 완주를 대체하지 않는다. 테스트는 실제 플레이어를 접촉 위치에 옮겨 물리/진행을 검사한다. 모든 우회 경로의 조향·착지, 자유 회전 카메라의 모든 각도와 프레임레이트 실측은 수동 QA가 남아 있다. 장식이 추가됐다고 기존에 없던 태엽/탈선/전용 귀환 기능이 생긴 것은 아니다.
 
 ## 로그·복구
 

@@ -1,20 +1,26 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public static class ToyWorldArtValidation
 {
     [MenuItem("Tools/The Axiom/Art/Validate ToyWorld Art")]
     public static void Validate()
     {
+        if(GameObject.Find("Map3_ToyWorld_Root")==null)
+            EditorSceneManager.OpenScene(ToyWorldPrototypeBuilder.ScenePath,OpenSceneMode.Single);
         if(ToyWorldPrototypeValidator.ValidateScene(false)!=0) throw new InvalidOperationException("Gameplay validation failed.");
         Transform root=GameObject.Find("Map3_ToyWorld_Root").transform;
         int triangles=0,renderers=0,artRoots=0;
         foreach(Transform t in root.GetComponentsInChildren<Transform>(true))
         {
+            if(t.name=="Lettering" || t.name.StartsWith("Sign_",StringComparison.Ordinal))
+                throw new InvalidOperationException("Forbidden map lettering remains: "+t.name);
             if(t.name!="Art_Stylized") continue;
             artRoots++;
             if(t.GetComponentsInChildren<Collider>(true).Length!=0 || t.GetComponentsInChildren<Rigidbody>(true).Length!=0)
@@ -30,6 +36,15 @@ public static class ToyWorldArtValidation
                     throw new InvalidOperationException("Invalid material/shader: "+f.name);
             if(r.enabled) { renderers++; triangles+=f.sharedMesh.triangles.Length/3; }
         }
+        RespawnController respawn=root.GetComponentInChildren<RespawnController>(true);
+        if(respawn==null || respawn.showDebugGui)
+            throw new InvalidOperationException("Map3 must start without the temporary respawn UI.");
+        PlayerControlSwitcher switcher=root.GetComponentInChildren<PlayerControlSwitcher>(true);
+        PlayerMover sphere=root.GetComponentsInChildren<PlayerMover>(true).FirstOrDefault(p=>p.name=="Player_Sphere");
+        PlayerFollowCamera follow=root.GetComponentInChildren<PlayerFollowCamera>(true);
+        if(switcher==null || sphere==null || switcher.initialPlayer!=sphere || follow==null || follow.target!=sphere.transform)
+            throw new InvalidOperationException("Map3 camera and initial control must both target Player_Sphere.");
+        ValidateNoDuplicateRendererPlacements(root);
         if(artRoots<50) throw new InvalidOperationException("Art dressing is incomplete.");
         string[] prefabs=AssetDatabase.FindAssets("t:Prefab",new[]{ToyWorldArtKit.Folder+"/Prefabs"});
         foreach(string guid in prefabs)
@@ -39,6 +54,21 @@ public static class ToyWorldArtValidation
                 throw new InvalidOperationException("Visual kit prefab unexpectedly contains gameplay logic.");
         }
         Debug.Log($"[ToyWorldArt] ART_VALIDATION_PASS roots={artRoots}, prefabs={prefabs.Length}, visibleMeshRenderers={renderers}, triangles={triangles}.");
+    }
+
+    private static void ValidateNoDuplicateRendererPlacements(Transform root)
+    {
+        HashSet<string> placements=new HashSet<string>();
+        foreach(MeshFilter filter in root.GetComponentsInChildren<MeshFilter>(true))
+        {
+            MeshRenderer renderer=filter.GetComponent<MeshRenderer>();
+            if(filter.sharedMesh==null || renderer==null || !renderer.enabled) continue;
+            Matrix4x4 m=filter.transform.localToWorldMatrix;
+            string key=filter.sharedMesh.GetInstanceID()+"|";
+            for(int i=0;i<16;i++) key+=Math.Round(m[i],4)+",";
+            if(!placements.Add(key))
+                throw new InvalidOperationException("Duplicate visual placement can cause z-fighting: "+filter.name);
+        }
     }
 
     public static void BuildAndCapture()
@@ -58,6 +88,8 @@ public static class ToyWorldArtValidation
 
     public static void Capture()
     {
+        if(GameObject.Find("Map3_ToyWorld_Root")==null)
+            EditorSceneManager.OpenScene(ToyWorldPrototypeBuilder.ScenePath,OpenSceneMode.Single);
         string folder=Path.GetFullPath("Assets/Map3ToyWorld/Validation/ArtPreviews");
         Directory.CreateDirectory(folder);
         GameObject go=new GameObject("Temporary_ArtReviewCamera");

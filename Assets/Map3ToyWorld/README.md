@@ -13,7 +13,8 @@ Unity `2022.3.62f3`에서 `Assets/Map3ToyWorld/Scenes/Map3_ToyWorld.unity`를 �
 - WASD 이동 / 마우스 시점 / Space 점프 / Tab 도형 전환
 - F 실타래 연결·해제 / E 블록 결합·분리 / V 스티커 / Q 스티커 종류
 - R 기존 체크포인트 리스폰
-- F1 로우폴리 테마 HUD의 조작 도움말 표시/숨김
+- 시작 화면에는 Map3 전용 HUD가 없으며, 맵 내부에도 문자·숫자 레터링을 배치하지 않는다.
+- 시작 조작 대상과 카메라는 모두 `Player_Sphere`로 고정된다. Space 점프는 플레이어 하위 콜라이더만 자기 몸으로 제외해 맵 루트 아래에서도 접지를 정상 판정한다.
 - Backspace 1.5초: 퍼즐 오브젝트 복구. 결합 블록은 기존 결합 해제 후 다음 프레임에 복귀한다.
 - 수리 진행도는 퍼즐 리셋·리스폰에 유지되며, Play를 종료하면 초기화된다.
 
@@ -37,7 +38,7 @@ Unity `2022.3.62f3`에서 `Assets/Map3ToyWorld/Scenes/Map3_ToyWorld.unity`를 �
 
 `CloudTrampoline`은 왕복 이동판으로 설정했다(`restMassThreshold=0`, `collapseMassThreshold=100`). 태엽 구동·물리 탈선 기능을 제공하는 레일카로 표현하지 않는다.
 
-Map3 스크립트에는 아이템 수집·설치·최종 완료·HUD·퍼즐 복구 연결이 남아 있다. 기존 기믹 원본 파일은 수정하지 않았다.
+Map3 스크립트에는 아이템 수집·설치·최종 완료·퍼즐 복구 연결이 남아 있다. Map3 런타임 HUD와 맵 레터링은 사용하지 않는다.
 
 ## 진행
 
@@ -80,7 +81,7 @@ Toy Box → Toy Plaza → 세 분기(방문 순서 자유) → Broken Music Box 
 - `Tools > The Axiom > Validate Map3 ToyWorld Prototype`
 - 생성기는 `Map3_ToyWorld_Root/Generated`를 다시 만들고 `Manual`은 보존한다.
 - 게임플레이 Collider/Rigidbody와 자식 VisualMesh를 분리했다. 아트 교체는 VisualMesh에서 진행.
-- 외형은 직접 만든 베벨/다면체/기어/아치/글자 메시와 단색 Material을 사용한다. 외부 에셋/패키지/텍스처는 추가하지 않았다.
+- 외형은 직접 만든 베벨/다면체/기어/아치 메시와 단색 Material을 사용한다. 글자 메시와 외부 에셋/패키지/텍스처는 사용하지 않는다.
 - 아트만 재적용: `Tools > The Axiom > Art > Apply ToyWorld Low Poly Art`. 현재 열린 Map3의 게임플레이 루트와 `Manual`은 유지하고 `Art_Stylized` 하위만 재생성한다.
 - 아트 검사: `Tools > The Axiom > Art > Validate ToyWorld Art`.
 - 자동 검증 진입점: `ToyWorldPlayModeSmokeRunner.BuildAndRunFromCommandLine` (batchmode, `-quit` 없이 실행; 검증기가 종료).

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -138,14 +137,14 @@ public static class ToyWorldArtDirector
         {
             Skin(t,s,n.Contains("Doll")?"WoodLight":"Teal");
             EdgeBand(g,s,"Gold");
-            Part("PlayableInset",g,new Vector3(0,s.y*.5f-.022f,0),new Vector3(s.x*.85f,.06f,s.z*.91f),
+            Part("PlayableInset",g,new Vector3(0,s.y*.5f+.014f,0),new Vector3(s.x*.85f,.022f,s.z*.91f),
                 n.Contains("DollBed")?"Blue":n.Contains("Doll")?"TealLight":"TealLight");
             CornerBolts(g,s,"Gold");
             if(n.Contains("DollBed"))
             {
                 // Quilt/pillow relief is shallow: the original flat board remains the walkable surface.
-                for(int i=0;i<5;i++) Part("QuiltSeam",g,new Vector3(0,s.y*.5f+.005f,-s.z*.35f+i*s.z*.14f),new Vector3(s.x*.8f,.008f,.04f),"Ivory");
-                Part("PillowInlay",g,new Vector3(0,s.y*.5f+.005f,s.z*.32f),new Vector3(s.x*.67f,.01f,s.z*.14f),"Ivory");
+                for(int i=0;i<5;i++) Part("QuiltSeam",g,new Vector3(0,s.y*.5f+.038f,-s.z*.35f+i*s.z*.14f),new Vector3(s.x*.8f,.008f,.04f),"Ivory");
+                Part("PillowInlay",g,new Vector3(0,s.y*.5f+.039f,s.z*.32f),new Vector3(s.x*.67f,.01f,s.z*.14f),"Ivory");
             }
             // Axles stay below the physical board, not on a new blocking support.
             Part("Axle",g,new Vector3(0,-s.y*.5f-.1f,0),new Vector3(.45f,s.x+.3f,.45f),"Gold","Cylinder",Quaternion.Euler(0,0,90));
@@ -178,7 +177,6 @@ public static class ToyWorldArtDirector
         {
             Skin(t,s,"TealDark"); EdgeBand(g,s,"Gold");
             for(int x=-1;x<=1;x++) Place("ClockworkMedallion",Art(t),new Vector3(x*3.5f,-.5f,-1.05f),Vector3.one*1.25f);
-            Sign(Art(t),"THE TOYMAKER'S ATELIER",new Vector3(0,2.2f,-1.1f),9,.65f);
             Place("ToyKey",Art(t),new Vector3(0,s.y*.5f,0),Vector3.one*1.3f);
         }
         else Skin(t,s,n.Contains("Lever")?"Gold":"StoneWarm");
@@ -190,18 +188,20 @@ public static class ToyWorldArtDirector
         float dx=s.x/nx,dz=s.z/nz;
         string[] colors=wooden?new[]{"Wood","WoodLight","WoodLight","Wood"}:new[]{"Stone","StoneLight","StoneWarm","StoneLight"};
         for(int x=0;x<nx;x++) for(int z=0;z<nz;z++)
-            Part("Tile",g,new Vector3(-s.x*.5f+(x+.5f)*dx,s.y*.5f-.025f,-s.z*.5f+(z+.5f)*dz),
-                new Vector3(dx-.045f,.07f,dz-.045f),colors[(x*13+z*7)%4]);
+            Part("Tile",g,new Vector3(-s.x*.5f+(x+.5f)*dx,s.y*.5f+.018f,-s.z*.5f+(z+.5f)*dz),
+                new Vector3(dx-.045f,.028f,dz-.045f),colors[(x*13+z*7)%4]);
         EdgeBand(g,s,wooden?"WoodDark":"StoneLight");
     }
 
     private static void EdgeBand(Transform g,Vector3 s,string color)
     {
-        float y=s.y*.5f-.05f;
+        // Keep the rim clearly above both the base skin and tiled top. Previously their top faces
+        // were coplanar, producing distance-dependent z-fighting after mesh batching.
+        float y=s.y*.5f+.047f;
         for(int side=-1;side<=1;side+=2)
         {
-            Part("Rim",g,new Vector3(side*(s.x*.5f-.08f),y,0),new Vector3(.16f,.12f,s.z),color);
-            Part("Rim",g,new Vector3(0,y,side*(s.z*.5f-.08f)),new Vector3(s.x,.12f,.16f),color);
+            Part("Rim",g,new Vector3(side*(s.x*.5f-.08f),y,0),new Vector3(.16f,.022f,Mathf.Max(.02f,s.z-.32f)),color);
+            Part("Rim",g,new Vector3(0,y,side*(s.z*.5f-.08f)),new Vector3(s.x,.022f,.16f),color);
         }
     }
 
@@ -258,21 +258,6 @@ public static class ToyWorldArtDirector
             Part("Arrow",g,new Vector3(side*width*.22f,y,i*length*.24f),new Vector3(width*.7f,.025f,.11f),color,"Bevel",Quaternion.Euler(0,side*40,0));
     }
 
-    private static void Sign(Transform parent,string text,Vector3 position,float width,float textHeight,Quaternion? rotation=null)
-    {
-        Transform sign=Node("Sign_"+text,parent,position); sign.localRotation=rotation??Quaternion.identity;
-        Part("Frame",sign,Vector3.zero,new Vector3(width,textHeight*2,.16f),"Gold");
-        Part("Enamel",sign,new Vector3(0,0,-.1f),new Vector3(width-.16f,textHeight*2-.13f,.08f),"TealDark");
-        Label(sign,text,new Vector3(0,0,-.155f),textHeight,Color.white);
-    }
-    private static void Label(Transform parent,string text,Vector3 position,float size,Color color,Quaternion? rotation=null)
-    {
-        Transform t=Node("Lettering",parent,position); t.localRotation=rotation??Quaternion.identity;
-        t.gameObject.AddComponent<MeshFilter>().sharedMesh=Lettering(text,size);
-        MeshRenderer renderer=t.gameObject.AddComponent<MeshRenderer>(); renderer.sharedMaterial=Mat("Ivory");
-        renderer.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
-    }
-
     private static void DressMechanisms(Transform generated)
     {
         foreach(Portal p in generated.GetComponentsInChildren<Portal>(true))
@@ -280,7 +265,6 @@ public static class ToyWorldArtDirector
             foreach(Renderer r in p.GetComponentsInChildren<Renderer>()) r.enabled=false;
             Transform art=Art(p.transform);
             Place("PortalFrame",art,new Vector3(0,-2,0),new Vector3(1,.84f,1));
-            Sign(art,p.action==Portal.PortalAction.Enable?"ROLL ON":"ROLL OFF",new Vector3(0,2.35f,-.2f),2.8f,.35f);
         }
         foreach(LiftPad p in generated.GetComponentsInChildren<LiftPad>(true))
         {
@@ -317,7 +301,6 @@ public static class ToyWorldArtDirector
         {
             Transform art=Art(socket.transform);
             Place("CorePedestal",art,new Vector3(0,-.25f,0),Vector3.one*1.1f);
-            Label(art,((int)socket.itemType+1).ToString(),new Vector3(0,.36f,-.65f),.5f,Color.white,Quaternion.Euler(90,0,0));
         }
         foreach(RespawnZone cp in generated.GetComponentsInChildren<RespawnZone>(true))
         {
@@ -331,7 +314,6 @@ public static class ToyWorldArtDirector
             Transform slot=hub.itemSlots[i].transform.parent;
             Skin(slot,new Vector3(1.55f,.55f,1.55f),"Slate","Cylinder");
             Place("CorePedestal",Art(slot),new Vector3(0,-.3f,0),Vector3.one*1.1f);
-            Label(Art(slot),new[]{"SPRING","GEAR","MELODY"}[i],new Vector3(0,.42f,-.55f),.23f,Color.white,Quaternion.Euler(90,0,0));
             Transform beacon=hub.branchBeacons[i].transform.parent;
             Skin(beacon,new Vector3(.8f,3.3f,.8f),"Teal","Cylinder");
             Transform bg=Geometry(beacon);
@@ -341,27 +323,23 @@ public static class ToyWorldArtDirector
         Transform exit=generated.GetComponentInChildren<ToyWorldExitTrigger>().transform;
         exit.GetComponentInChildren<Renderer>().enabled=false;
         Place("PortalFrame",Art(exit),new Vector3(0,-1.5f,0),new Vector3(1.3f,1,1));
-        Sign(Art(exit),"EXIT",new Vector3(0,3.6f,-.3f),3,.6f);
     }
 
     private static void DressLandmarks(Transform generated)
     {
         Transform areas=generated.Find("Areas");
         Transform toy=areas.Find("ToyBox_Entrance");
-        Sign(Art(toy),"01 / TOY BOX",new Vector3(0,5.6f,-52.37f),10,1,Quaternion.Euler(0,180,0));
         for(int s=-1;s<=1;s+=2)
         {
             Place("ClockworkMedallion",Art(toy),new Vector3(s*9,4.7f,-52.35f),Vector3.one,Quaternion.Euler(0,180,0));
             Part("CornerBrace",Geometry(toy),new Vector3(s*13.55f,3,-52.35f),new Vector3(.4f,6,.5f),"Gold");
         }
-        Sign(Art(toy),"LEAVE A LIGHT SHAPE ON THE GOLD PAD",new Vector3(-7,1.9f,-43.2f),5.5f,.25f,Quaternion.Euler(0,180,0));
         Transform fort=areas.Find("Branch_BlockFort");
         for(int z=7;z<=29;z+=22)
         {
             Place("CastleTurret",Art(fort),new Vector3(-37,5.5f,z),new Vector3(.85f,.8f,.85f));
             Place("ToyBanner",Art(fort),new Vector3(-37,8.2f,z),Vector3.one*.7f);
         }
-        Sign(Art(fort),"03 / BLOCK FORT",new Vector3(-35.85f,3.7f,18),7,.65f,Quaternion.Euler(0,-90,0));
         // Perimeter edging is low and outside the existing playable floor, leaving bypasses open.
         for(float z=5;z<32;z+=3)
             Part("FortEdgeStone",Geometry(fort),new Vector3(-55.25f,.35f,z),new Vector3(.45f,.7f,2.8f),"StoneWarm");
@@ -373,7 +351,6 @@ public static class ToyWorldArtDirector
                 Part("GapWarning",Geometry(train),new Vector3(42+side*4.25f,.055f,z),new Vector3(.42f,.025f,.72f),"Coral","Bevel",Quaternion.Euler(0,side*25,0));
         for(float x=35;x<57;x+=1.1f)
             if(x<=40.5f||x>=44) Place("RailSleeper",Art(train),new Vector3(x,.05f,18),Vector3.one);
-        Sign(Art(train),"04 / CLOCKWORK YARD",new Vector3(31,4.1f,30.8f),10,.7f);
         for(int x=0;x<2;x++)
         {
             float px=x==0?30:56;
@@ -383,7 +360,6 @@ public static class ToyWorldArtDirector
         }
         for(int x=0;x<3;x++) Place("ToyCrate",Art(train),new Vector3(26+x*1.8f,0,30),Vector3.one*.65f);
         Transform doll=areas.Find("Branch_DollHouse");
-        Sign(Art(doll),"05 / DOLL HOUSE",new Vector3(34,21.1f,-45.4f),14,1,Quaternion.Euler(0,180,0));
         // Furniture is recessed into the back wall. It never occupies a traversal landing.
         Place("Bookcase",Art(doll),new Vector3(26,6,-44.8f),new Vector3(1.25f,1.2f,.55f),Quaternion.Euler(0,180,0));
         Place("DollDresser",Art(doll),new Vector3(41,6,-44.8f),new Vector3(1.1f,1,.55f),Quaternion.Euler(0,180,0));
@@ -401,14 +377,7 @@ public static class ToyWorldArtDirector
         Part("PlazaRing",pg,new Vector3(0,.026f,0),new Vector3(23,23,.025f),"TealDark","Ring",Quaternion.Euler(90,0,0));
         // Thin inset, not a new central obstacle.
         Part("Compass",pg,new Vector3(0,.05f,-3.4f),new Vector3(4,4,.02f),"Gold","Star",Quaternion.Euler(90,0,0));
-        Sign(Art(plaza),"02 / TOY PLAZA",new Vector3(0,.06f,-7),8,.55f,Quaternion.Euler(90,0,0));
-        for(int i=0;i<3;i++)
-        {
-            Vector3 p=new[]{new Vector3(-12,3,5),new Vector3(12,3,5),new Vector3(10,3,-12)}[i];
-            Sign(Art(plaza),new[]{"FORT / SPRING","YARD / GEAR","HOUSE / MELODY"}[i],p,4.3f,.3f);
-        }
         Transform final=areas.Find("Final_BrokenMusicBox");
-        Sign(Art(final),"06 / THE BROKEN MUSIC BOX",new Vector3(0,9.3f,27.5f),17,1);
         for(int s=-1;s<=1;s+=2)
         {
             Place("ClockworkMedallion",Art(final),new Vector3(s*9,4.4f,26.65f),Vector3.one*2.5f);
@@ -416,8 +385,6 @@ public static class ToyWorldArtDirector
                 Place("ClockworkMedallion",Art(final),new Vector3(s*14.4f,3+j*2.8f,42+j*3),Vector3.one*(1.3f+j*.3f),Quaternion.Euler(0,s*90,0));
             Place("ToyKey",Art(final),new Vector3(s*10,8.7f,27.5f),Vector3.one*1.25f);
         }
-        Sign(Art(final),"ALL THREE PARTS REQUIRED",new Vector3(0,6.6f,26.6f),8,.45f);
-        Sign(Art(final),"1 SPRING   >   2 GEAR   >   3 MELODY",new Vector3(0,4.9f,35.5f),12,.5f);
         // Backdrop/pipes are on existing walls; no fake deployed staircase or new wind-up logic.
         for(int i=0;i<7;i++)
             Part("OrganPipe",Geometry(final),new Vector3(-14.35f,2.5f+i*.35f,38+i*1.6f),new Vector3(.35f,4+i*.7f,.45f),i%2==0?"Gold":"Teal","Cylinder");

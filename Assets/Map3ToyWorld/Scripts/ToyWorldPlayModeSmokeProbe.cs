@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -76,11 +77,26 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
             Debug.Log("[ToyWorldArt] PLAY_CAMERA_CAPTURE_PASS (camera only, IMGUI excluded): " + preview);
         }
         foreach (PlayerMover player in FindObjectsOfType<PlayerMover>())
-        {
-            player.SetControlled(false);
             if (player.name == "Player_Sphere") sphere = player;
-        }
         Require(sphere != null, "Existing sphere player missing.");
+        Require(PlayerControlSwitcher.ActiveTarget == sphere.transform && sphere.IsControlled,
+            "Starting camera player and controlled player do not match.");
+        Place(sphere, new Vector3(-1.5f, 0.1f, -50f));
+        for (int i = 0; i < 4; i++) yield return tick;
+        PlayerShapeController shapeController = sphere.GetComponent<PlayerShapeController>();
+        PlayerJump manualJump = sphere.GetComponent<PlayerJump>();
+        Rigidbody manualBody = sphere.GetComponent<Rigidbody>();
+        Require(shapeController != null && shapeController.IsGrounded(), "Starting sphere is not grounded.");
+        Require(manualJump != null && manualJump.enabled, "Starting sphere jump component is disabled.");
+        FieldInfo queue = typeof(PlayerJump).GetField("jumpQueued", BindingFlags.Instance | BindingFlags.NonPublic);
+        Require(queue != null, "PlayerJump input queue field is missing.");
+        queue.SetValue(manualJump, true);
+        yield return tick;
+        Require(manualBody.velocity.y > 1f, "Grounded manual jump input was not consumed by PlayerJump.");
+        Debug.Log("[ToyWorldPlaySmoke] PASS deterministic Sphere control, grounded state, and manual jump path.");
+
+        foreach (PlayerMover player in FindObjectsOfType<PlayerMover>())
+            player.SetControlled(false);
         Place(sphere, new Vector3(5f, 0.1f, -5f));
         ToyWorldLevelDirector director = FindObjectOfType<ToyWorldLevelDirector>();
         Require(director != null && director.finalGate != null, "Director/door missing.");

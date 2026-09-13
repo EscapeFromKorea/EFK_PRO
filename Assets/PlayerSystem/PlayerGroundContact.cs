@@ -52,7 +52,12 @@ public class PlayerGroundContact : MonoBehaviour
 
     private void Awake()
     {
-        ownColliders = transform.root.GetComponentsInChildren<Collider>(true);
+        // The player can be grouped below a scene/map root. transform.root would then include every
+        // floor collider in ownColliders, causing valid ground hits to be discarded as self hits.
+        PlayerMover owner = GetComponentInParent<PlayerMover>();
+        ownColliders = owner != null
+            ? owner.GetComponentsInChildren<Collider>(true)
+            : transform.root.GetComponentsInChildren<Collider>(true);
     }
 
     private void FixedUpdate()

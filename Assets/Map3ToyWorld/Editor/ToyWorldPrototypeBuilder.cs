@@ -75,14 +75,11 @@ public static class ToyWorldPrototypeBuilder
         respawn.killY = -12f;
         respawn.outOfBoundsSeconds = 0.8f;
         respawn.dropExtraHeight = 5f;
+        respawn.showDebugGui = false;
 
-        PuzzleResetManager resetManager = managers.gameObject.AddComponent<PuzzleResetManager>();
+        managers.gameObject.AddComponent<PuzzleResetManager>();
         ToyWorldLevelDirector director = managers.gameObject.AddComponent<ToyWorldLevelDirector>();
         HubProgressDisplay progress = managers.gameObject.AddComponent<HubProgressDisplay>();
-        ToyWorldDebugHUD hud = managers.gameObject.AddComponent<ToyWorldDebugHUD>();
-        hud.director = director;
-        hud.resetManager = resetManager;
-
         SnapBlockController snapController = managers.gameObject.AddComponent<SnapBlockController>();
         snapController.snapDistance = 0.45f;
         snapController.snapAngleToleranceDeg = 15f;
@@ -177,10 +174,15 @@ public static class ToyWorldPrototypeBuilder
             player.transform.position = new Vector3(xPositions[i], 0.05f, -50f);
         }
 
+        PlayerMover initialPlayer = GameObject.Find("Player_Sphere").GetComponent<PlayerMover>();
         PlayerFollowCamera follow = camera.GetComponent<PlayerFollowCamera>();
-        follow.target = GameObject.Find("Player_Sphere").transform;
+        follow.target = initialPlayer.transform;
         PlayerControlSwitcher switcher = UnityEngine.Object.FindObjectOfType<PlayerControlSwitcher>();
-        if (switcher != null) switcher.transform.SetParent(parent, true);
+        if (switcher != null)
+        {
+            switcher.initialPlayer = initialPlayer;
+            switcher.transform.SetParent(parent, true);
+        }
     }
 
     private static void BuildDreamThreadManager(Transform parent)

@@ -16,7 +16,8 @@ public static class ToyWorldArtKit
     {
         Ensure(Folder); Ensure(Folder + "/Materials"); Ensure(Folder + "/Meshes");
         Ensure(Folder + "/Prefabs"); Ensure(Folder + "/Baked");
-        Ensure(Folder + "/Lettering");
+        // Letter meshes belonged to the first art pass. The finished map intentionally contains no text.
+        if(AssetDatabase.IsValidFolder(Folder + "/Lettering")) AssetDatabase.DeleteAsset(Folder + "/Lettering");
         materials.Clear(); meshes.Clear();
         Palette("Stone", "C5BEAA"); Palette("StoneLight", "CFC7B4"); Palette("StoneWarm", "C7B9A0");
         Palette("Mortar", "777C79"); Palette("Ivory", "EEE3C6"); Palette("Slate", "384953");
@@ -327,46 +328,4 @@ public static class ToyWorldArtKit
         return w.Finish("Five pointed toy star");
     }
 
-    // Tiny extruded-sign-style alphabet built as geometry. Unlike the built-in TextMesh font shader,
-    // these letters respect scene depth, have no transient font-atlas reference and cannot show through walls.
-    public static Mesh Lettering(string text,float height)
-    {
-        Dictionary<char,int[]> alphabet=new Dictionary<char,int[]>
-        {
-            {'A',new[]{14,17,17,31,17,17,17}}, {'B',new[]{30,17,17,30,17,17,30}},
-            {'C',new[]{14,17,16,16,16,17,14}}, {'D',new[]{30,17,17,17,17,17,30}},
-            {'E',new[]{31,16,16,30,16,16,31}}, {'F',new[]{31,16,16,30,16,16,16}},
-            {'G',new[]{14,17,16,23,17,17,15}}, {'H',new[]{17,17,17,31,17,17,17}},
-            {'I',new[]{14,4,4,4,4,4,14}}, {'J',new[]{7,2,2,2,2,18,12}},
-            {'K',new[]{17,18,20,24,20,18,17}}, {'L',new[]{16,16,16,16,16,16,31}},
-            {'M',new[]{17,27,21,21,17,17,17}}, {'N',new[]{17,25,21,19,17,17,17}},
-            {'O',new[]{14,17,17,17,17,17,14}}, {'P',new[]{30,17,17,30,16,16,16}},
-            {'Q',new[]{14,17,17,17,21,18,13}}, {'R',new[]{30,17,17,30,20,18,17}},
-            {'S',new[]{15,16,16,14,1,1,30}}, {'T',new[]{31,4,4,4,4,4,4}},
-            {'U',new[]{17,17,17,17,17,17,14}}, {'V',new[]{17,17,17,17,17,10,4}},
-            {'W',new[]{17,17,17,21,21,27,17}}, {'X',new[]{17,17,10,4,10,17,17}},
-            {'Y',new[]{17,17,10,4,4,4,4}}, {'Z',new[]{31,1,2,4,8,16,31}},
-            {'0',new[]{14,17,19,21,25,17,14}}, {'1',new[]{4,12,4,4,4,4,14}},
-            {'2',new[]{14,17,1,2,4,8,31}}, {'3',new[]{30,1,1,14,1,1,30}},
-            {'4',new[]{2,6,10,18,31,2,2}}, {'5',new[]{31,16,16,30,1,1,30}},
-            {'6',new[]{14,16,16,30,17,17,14}}, {'7',new[]{31,1,2,4,8,8,8}},
-            {'8',new[]{14,17,17,14,17,17,14}}, {'9',new[]{14,17,17,15,1,1,14}},
-            {'/',new[]{1,2,2,4,8,8,16}}, {'>',new[]{16,8,4,2,4,8,16}},
-            {'-',new[]{0,0,0,31,0,0,0}}, {'\'',new[]{4,4,0,0,0,0,0}}
-        };
-        MeshWriter w=new MeshWriter(); float cell=height*.7f/7f;
-        float left=-(text.Length*6-1)*cell*.5f;
-        for(int c=0;c<text.Length;c++)
-        {
-            int[] rows; if(!alphabet.TryGetValue(char.ToUpperInvariant(text[c]),out rows)) continue;
-            for(int row=0;row<7;row++) for(int col=0;col<5;col++)
-            {
-                if((rows[row]&(1<<(4-col)))==0) continue;
-                float x=left+(c*6+col)*cell,y=(3-row)*cell;
-                w.Face(Vector3.back,new Vector3(x,y,0),new Vector3(x+cell,y,0),
-                    new Vector3(x+cell,y+cell,0),new Vector3(x,y+cell,0));
-            }
-        }
-        return SaveMesh(w.Finish("Lettering "+text),Folder+"/Lettering/"+Hash128.Compute(text+height.ToString(System.Globalization.CultureInfo.InvariantCulture))+".asset");
-    }
 }
