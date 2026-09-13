@@ -121,6 +121,40 @@ public class PlayerFollowCamera : MonoBehaviour
     public static void ExitAimMode() { if (instance != null) instance.aiming = false; }
     // ═══════════ [SpacePortalSystem 추가 끝] ═══════════
 
+    // ═══════════ [PortalSystem 추가] 굴리기 모드 카메라 안정화 — 2026-09-12 교차 폴더 수정 허가됨 ═══════════
+    // 굴리기(모서리 텀블) 중엔 몸의 실제 위치가 회전 때문에 매 칸 위아래로 튄다. PlayerRollModeReceiver
+    // (PortalSystem)가 "바닥 높이 고정 + 등속 수평 보간"으로 계산한 가상 기준점을 SetTrackingAnchor로
+    // 매 FixedUpdate 밀어주면, 그 값을 target.position 대신(또는 블렌드해서) 따라간다. 이 클래스는
+    // PortalSystem의 존재를 전혀 모른다 — EnterAimMode/ExitAimMode와 같은 기믹→코어 단방향 훅이다.
+    [Header("[PortalSystem] 굴리기 모드 카메라 안정화")]
+    [Tooltip("굴리기 모드 중 몸의 실제 위치 대신 PlayerRollModeReceiver가 밀어주는 기준점을 따라간다. " +
+             "꺼도 SetTrackingAnchor 호출 자체는 무해하다(그냥 무시).")]
+    public bool useRollModeCameraAnchor = true;
+    [Tooltip("굴리기 모드 진입(또는 그 몸으로 Tab 복귀) 시 기존 추적 → 기준점 추적으로 넘어가는 " +
+             "블렌드 시간(초). 0에 가까울수록 즉각 전환된다.")]
+    public float rollAnchorEnterSeconds = 0.15f;
+    [Tooltip("굴리기 모드 이탈(낙하로 해제 등) 시 기준점 추적 → 기존 추적으로 되돌아오는 블렌드 " +
+             "시간(초). 되돌아오는 쪽은 몸이 실제로 낙하하기 시작한 뒤라 너무 짧으면 그 순간 튄다.")]
+    public float rollAnchorExitSeconds = 0.25f;
+
+    private Transform anchorOwner;   // SetTrackingAnchor를 마지막으로 부른 대상
+    private Vector3? rollAnchor;     // 그 대상이 지금 밀어주는 값(null = 추적 끔)
+    private Vector3 lastAnchorPoint; // 이탈 블렌드 동안 유지할 마지막 값(rollAnchor가 null이 된 뒤에도 보존)
+    private bool anchorEverSet;
+    private float rollBlend;         // 0 = target.position 그대로, 1 = 기준점 그대로
+
+    /// <summary>[PortalSystem 등] 몸의 실제 위치 대신 가상 기준점을 보여주고 싶은 기믹이 매 FixedUpdate
+    /// 부른다. owner가 지금 카메라의 target과 다르면(Tab으로 다른 플레이어를 보고 있음) 조용히
+    /// 무시된다 — 남의 텀블이 내 화면에 끼어들지 않는다. anchor에 null을 넘기면 그 owner의 추적을
+    /// 끈다(이후 rollAnchorExitSeconds에 걸쳐 기존 추적으로 되돌아간다).</summary>
+    public static void SetTrackingAnchor(Transform owner, Vector3? anchor)
+    {
+        if (instance == null) return;
+        instance.anchorOwner = owner;
+        instance.rollAnchor = anchor;
+    }
+    // ═══════════ [PortalSystem 추가 끝] ═══════════
+
     private Vector3 followVelocity;
     private float smoothedTargetY;
     private float targetYVelocity;
@@ -179,11 +213,28 @@ public class PlayerFollowCamera : MonoBehaviour
         }
         // ─── [mnppi 추가 끝] ───
 
+        // ─── [PortalSystem 추가] 굴리기 기준점 블렌드 ───
+        // rollAnchor는 owner(그걸 미는 기믹의 트랜스폼)가 지금 target과 같을 때만 반영한다 — Tab으로
+        // 다른 플레이어를 보고 있으면 그 사람의 텀블이 여기 안 끼어든다. rollAnchor가 null이 된
+        // 뒤에도 lastAnchorPoint는 보존해 rollBlend가 rollAnchorExitSeconds에 걸쳐 0으로 빠지는
+        // 동안 블렌드 대상이 사라져 순간적으로 raw 추적으로 튀는 일이 없게 한다.
+        bool anchorRequested = useRollModeCameraAnchor && rollAnchor.HasValue && anchorOwner == target;
+        if (anchorRequested) { lastAnchorPoint = rollAnchor.Value; anchorEverSet = true; }
+        float rollBlendStep = Time.deltaTime / Mathf.Max(0.001f, anchorRequested ? rollAnchorEnterSeconds : rollAnchorExitSeconds);
+        rollBlend = Mathf.MoveTowards(rollBlend, anchorRequested ? 1f : 0f, rollBlendStep);
+
+        // 굴리기 모드 밖(rollBlend == 0)에서는 followSourceRaw == target.position이라 이하 계산이
+        // 기존과 완전히 동일하다 — 회귀 없음(요구사항 "굴리기 모드 밖에서 같은 궤적").
+        Vector3 followSourceRaw = target.position;
+        if (rollBlend > 0f && anchorEverSet)
+            followSourceRaw = Vector3.Lerp(followSourceRaw, lastAnchorPoint, rollBlend);
+        // ─── [PortalSystem 추가 끝] ───
+
         // 타깃 Y(상하)만 더 강하게 감쇠한 뒤 위치/시선 계산 모두에 이 값을 쓴다 — 모서리를 넘을 때
         // 마다 생기는 실제 물리적 상하 튐을 완화한다(회전을 무시하는 것과 별개의 조치).
         float verticalTime = followSmoothness * Mathf.Max(1f, verticalDampingMultiplier);
-        smoothedTargetY = Mathf.SmoothDamp(smoothedTargetY, target.position.y, ref targetYVelocity, verticalTime);
-        Vector3 smoothedTargetPos = new Vector3(target.position.x, smoothedTargetY, target.position.z);
+        smoothedTargetY = Mathf.SmoothDamp(smoothedTargetY, followSourceRaw.y, ref targetYVelocity, verticalTime);
+        Vector3 smoothedTargetPos = new Vector3(followSourceRaw.x, smoothedTargetY, followSourceRaw.z);
 
         // 위치: offset을 궤도 각도(yaw/pitch)만큼 회전시켜 적용한다.
         // 타깃의 회전은 여전히 쓰지 않으므로(월드 고정), 시점 각도만 돌아갈 뿐 구르기에 휩쓸리지 않는다.
@@ -233,6 +284,7 @@ public class PlayerFollowCamera : MonoBehaviour
         instance.targetYVelocity = 0f;
         instance.followVelocity = Vector3.zero;
         instance.smoothedFollowPoint = t.position;   // [mnppi] 추적 지점도 함께 스냅(다음 LateUpdate가 여기서 SmoothDamp 시작)
+        instance.rollBlend = 0f; // [PortalSystem] 순간이동 직후 옛 기준점으로 당겨지지 않게 블렌드도 초기화
 
         // LateUpdate의 목표 위치·시선 계산과 같은 식이다(추적 지점 + 궤도 각도만큼 돌린 offset).
         // 여기서 식이 갈라지면 스냅 직후 한 프레임 튄다.
@@ -265,6 +317,7 @@ public class PlayerFollowCamera : MonoBehaviour
         {
             instance.smoothedTargetY = newTarget.position.y;
             instance.smoothedFollowPoint = newTarget.position;   // [mnppi] 추적 지점도 함께 스냅
+            instance.rollBlend = 0f; // [PortalSystem] 새 타깃은 옛 타깃의 굴리기 기준점과 무관하다
         }
     }
 }
