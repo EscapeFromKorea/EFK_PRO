@@ -40,11 +40,24 @@ public class doorPhysics : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (doorRigidbody == null) return;
+
         float maxAngle = leverHead != null ? leverHead.maxAngle : 40f;
         float leverAngle = leverHead != null ? leverHead.GetCurrentAngle() : -maxAngle;
+        bool usesP04TimedLever = leverHead != null && gameObject.name == "P04_Door";
 
-        float t = Mathf.InverseLerp(-maxAngle, maxAngle, leverAngle);
-        Vector3 leverBasedPosition = Vector3.Lerp(doorStartPosition, doorTargetPosition, t);
+        Vector3 leverBasedPosition;
+        if (usesP04TimedLever)
+        {
+            leverBasedPosition = leverHead.IsActivated
+                ? doorTargetPosition
+                : doorStartPosition;
+        }
+        else
+        {
+            float t = Mathf.InverseLerp(-maxAngle, maxAngle, leverAngle);
+            leverBasedPosition = Vector3.Lerp(doorStartPosition, doorTargetPosition, t);
+        }
 
         currentTargetPosition = isPadPressed ? doorTargetPosition : leverBasedPosition;
 
