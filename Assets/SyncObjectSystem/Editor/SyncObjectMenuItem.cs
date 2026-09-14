@@ -33,17 +33,18 @@ public static class SyncObjectMenuItem
         go.transform.position = pos;
 
         Rigidbody rb = go.AddComponent<Rigidbody>();
-        // 명세서엔 중력 관련 요구가 없다 — 애초에 "무중력 플랫폼"은 내가 테스트 편의로 넣은 임의
-        // 설정이었다. 실사용 시나리오(반대편 엘리베이터, 문·발판)에 더 가깝게 중력 켠 채로 바꿨다
-        // (2026-09-14, mnppi 확정). Follower는 kinematic이라 어차피 중력 무관.
-        rb.useGravity = true;
+        // 명세서엔 중력 요구가 없다 — 중력을 어떻게 둘지는 순전히 테스트 편의 문제였다. 매번 왔다갔다
+        // 하지 않게, 기본은 꺼서 어디 둬도 그 자리에 그대로 있게(정밀 배치 쉬움) 하고, Leader에는
+        // SyncDemoGravityToggle을 붙여 키 하나(Z)로 그때그때 켜서 떨어뜨려볼 수 있게 한다
+        // (2026-09-14, mnppi 확정 — "버튼 눌러야 활성화되게").
+        rb.useGravity = false;
         rb.isKinematic = role == SyncObject.SyncRole.Follower;
-        // drag는 그대로 유지 — 중력 켜도 Leader를 밀면 수평으로 안 멈추고 미끄러지는 문제는 여전히
-        // 있어서(수직 낙하와 별개), 밀면 이동하다 자연히 멈추게 감쇠를 준다.
+        // drag는 유지 — 밀면 이동하다 자연히 멈추게(마찰 없이 영원히 미끄러지는 문제 방지).
         if (role == SyncObject.SyncRole.Leader)
         {
             rb.drag = 3f;
             rb.angularDrag = 3f;
+            go.AddComponent<SyncDemoGravityToggle>();
         }
 
         SyncObject sync = go.AddComponent<SyncObject>();
