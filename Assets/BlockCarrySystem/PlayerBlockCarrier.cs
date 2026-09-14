@@ -236,7 +236,12 @@ public class PlayerBlockCarrier : MonoBehaviour
         carriedKinematicWas = rb.isKinematic;
         carriedInterpWas = rb.interpolation;
         rb.isKinematic = true;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        // Interpolate가 아니라 None: Interpolate는 물리 엔진이 MovePosition으로 들어온 움직임을
+        // 렌더 프레임 사이에서 보간하는 모드다. 여기선 LateUpdate에서 transform을 직접(매 렌더
+        // 프레임) 갖다 박아 그 자체로 완벽한 추종을 이미 제공하는데, Interpolate가 켜진 채면 물리
+        // 엔진이 "그 값을 다시 지난 프레임과 보간"하려다 매 FixedUpdate마다 위치가 살짝 튀었다
+        // 복구되는 것처럼 보여 꿀렁거림/미세 회전 아티팩트로 나타난다(구가 구를 때 눈에 띔).
+        rb.interpolation = RigidbodyInterpolation.None;
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
