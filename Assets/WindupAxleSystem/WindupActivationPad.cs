@@ -22,25 +22,13 @@ public class WindupActivationPad : MonoBehaviour
         GetComponent<Collider>().isTrigger = true;
     }
 
-    // TODO(임시 진단, 2026-09-14): HoldPad 미반응 조사 — Grafana/Loki로 실측 확인 끝나면
-    // 아래 LokiTelemetry.Event 호출 전부 제거할 것(그라파나/로키 디버깅 확정 관례).
     void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag(playerTag))
-        {
-            LokiTelemetry.Event("windup_pad_enter_ignored",
-                $"pad={name} other={other.name} tag={other.tag} expected={playerTag}");
-            return;
-        }
+        if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
-        if (rb == null)
-        {
-            LokiTelemetry.Event("windup_pad_enter_ignored", $"pad={name} other={other.name} reason=no_rigidbody");
-            return;
-        }
+        if (rb == null) return;
         overlaps.TryGetValue(rb, out int n);
         overlaps[rb] = n + 1;
-        LokiTelemetry.Event("windup_pad_enter", $"pad={name} other={other.name} n={overlaps[rb]} isHeld={IsHeld}");
     }
 
     void OnTriggerExit(Collider other)
@@ -51,6 +39,5 @@ public class WindupActivationPad : MonoBehaviour
         if (!overlaps.TryGetValue(rb, out int n)) return;
         if (n <= 1) overlaps.Remove(rb);
         else overlaps[rb] = n - 1;
-        LokiTelemetry.Event("windup_pad_exit", $"pad={name} other={other.name} isHeld={IsHeld}");
     }
 }

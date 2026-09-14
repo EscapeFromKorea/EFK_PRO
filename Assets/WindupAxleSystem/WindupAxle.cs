@@ -106,9 +106,6 @@ public class WindupAxle : MonoBehaviour
         crankTargetAngle += signedDelta * crankSwingDegrees;
         nextCrankSwingTime = Time.time + crankSwingCooldown;
 
-        // TODO(임시 진단, 2026-09-14): HoldPad 미반응 조사 끝나면 제거.
-        LokiTelemetry.Event("windup_axle_apply_rotation", $"axle={name} delta={signedDelta:F3} charge={CurrentCharge:F3}");
-
         float swingSign = Mathf.Sign(signedDelta);
         for (int i = 0; i < receivers.Count; i++)
             receivers[i].OnCrankSwing(swingSign);

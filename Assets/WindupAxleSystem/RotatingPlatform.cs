@@ -47,8 +47,6 @@ public class RotatingPlatform : MonoBehaviour, IWindupReceiver
     private float stepTarget;   // 반영이 확정된 목표각
     private float appliedAngle; // 실제로 transform에 반영된 누적각(스텝 단위로만 쫓아감)
     private bool warnedMissingPad;
-    private bool loggedOperatingOnce; // TODO(임시 진단, 2026-09-14): 조사 끝나면 이 필드와 관련 로그 제거
-    private bool lastOperatingState;
 
     void OnEnable()
     {
@@ -92,7 +90,6 @@ public class RotatingPlatform : MonoBehaviour, IWindupReceiver
     {
         if (activationMode != WindupActivationMode.HoldPad) return true;
 
-        bool held;
         if (activationPad == null)
         {
             if (!warnedMissingPad)
@@ -101,24 +98,10 @@ public class RotatingPlatform : MonoBehaviour, IWindupReceiver
                     "activationPad가 비어 있어 장치를 작동시키지 않습니다.");
                 warnedMissingPad = true;
             }
-            held = false;
-        }
-        else
-        {
-            held = activationPad.IsHeld;
+            return false;
         }
 
-        // TODO(임시 진단, 2026-09-14): HoldPad 미반응 조사 끝나면 이 블록 제거.
-        if (!loggedOperatingOnce || held != lastOperatingState)
-        {
-            LokiTelemetry.Event("windup_rotating_platform_operating",
-                $"name={name} held={held} pad={(activationPad != null ? activationPad.name : "null")} " +
-                $"queuedSteps={queuedSteps} pendingSteps={pendingSteps}");
-            loggedOperatingOnce = true;
-            lastOperatingState = held;
-        }
-
-        return held;
+        return activationPad.IsHeld;
     }
 
     /// <summary>연속 출력 기반 장치가 아니라 쓰지 않는다 — <see cref="OnCrankSwing"/> 참고.</summary>

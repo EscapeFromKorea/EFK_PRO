@@ -126,9 +126,6 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     private float outputPower;
     private float lastSwingTime = float.NegativeInfinity;
     private bool warnedMissingPad;
-    private bool loggedReleasedOnce; // TODO(임시 진단, 2026-09-14): 조사 끝나면 이 필드와 관련 로그 제거
-    private bool lastReleasedState;
-    private float nextPathSampleTime; // TODO(임시 진단, 2026-09-14): 조사 끝나면 이 필드와 관련 로그 제거
 
     private Vector3 recoverPosition;
     private Quaternion recoverRotation;
@@ -206,16 +203,6 @@ public class RailCart : MonoBehaviour, IWindupReceiver
         else
         {
             released = activationPad.IsHeld;
-        }
-
-        // TODO(임시 진단, 2026-09-14): HoldPad 미반응 조사 끝나면 이 블록 제거.
-        if (!loggedReleasedOnce || released != lastReleasedState)
-        {
-            LokiTelemetry.Event("windup_railcart_released",
-                $"name={name} released={released} mode={activationMode} " +
-                $"pad={(activationPad != null ? activationPad.name : "null")} outputPower={outputPower:F3}");
-            loggedReleasedOnce = true;
-            lastReleasedState = released;
         }
 
         return released;
@@ -352,39 +339,14 @@ public class RailCart : MonoBehaviour, IWindupReceiver
                       $"angVel={rb.angularVelocity:F3} rot={rb.rotation.eulerAngles:F1} released={released} " +
                       $"power={outputPower:F2} drivePower={drivePower:F2} atStart={atStart} atEnd={atEnd}", this);
 
-        // TODO(임시 진단, 2026-09-14): 레일카트 경로 추종 조사 끝나면 이 블록 제거.
-        // logDiagnostics(Console)와 달리 항상 켜져 있다 — 재현을 몇 번이고 다시 시키지 않고 이번
-        // 플레이 한 번으로 Grafana/Loki에서 바로 조회하려는 것. 스팸 방지로 0.2초 간격만 샘플링.
-        if (Time.time >= nextPathSampleTime)
-        {
-            nextPathSampleTime = Time.time + 0.2f;
-            float dist = (point - transform.position).magnitude;
-            LokiTelemetry.Event("railcart_path_sample",
-                $"seg={segmentIndex} t={t:F3} pos={transform.position:F2} pathPt={point:F2} dist={dist:F3} " +
-                $"speed={rb.velocity.magnitude:F2} maxSafe={path.MaxSafeSpeed(segmentIndex):F2} " +
-                $"power={outputPower:F2} drivePower={drivePower:F2} released={released} " +
-                $"atStart={atStart} atEnd={atEnd}");
-        }
-
         if (rb.velocity.magnitude > path.MaxSafeSpeed(segmentIndex))
         {
-            LokiTelemetry.Event("railcart_derail",
-                $"seg={segmentIndex} t={t:F3} pos={transform.position:F2} speed={rb.velocity.magnitude:F2} " +
-                $"maxSafe={path.MaxSafeSpeed(segmentIndex):F2}");
             Derail();
             return;
         }
 
-        if (t >= 1f && segmentIndex < path.SegmentCount - 1)
-        {
-            LokiTelemetry.Event("railcart_segment_change", $"from={segmentIndex} to={segmentIndex + 1} dir=forward");
-            segmentIndex++;
-        }
-        else if (t <= 0f && segmentIndex > 0)
-        {
-            LokiTelemetry.Event("railcart_segment_change", $"from={segmentIndex} to={segmentIndex - 1} dir=backward");
-            segmentIndex--;
-        }
+        if (t >= 1f && segmentIndex < path.SegmentCount - 1) segmentIndex++;
+        else if (t <= 0f && segmentIndex > 0) segmentIndex--;
     }
 
     private void Derail()
@@ -428,9 +390,6 @@ public class RailCart : MonoBehaviour, IWindupReceiver
 
     private void Recover()
     {
-        // TODO(임시 진단, 2026-09-14): 조사 끝나면 제거.
-        LokiTelemetry.Event("railcart_recover",
-            $"from={transform.position:F2} to={recoverPosition:F2} seg={segmentIndex}");
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         transform.position = recoverPosition;
@@ -451,9 +410,6 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     /// 웨이포인트 0은 아니므로 레일 배열 인덱스로 되찾지 않는다.</summary>
     private void RespawnAtRailStart()
     {
-        // TODO(임시 진단, 2026-09-14): 조사 끝나면 제거.
-        LokiTelemetry.Event("railcart_respawn_at_start",
-            $"from={transform.position:F2} to={initialPosition:F2} seg={segmentIndex}");
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
