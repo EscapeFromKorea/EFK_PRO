@@ -55,6 +55,12 @@ public class PlayerCubeDock : MonoBehaviour
     [Tooltip("한 프레임에 플레이어가 이 거리(Unit) 넘게 순간이동하면 리스폰/리셋으로 보고 즉시 해제한다.")]
     public float teleportReleaseThreshold = 3f;
 
+    [Header("성능")]
+    [Tooltip("대상 블록을 다시 찾는 간격(초). FindObjectsOfType로 씬을 매 프레임 훑으면 매 프레임 " +
+             "GC 할당이 생겨 눈에 띄는 프레임 히치를 유발한다(BlockCarrySystem과 동일 원인, " +
+             "플레이테스트에서 실측됨).")]
+    public float retargetInterval = 0.15f;
+
     [Header("조인트")]
     [Tooltip("도킹 조인트 파괴 힘(N). 무한이면 절대 안 끊어진다. 유한이면 과부하 시 도킹이 풀린다.")]
     public float jointBreakForce = Mathf.Infinity;
@@ -72,11 +78,12 @@ public class PlayerCubeDock : MonoBehaviour
     private Vector3 lastPos;
     private Vector3 lastScale;
 
-    // 이번 프레임 후보.
+    // 마지막 스캔 시점의 후보. retargetInterval 간격으로만 갱신된다.
     private SnapBlock aimed;
     private Vector3 aimSelfFaceCenter, aimBlockFaceCenter, aimBlockFaceNormal;
     private bool hasCandidate;
     private string rejectReason;
+    private float nextRetargetTime;
 
     private Transform reticle;
     private Renderer reticleRenderer;
@@ -151,8 +158,12 @@ public class PlayerCubeDock : MonoBehaviour
             return;
         }
 
-        if (joint == null)
+        // FindObjectsOfType로 씬을 훑는 건 매 프레임이 아니라 retargetInterval마다만(BlockCarrySystem과 동일 사유).
+        if (joint == null && Time.time >= nextRetargetTime)
+        {
             UpdateTarget();
+            nextRetargetTime = Time.time + Mathf.Max(0.02f, retargetInterval);
+        }
 
         UpdateReticle();
 

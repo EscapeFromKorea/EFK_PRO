@@ -55,6 +55,13 @@ public class PlayerBlockCarrier : MonoBehaviour
     [Tooltip("한 프레임에 플레이어가 이 거리(Unit) 넘게 순간이동하면 리스폰/리셋으로 보고 즉시 드롭한다.")]
     public float teleportDropThreshold = 3f;
 
+    [Header("성능")]
+    [Tooltip("대상 블록을 다시 찾는 간격(초). FindObjectsOfType로 씬을 매 프레임 훑으면 매 프레임 " +
+             "GC 할당이 생겨 구처럼 실제 물리로 구르는 도형에서 눈에 띄는 꿀렁임(프레임 히치)을 " +
+             "유발한다 — 플레이테스트에서 실측된 원인. 0.15초 간격이면 '블록 근처로 다가가면 " +
+             "조준점이 뜬다' 체감에는 차이가 없다.")]
+    public float retargetInterval = 0.15f;
+
     private PlayerMover mover;
     private PlayerShapeIdentity shapeId;
 
@@ -71,9 +78,10 @@ public class PlayerBlockCarrier : MonoBehaviour
     private Vector3 lastPos;
     private Vector3 lastScale;
 
-    // 이번 프레임 대상(없으면 null) + 거부 사유.
+    // 마지막 스캔 시점의 대상(없으면 null) + 거부 사유. retargetInterval 간격으로만 갱신된다.
     private SnapBlock aimed;
     private string rejectReason;
+    private float nextRetargetTime;
 
     private Transform reticle;
     private Renderer reticleRenderer;
@@ -125,8 +133,13 @@ public class PlayerBlockCarrier : MonoBehaviour
             return;
         }
 
-        if (carried == null)
+        // FindObjectsOfType로 씬을 훑는 건 매 프레임이 아니라 retargetInterval마다만 — 안 그러면
+        // 매 프레임 GC 할당이 생겨 물리로 구르는 도형(특히 구)에서 눈에 띄는 히치가 난다.
+        if (carried == null && Time.time >= nextRetargetTime)
+        {
             UpdateTarget();
+            nextRetargetTime = Time.time + Mathf.Max(0.02f, retargetInterval);
+        }
 
         UpdateReticle();
 
