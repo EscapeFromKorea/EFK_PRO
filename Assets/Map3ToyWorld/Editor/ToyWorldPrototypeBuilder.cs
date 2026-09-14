@@ -42,6 +42,78 @@ public static class ToyWorldPrototypeBuilder
         }
     }
 
+    [MenuItem("Tools/The Axiom/Rebuild Train Yard RailCart Sector")]
+    public static void RebuildTrainYardMenu() => RebuildTrainYardSector();
+
+    public static void RebuildTrainYardFromCommandLine()
+    {
+        try
+        {
+            RebuildTrainYardSector();
+            int errors = ToyWorldPrototypeValidator.ValidateScene(false);
+            if (errors > 0) throw new InvalidOperationException($"Map3 validation failed with {errors} error(s).");
+            Debug.Log("[ToyWorldBuilder] Train Yard RailCart rebuild and validation passed.");
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+            throw;
+        }
+    }
+
+    private static void RebuildTrainYardSector()
+    {
+        EnsureFolders();
+        LoadMaterials();
+
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        GameObject root = GameObject.Find("Map3_ToyWorld_Root");
+        if (root == null) throw new InvalidOperationException("Map3_ToyWorld_Root is missing.");
+
+        Transform generated = root.transform.Find("Generated");
+        Transform areas = generated != null ? generated.Find("Areas") : null;
+        Transform safety = generated != null ? generated.Find("CheckpointsAndResetVolumes") : null;
+        Transform debug = generated != null ? generated.Find("Debug_RouteMarkers") : null;
+        if (areas == null || safety == null)
+            throw new InvalidOperationException("Map3 generated roots are incomplete.");
+
+        Transform oldArea = areas.Find("Branch_TrainYard");
+        if (oldArea != null) UnityEngine.Object.DestroyImmediate(oldArea.gameObject);
+        DestroyNamedChild(safety, "CP_TrainYard_Entry");
+        DestroyNamedChild(safety, "CP_TrainYard");
+
+        DestroyNamedChild(safety, "RESET_ObjectVolume_3");
+        CreateObjectResetVolume(safety, 3, new Vector3(52.5f, -6f, 20f), new Vector3(58f, 2f, 42f));
+        if (debug != null)
+        {
+            DestroyNamedChild(debug, "ROUTE_Train_Normal_ExistingCloudShuttle");
+            DestroyNamedChild(debug, "ROUTE_Train_Bypass_RotatingBridgeOrAccelJump");
+            DestroyNamedChild(debug, "ROUTE_Train_Normal_WindupRailCart");
+            DestroyNamedChild(debug, "ROUTE_Train_Coop_MovingAnchorAndCargo");
+            Node("ROUTE_Train_Normal_WindupRailCart", debug);
+            Node("ROUTE_Train_Coop_MovingAnchorAndCargo", debug);
+        }
+
+        BranchRefs train = BuildTrainYard(areas, safety);
+        ToyWorldLevelDirector director = generated.GetComponentInChildren<ToyWorldLevelDirector>(true);
+        if (director == null) throw new InvalidOperationException("ToyWorldLevelDirector is missing.");
+        train.item.director = director;
+
+        ToyWorldArtDirector.ApplyTrainYard(generated);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene, ScenePath);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Selection.activeGameObject = areas.Find("Branch_TrainYard").gameObject;
+        Debug.Log("[ToyWorldBuilder] Rebuilt only Branch_TrainYard with the RailCart route.");
+    }
+
+    private static void DestroyNamedChild(Transform parent, string childName)
+    {
+        Transform child = parent.Find(childName);
+        if (child != null) UnityEngine.Object.DestroyImmediate(child.gameObject);
+    }
+
     public static void BuildPrototype()
     {
         EnsureFolders();
@@ -95,7 +167,7 @@ public static class ToyWorldPrototypeBuilder
         PlazaRefs plaza = BuildPlaza(areas, safety, progress);
         BuildToyBox(areas, shared, safety);
         BranchRefs fort = BuildBlockFort(areas, shared, safety);
-        BranchRefs train = BuildTrainYard(areas, shared, safety);
+        BranchRefs train = BuildTrainYard(areas, safety);
         BranchRefs doll = BuildDollHouse(areas, shared, safety);
         MusicBoxRepairController musicBox;
         doorPhysics finalGate;
@@ -297,43 +369,136 @@ public static class ToyWorldPrototypeBuilder
     }
 
 
-    private static BranchRefs BuildTrainYard(Transform areas, Transform shared, Transform safety)
+    private static BranchRefs BuildTrainYard(Transform areas, Transform safety)
     {
         Transform area = Node("Branch_TrainYard", areas);
-        Box("GEO_TrainWestBank", area, new Vector3(31f, -0.5f, 18f), new Vector3(14f, 1f, 26f), Mat("Ground"));
-        Box("GEO_TrainEastBank", area, new Vector3(53f, -0.5f, 18f), new Vector3(14f, 1f, 26f), Mat("Ground"));
-        Box("VIS_TrainCanyonDanger", area, new Vector3(42f, -5.5f, 18f), new Vector3(9f, 0.4f, 26f), Mat("Danger"), false);
-        CreateRailSegment(area, 35f, 40.5f, 18f);
-        CreateRailSegment(area, 44f, 57f, 18f);
+        Box("GEO_TrainWestBank", area, new Vector3(33f, -0.5f, 20f), new Vector3(16f, 1f, 38f), Mat("Ground"));
+        Box("GEO_TrainEastBank", area, new Vector3(72f, -0.5f, 20f), new Vector3(16f, 1f, 38f), Mat("Ground"));
+        Box("VIS_TrainCanyonDanger", area, new Vector3(52.5f, -5.5f, 20f), new Vector3(23f, 0.4f, 38f), Mat("Danger"), false);
 
-        // Existing CloudTrampoline movement variant. This is a shuttle platform,
-        // not an implementation of the absent wind-up/derailing rail cart.
-        Transform pointA = Node("Shuttle_PointA", area);
-        Transform pointB = Node("Shuttle_PointB", area);
-        pointA.position = new Vector3(36f, 0.8f, 18f);
-        pointB.position = new Vector3(49f, 0.8f, 18f);
-        CloudTrampoline shuttle = MovingBox<CloudTrampoline>("PLATFORM_Train_ExistingCloudShuttle", area,
-            pointA.position, new Vector3(4f, 0.5f, 4f), Mat("Dynamic"), true);
-        shuttle.GetComponent<BoxCollider>().size = new Vector3(4f, 0.5f, 4f);
-        shuttle.pointA = pointA;
-        shuttle.pointB = pointB;
-        shuttle.movePeriodSec = 12f;
-        shuttle.restMassThreshold = 0f;
-        shuttle.collapseMassThreshold = 100f;
-        shuttle.maxBoostSteps = 0;
-        shuttle.GetComponent<Rigidbody>().interpolation = RigidbodyInterpolation.Interpolate;
-        shuttle.gameObject.AddComponent<StickerSurface>();
-        ThreadAnchorObject("WIRE_TrainGapAnchor", area, new Vector3(42f, 7f, 18f), 9f);
-        AccelJumpBypass(area, new Vector3(34f, 0.2f, 25f), Vector3.right, 7f);
-        AccelJumpBypass(area, new Vector3(50f, 0.2f, 25f), Vector3.left, 7f);
-        RotatingBoard("DYN_Train_Bridge_Bypass", area, new Vector3(36.5f, 0.8f, 10f),
-            new Vector3(47.5f, 0.8f, 10f), 3.5f);
+        Vector3[] railPoints =
+        {
+            new Vector3(37f, 0.35f, 8f),
+            new Vector3(45f, 0.35f, 10f),
+            new Vector3(50f, 0.35f, 20f),
+            new Vector3(57f, 0.35f, 31f),
+            new Vector3(68f, 0.35f, 30f),
+        };
+        Vector3[] curvePoints =
+        {
+            new Vector3(41f, 0.35f, 5.5f),
+            new Vector3(48f, 0.35f, 14f),
+            new Vector3(52f, 0.35f, 29f),
+            new Vector3(63f, 0.35f, 34f),
+        };
 
-        Checkpoint("CP_TrainYard_Entry", safety, new Vector3(30f, 2f, 10f));
-        Checkpoint("CP_TrainYard", safety, new Vector3(54f, 2f, 18f));
+        RailPath path = CreateTrainRailPath(area, railPoints, curvePoints);
+        CreateTrainRailBed(area, path, 8, 3.6f);
+
+        GameObject cartObject = RailCartMenuItem.CreateRailCartAt(railPoints[0]);
+        cartObject.name = "DYN_Train_RailCart";
+        cartObject.transform.SetParent(area, true);
+        RailCart cart = cartObject.GetComponent<RailCart>();
+        if (cart.path != null) UnityEngine.Object.DestroyImmediate(cart.path.gameObject);
+        cart.path = path;
+        cart.maxSpeed = 5.5f;
+        cart.railRestoreForce = 160f;
+        cart.releaseDelay = 3f;
+        cart.fallYThreshold = -7f;
+        cart.GetComponent<Rigidbody>().interpolation = RigidbodyInterpolation.Interpolate;
+
+        GameObject axleObject = WindupAxleMenuItem.CreateWindupAxleAt(new Vector3(31f, 0f, 10f));
+        axleObject.name = "WindupAxle_TrainStation";
+        axleObject.transform.SetParent(area, true);
+        WindupAxle axle = axleObject.GetComponent<WindupAxle>();
+        axle.crank.GetComponent<BoxCollider>().isTrigger = true;
+        ToyWorldTrainAxleInput normalInput = axle.crank.gameObject.AddComponent<ToyWorldTrainAxleInput>();
+        normalInput.axle = axle;
+        normalInput.deltaPerHit = 1f;
+        cart.axle = axle;
+        CreateTrainCartAnchor(cartObject.transform);
+
+        for (int i = 0; i < 2; i++)
+        {
+            GameObject cargo = SnapBlockObject("DYN_Train_CargoBlock_" + (i + 1), area,
+                new Vector3(29.5f + i * 1.8f, 0.55f, 20f), new Vector3(1.4f, 1.1f, 1.4f));
+            cargo.GetComponent<Rigidbody>().mass = 6f;
+        }
+
+        Checkpoint("CP_TrainYard_Entry", safety, new Vector3(30f, 2f, 8f));
+        Checkpoint("CP_TrainYard", safety, new Vector3(74f, 2f, 30f));
         ToyWorldRepairItem item = RepairItem("GOAL_PowerGear", area, ToyWorldRepairItemType.PowerGear,
-            new Vector3(55f, 1.2f, 18f), Mat("Gear"));
+            new Vector3(75f, 1.2f, 30f), Mat("Gear"));
         return new BranchRefs { item = item };
+    }
+
+    private static RailPath CreateTrainRailPath(Transform parent, Vector3[] points, Vector3[] controls)
+    {
+        GameObject pathObject = new GameObject("RailPath_TrainYard", typeof(RailPath), typeof(RailTrackVisual));
+        pathObject.transform.SetParent(parent, false);
+        RailPath path = pathObject.GetComponent<RailPath>();
+
+        path.waypoints = new Transform[points.Length];
+        for (int i = 0; i < points.Length; i++)
+        {
+            Transform waypoint = Node("Waypoint_" + (i + 1), pathObject.transform);
+            waypoint.position = points[i];
+            path.waypoints[i] = waypoint;
+        }
+
+        path.curveControlPoints = new Transform[controls.Length];
+        for (int i = 0; i < controls.Length; i++)
+        {
+            Transform control = Node("CurveControl_" + (i + 1), pathObject.transform);
+            control.position = controls[i];
+            path.curveControlPoints[i] = control;
+        }
+        path.segmentMaxSafeSpeed = new[] { 9f, 8f, 8f, 9f };
+
+        RailTrackVisual visual = pathObject.GetComponent<RailTrackVisual>();
+        visual.gauge = 1.25f;
+        visual.railWidth = 0.15f;
+        visual.sleeperSize = new Vector3(2.25f, 0.15f, 0.45f);
+        visual.sleeperEverySamples = 2;
+        visual.samplesPerSegment = 24;
+        visual.ForceRebuild();
+        return path;
+    }
+
+    private static void CreateTrainRailBed(Transform parent, RailPath path, int samplesPerSegment, float width)
+    {
+        List<Collider> trackColliders = new List<Collider>();
+        int index = 1;
+        for (int segment = 0; segment < path.SegmentCount; segment++)
+        {
+            Vector3 previous = path.Evaluate(segment, 0f);
+            for (int sample = 1; sample <= samplesPerSegment; sample++)
+            {
+                Vector3 next = path.Evaluate(segment, (float)sample / samplesPerSegment);
+                Vector3 delta = next - previous;
+                GameObject bed = Box("GEO_TrainTrackBed_" + index++, parent,
+                    (previous + next) * 0.5f + Vector3.down * 0.2f,
+                    new Vector3(width, 0.4f, delta.magnitude + 0.2f), Mat("Rail"));
+                bed.transform.rotation = Quaternion.LookRotation(delta.normalized, Vector3.up);
+                trackColliders.Add(bed.GetComponent<Collider>());
+                previous = next;
+            }
+        }
+        ToyWorldRailCartOnlyTrack collisionFilter = path.gameObject.AddComponent<ToyWorldRailCartOnlyTrack>();
+        collisionFilter.trackColliders = trackColliders.ToArray();
+    }
+
+    private static void CreateTrainCartAnchor(Transform cart)
+    {
+        GameObject anchorObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        anchorObject.name = "WIRE_TrainCartAnchor";
+        UnityEngine.Object.DestroyImmediate(anchorObject.GetComponent<Collider>());
+        anchorObject.transform.SetParent(cart, false);
+        anchorObject.transform.localPosition = new Vector3(0f, 2.25f, 0f);
+        anchorObject.transform.localScale = Vector3.one * 0.45f;
+        anchorObject.GetComponent<Renderer>().sharedMaterial = Mat("Wire");
+        ThreadAnchor anchor = anchorObject.AddComponent<ThreadAnchor>();
+        anchor.connectRange = 7f;
     }
 
     private static BranchRefs BuildDollHouse(Transform areas, Transform shared, Transform safety)
@@ -422,18 +587,16 @@ public static class ToyWorldPrototypeBuilder
         Vector3[] centers =
         {
             new Vector3(0f, -6f, -42f), new Vector3(0f, -6f, 0f), new Vector3(-40f, -6f, 18f),
-            new Vector3(42f, -6f, 18f), new Vector3(34f, -6f, -34f), new Vector3(0f, -6f, 40f)
+            new Vector3(52.5f, -6f, 20f), new Vector3(34f, -6f, -34f), new Vector3(0f, -6f, 40f)
         };
         Vector3[] sizes =
         {
             new Vector3(34f, 2f, 28f), new Vector3(36f, 2f, 36f), new Vector3(36f, 2f, 34f),
-            new Vector3(42f, 2f, 34f), new Vector3(30f, 2f, 30f), new Vector3(36f, 2f, 34f)
+            new Vector3(58f, 2f, 42f), new Vector3(30f, 2f, 30f), new Vector3(36f, 2f, 34f)
         };
         for (int i = 0; i < centers.Length; i++)
         {
-            GameObject reset = Box("RESET_ObjectVolume_" + i, safety, centers[i], sizes[i], Mat("Danger"), true, true);
-            reset.AddComponent<ToyWorldObjectResetVolume>();
-            reset.GetComponentInChildren<Renderer>().enabled = false;
+            CreateObjectResetVolume(safety, i, centers[i], sizes[i]);
         }
 
         GameObject playerBounds = Box("RESET_PlayerOutOfBounds", safety, new Vector3(0f, -8.5f, 0f),
@@ -442,27 +605,25 @@ public static class ToyWorldPrototypeBuilder
         playerBounds.GetComponentInChildren<Renderer>().enabled = false;
     }
 
+    private static void CreateObjectResetVolume(Transform safety, int index, Vector3 center, Vector3 size)
+    {
+        GameObject reset = Box("RESET_ObjectVolume_" + index, safety, center, size, Mat("Danger"), true, true);
+        reset.AddComponent<ToyWorldObjectResetVolume>();
+        reset.GetComponentInChildren<Renderer>().enabled = false;
+    }
+
     private static void BuildRouteMarkers(Transform parent)
     {
         string[] names =
         {
             "ROUTE_ToyBox_Normal_ExistingLiftPad", "ROUTE_ToyBox_Bypass_SnapBlockStairs",
             "ROUTE_BlockFort_Normal_SnapBlockStairs", "ROUTE_BlockFort_Bypass_SeesawOrSlipRamp",
-            "ROUTE_Train_Normal_ExistingCloudShuttle", "ROUTE_Train_Bypass_RotatingBridgeOrAccelJump",
+            "ROUTE_Train_Normal_WindupRailCart", "ROUTE_Train_Coop_MovingAnchorAndCargo",
             "ROUTE_Doll_Normal_RotatingFurniture", "ROUTE_Doll_Bypass_WireOrJump",
             "ROUTE_Final_Normal_ExistingLeverAndLift", "ROUTE_Final_Bypass_BlocksOrBoardOrJump"
         };
         for (int i = 0; i < names.Length; i++) Node(names[i], parent);
     }
-
-    private static void CreateRailSegment(Transform parent, float fromX, float toX, float z)
-    {
-        float length = toX - fromX;
-        float center = (fromX + toX) * 0.5f;
-        Box("RAIL_Left_" + fromX, parent, new Vector3(center, 0.25f, z - 1.2f), new Vector3(length, 0.5f, 0.35f), Mat("Rail"));
-        Box("RAIL_Right_" + fromX, parent, new Vector3(center, 0.25f, z + 1.2f), new Vector3(length, 0.5f, 0.35f), Mat("Rail"));
-    }
-
 
     private static LiftPlatform LiftSet(string name, Transform parent, Vector3 platformPosition,
         Vector3 padPosition, float height, out LiftPad pad)

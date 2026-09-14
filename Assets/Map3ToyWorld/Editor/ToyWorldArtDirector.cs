@@ -53,6 +53,40 @@ public static class ToyWorldArtDirector
             "11 modular prefabs, 7 base meshes; visual-only low-poly dressing applied.");
     }
 
+    // Targeted pass used by the Train Yard rebuild. It deliberately never visits another area.
+    public static void ApplyTrainYard(Transform generated)
+    {
+        if(generated==null) throw new ArgumentNullException(nameof(generated));
+        Transform train=generated.Find("Areas/Branch_TrainYard");
+        if(train==null) throw new InvalidOperationException("Branch_TrainYard is missing.");
+        string physicsBefore=PhysicsSignature(train);
+        Transform oldArt=train.Find(ArtName);
+        if(oldArt!=null) UnityEngine.Object.DestroyImmediate(oldArt.gameObject);
+        foreach(Transform t in train.GetComponentsInChildren<Transform>(true))
+            if(t!=null && t!=train && t.name==ArtName) UnityEngine.Object.DestroyImmediate(t.gameObject);
+
+        batches.Clear(); Prepare();
+        foreach(BoxCollider box in train.GetComponentsInChildren<BoxCollider>(true))
+            if(!box.isTrigger && box.GetComponent<PlayerMover>()==null) DressSolid(box);
+        foreach(ToyWorldRepairItem item in train.GetComponentsInChildren<ToyWorldRepairItem>(true)) DressRepairItem(item);
+        foreach(ThreadAnchor anchor in train.GetComponentsInChildren<ThreadAnchor>(true)) DressThreadAnchor(anchor);
+        DressTrainYard(train);
+
+        Transform safety=generated.Find("CheckpointsAndResetVolumes");
+        if(safety!=null)
+            foreach(RespawnZone cp in safety.GetComponentsInChildren<RespawnZone>(true))
+                if(cp.name=="CP_TrainYard_Entry" || cp.name=="CP_TrainYard") DressCheckpoint(cp);
+
+        foreach(Transform batch in batches)
+        {
+            string key=Hash128.Compute(HierarchyPath(batch)).ToString();
+            Bake(batch,Folder+"/Baked/Dress_"+key+".asset");
+        }
+        if(physicsBefore!=PhysicsSignature(train))
+            throw new InvalidOperationException("Train Yard art pass changed gameplay physics configuration.");
+        AssetDatabase.SaveAssets();
+    }
+
     private static Transform Art(Transform owner)
     {
         Transform root=owner.Find(ArtName);
@@ -278,36 +312,14 @@ public static class ToyWorldArtDirector
             BoxCollider b=p.GetComponent<BoxCollider>(); Skin(p.transform,b.size,"TealDark");
             Chevrons(Geometry(p.transform),b.size.y*.5f+.02f,b.size.z,1.2f,"TealLight");
         }
-        foreach(ToyWorldRepairItem item in generated.GetComponentsInChildren<ToyWorldRepairItem>(true))
-        {
-            // Keep the existing collection visualRoot: its activation state is gameplay-owned.
-            foreach(Renderer r in item.visualRoot.GetComponentsInChildren<Renderer>()) r.enabled=false;
-            Transform g=Geometry(item.visualRoot.transform);
-            string color=item.itemType==ToyWorldRepairItemType.WindUpSpring?"Gold":item.itemType==ToyWorldRepairItemType.PowerGear?"TealLight":"Rose";
-            Part("CoreCage",g,Vector3.zero,new Vector3(1.45f,1.3f,1.45f),"Gold","Gear");
-            Part("Core",g,Vector3.zero,new Vector3(1.05f,1.55f,1.05f),"Lime","Cylinder");
-            for(int y=-1;y<=1;y+=2) Part("Band",g,new Vector3(0,y*.6f,0),new Vector3(1.3f,.18f,1.3f),color,"Cylinder");
-            Part("Crest",g,new Vector3(0,0,-.75f),new Vector3(.65f,.65f,.1f),color,"Star");
-            Place("CorePedestal",Art(item.transform),new Vector3(0,-1.15f,0),Vector3.one);
-        }
-        foreach(ThreadAnchor anchor in generated.GetComponentsInChildren<ThreadAnchor>(true))
-        {
-            // Anchor roots have non-unit scale: compensating only on the visual child preserves connectRange.
-            Transform art=Art(anchor.transform); Vector3 scale=anchor.transform.lossyScale;
-            art.localScale=new Vector3(1/scale.x,1/scale.y,1/scale.z);
-            Part("AnchorRing",Geometry(anchor.transform),Vector3.zero,new Vector3(1,1,.16f),"Gold","Ring");
-        }
+        foreach(ToyWorldRepairItem item in generated.GetComponentsInChildren<ToyWorldRepairItem>(true)) DressRepairItem(item);
+        foreach(ThreadAnchor anchor in generated.GetComponentsInChildren<ThreadAnchor>(true)) DressThreadAnchor(anchor);
         foreach(ToyWorldInstallSocket socket in generated.GetComponentsInChildren<ToyWorldInstallSocket>(true))
         {
             Transform art=Art(socket.transform);
             Place("CorePedestal",art,new Vector3(0,-.25f,0),Vector3.one*1.1f);
         }
-        foreach(RespawnZone cp in generated.GetComponentsInChildren<RespawnZone>(true))
-        {
-            Transform g=Geometry(cp.transform);
-            Part("CheckpointMedal",g,new Vector3(-1.3f,-1.9f,0),new Vector3(1.2f,.16f,1.2f),"Gold","Cylinder");
-            Part("CheckpointStar",g,new Vector3(-.65f,.4f,-.07f),new Vector3(.43f,.43f,.06f),"Ivory","Star");
-        }
+        foreach(RespawnZone cp in generated.GetComponentsInChildren<RespawnZone>(true)) DressCheckpoint(cp);
         HubProgressDisplay hub=generated.GetComponentInChildren<HubProgressDisplay>();
         for(int i=0;i<3;i++)
         {
@@ -323,6 +335,33 @@ public static class ToyWorldArtDirector
         Transform exit=generated.GetComponentInChildren<ToyWorldExitTrigger>().transform;
         exit.GetComponentInChildren<Renderer>().enabled=false;
         Place("PortalFrame",Art(exit),new Vector3(0,-1.5f,0),new Vector3(1.3f,1,1));
+    }
+
+    private static void DressRepairItem(ToyWorldRepairItem item)
+    {
+        // Keep the existing collection visualRoot: its activation state is gameplay-owned.
+        foreach(Renderer r in item.visualRoot.GetComponentsInChildren<Renderer>()) r.enabled=false;
+        Transform g=Geometry(item.visualRoot.transform);
+        string color=item.itemType==ToyWorldRepairItemType.WindUpSpring?"Gold":item.itemType==ToyWorldRepairItemType.PowerGear?"TealLight":"Rose";
+        Part("CoreCage",g,Vector3.zero,new Vector3(1.45f,1.3f,1.45f),"Gold","Gear");
+        Part("Core",g,Vector3.zero,new Vector3(1.05f,1.55f,1.05f),"Lime","Cylinder");
+        for(int y=-1;y<=1;y+=2) Part("Band",g,new Vector3(0,y*.6f,0),new Vector3(1.3f,.18f,1.3f),color,"Cylinder");
+        Part("Crest",g,new Vector3(0,0,-.75f),new Vector3(.65f,.65f,.1f),color,"Star");
+        Place("CorePedestal",Art(item.transform),new Vector3(0,-1.15f,0),Vector3.one);
+    }
+
+    private static void DressThreadAnchor(ThreadAnchor anchor)
+    {
+        Transform art=Art(anchor.transform); Vector3 scale=anchor.transform.lossyScale;
+        art.localScale=new Vector3(1/scale.x,1/scale.y,1/scale.z);
+        Part("AnchorRing",Geometry(anchor.transform),Vector3.zero,new Vector3(1,1,.16f),"Gold","Ring");
+    }
+
+    private static void DressCheckpoint(RespawnZone cp)
+    {
+        Transform g=Geometry(cp.transform);
+        Part("CheckpointMedal",g,new Vector3(-1.3f,-1.9f,0),new Vector3(1.2f,.16f,1.2f),"Gold","Cylinder");
+        Part("CheckpointStar",g,new Vector3(-.65f,.4f,-.07f),new Vector3(.43f,.43f,.06f),"Ivory","Star");
     }
 
     private static void DressLandmarks(Transform generated)
@@ -343,22 +382,7 @@ public static class ToyWorldArtDirector
         // Perimeter edging is low and outside the existing playable floor, leaving bypasses open.
         for(float z=5;z<32;z+=3)
             Part("FortEdgeStone",Geometry(fort),new Vector3(-55.25f,.35f,z),new Vector3(.45f,.7f,2.8f),"StoneWarm");
-        Transform train=areas.Find("Branch_TrainYard");
-        Transform canyon=train.Find("VIS_TrainCanyonDanger");
-        Skin(canyon,new Vector3(9,.4f,26),"Slate");
-        for(int side=-1;side<=1;side+=2)
-            for(float z=6;z<31;z+=1.4f)
-                Part("GapWarning",Geometry(train),new Vector3(42+side*4.25f,.055f,z),new Vector3(.42f,.025f,.72f),"Coral","Bevel",Quaternion.Euler(0,side*25,0));
-        for(float x=35;x<57;x+=1.1f)
-            if(x<=40.5f||x>=44) Place("RailSleeper",Art(train),new Vector3(x,.05f,18),Vector3.one);
-        for(int x=0;x<2;x++)
-        {
-            float px=x==0?30:56;
-            Part("CablePost",Geometry(train),new Vector3(px,4.5f,30.6f),new Vector3(.3f,9,.3f),"WoodDark");
-            Part("Finial",Geometry(train),new Vector3(px,9,30.6f),new Vector3(.65f,.65f,.65f),"Gold","Cylinder");
-            if(x==0) Cable(Geometry(train),new Vector3(px,8.9f,30.6f),new Vector3(56,8.9f,30.6f));
-        }
-        for(int x=0;x<3;x++) Place("ToyCrate",Art(train),new Vector3(26+x*1.8f,0,30),Vector3.one*.65f);
+        DressTrainYard(areas.Find("Branch_TrainYard"));
         Transform doll=areas.Find("Branch_DollHouse");
         // Furniture is recessed into the back wall. It never occupies a traversal landing.
         Place("Bookcase",Art(doll),new Vector3(26,6,-44.8f),new Vector3(1.25f,1.2f,.55f),Quaternion.Euler(0,180,0));
@@ -388,6 +412,23 @@ public static class ToyWorldArtDirector
         // Backdrop/pipes are on existing walls; no fake deployed staircase or new wind-up logic.
         for(int i=0;i<7;i++)
             Part("OrganPipe",Geometry(final),new Vector3(-14.35f,2.5f+i*.35f,38+i*1.6f),new Vector3(.35f,4+i*.7f,.45f),i%2==0?"Gold":"Teal","Cylinder");
+    }
+
+    private static void DressTrainYard(Transform train)
+    {
+        Transform canyon=train.Find("VIS_TrainCanyonDanger");
+        Skin(canyon,new Vector3(23,.4f,38),"Slate");
+        for(int side=-1;side<=1;side+=2)
+            for(float z=2;z<39;z+=1.6f)
+                Part("GapWarning",Geometry(train),new Vector3(52.5f+side*11.25f,.055f,z),new Vector3(.42f,.025f,.78f),"Coral","Bevel",Quaternion.Euler(0,side*25,0));
+        for(int x=0;x<2;x++)
+        {
+            float px=x==0?28:77;
+            Part("CablePost",Geometry(train),new Vector3(px,4.5f,38),new Vector3(.3f,9,.3f),"WoodDark");
+            Part("Finial",Geometry(train),new Vector3(px,9,38),new Vector3(.65f,.65f,.65f),"Gold","Cylinder");
+            if(x==0) Cable(Geometry(train),new Vector3(px,8.9f,38),new Vector3(77,8.9f,38));
+        }
+        for(int x=0;x<3;x++) Place("ToyCrate",Art(train),new Vector3(27+x*1.8f,0,35),Vector3.one*.65f);
     }
 
     private static void Window(Transform g,Vector3 pos,Quaternion rotation)

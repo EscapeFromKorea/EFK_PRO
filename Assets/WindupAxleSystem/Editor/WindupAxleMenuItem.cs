@@ -51,7 +51,12 @@ public static class WindupAxleMenuItem
     private static void CreateWindupAxle()
     {
         Vector3 spawnPos = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.pivot : Vector3.zero;
+        CreateWindupAxleAt(spawnPos);
+    }
 
+    /// <summary>메뉴와 레벨 배치 코드가 동일한 정식 태엽 축 조립물을 재사용하는 생성 진입점.</summary>
+    public static GameObject CreateWindupAxleAt(Vector3 spawnPos)
+    {
         GameObject axleObj = new GameObject("WindupAxle", typeof(WindupAxle));
         axleObj.transform.position = spawnPos; // 피벗은 바닥.
         WindupAxle axle = axleObj.GetComponent<WindupAxle>();
@@ -93,6 +98,7 @@ public static class WindupAxleMenuItem
 
         Undo.RegisterCreatedObjectUndo(axleObj, "Create Windup Axle");
         Selection.activeGameObject = axleObj;
+        return axleObj;
     }
 
     private static void CreateStickHalf(Transform parent, string name, float localX, Color color)

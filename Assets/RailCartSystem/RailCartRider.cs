@@ -30,6 +30,8 @@ public class RailCartRider : MonoBehaviour
     private Rigidbody occupantBody;
     private PlayerMover occupantMover;
     private Transform occupantOriginalParent;
+    private Collider[] occupantColliders;
+    private Collider[] cartColliders;
 
     void Awake()
     {
@@ -52,6 +54,19 @@ public class RailCartRider : MonoBehaviour
         }
 
         TryBoard();
+    }
+
+    private void FixedUpdate() => SyncOccupantToSeat();
+    private void LateUpdate() => SyncOccupantToSeat();
+
+    private void SyncOccupantToSeat()
+    {
+        if (occupantBody == null) return;
+        Transform target = seat != null ? seat : transform;
+        // A child kinematic Rigidbody does not reliably inherit a moving dynamic parent's pose in PhysX.
+        // Keep both physics and visual transforms on the explicit seat while cart collisions are ignored.
+        occupantBody.position = target.position;
+        occupantBody.rotation = target.rotation;
     }
 
     private void TryBoard()
@@ -96,6 +111,10 @@ public class RailCartRider : MonoBehaviour
         occupantMover = mover;
         occupantOriginalParent = body.transform.parent;
 
+        occupantColliders = body.GetComponentsInChildren<Collider>(true);
+        cartColliders = cart != null ? cart.GetComponentsInChildren<Collider>(true) : GetComponentsInChildren<Collider>(true);
+        SetOccupantCartCollisionsIgnored(true);
+
         body.isKinematic = true;
         mover.ExternallyDriven = true;
 
@@ -113,6 +132,8 @@ public class RailCartRider : MonoBehaviour
         Transform mountParent = cart != null ? cart.transform : transform;
         Vector3 exitPos = mountParent.TransformPoint(exitLocalOffset);
 
+        SetOccupantCartCollisionsIgnored(false);
+
         body.transform.SetParent(occupantOriginalParent, true);
         body.transform.position = exitPos;
         body.isKinematic = false;
@@ -121,5 +142,21 @@ public class RailCartRider : MonoBehaviour
         occupantBody = null;
         occupantMover = null;
         occupantOriginalParent = null;
+        occupantColliders = null;
+        cartColliders = null;
+    }
+
+    private void SetOccupantCartCollisionsIgnored(bool ignored)
+    {
+        if (occupantColliders == null || cartColliders == null) return;
+        foreach (Collider occupant in occupantColliders)
+        {
+            if (occupant == null) continue;
+            foreach (Collider cartCollider in cartColliders)
+            {
+                if (cartCollider == null || cartCollider == occupant) continue;
+                Physics.IgnoreCollision(occupant, cartCollider, ignored);
+            }
+        }
     }
 }

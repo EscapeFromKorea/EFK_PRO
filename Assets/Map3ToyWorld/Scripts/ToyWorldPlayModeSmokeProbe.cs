@@ -172,21 +172,82 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         }
         Debug.Log("[ToyWorldPlaySmoke] PASS both existing LiftPad hold/release paths.");
 
-        CloudTrampoline shuttle = FindObjectOfType<CloudTrampoline>();
-        Rigidbody shuttleBody = shuttle.GetComponent<Rigidbody>();
-        Place(sphere, shuttleBody.position + new Vector3(0f, 0.35f, 0f));
-        yield return new WaitForSeconds(0.2f);
-        Vector3 shuttleStart = shuttleBody.position;
-        Vector3 riderStart = sphereBody.position;
-        yield return new WaitForSeconds(1f);
-        Vector3 shuttleDelta = shuttleBody.position - shuttleStart;
-        Vector3 riderDelta = sphereBody.position - riderStart;
-        Require(Mathf.Abs(shuttleDelta.x) > 0.2f, "Existing shuttle did not move.");
-        Require(Mathf.Abs(riderDelta.x - shuttleDelta.x) < 0.6f &&
-                sphereBody.position.y > shuttleBody.position.y, "Existing shuttle did not carry real rider.");
-        Debug.Log("[ToyWorldPlaySmoke] PASS CloudTrampoline shuttle and real rider carry.");
+        Transform trainYard = GameObject.Find("Branch_TrainYard").transform;
+        Require(trainYard.GetComponentsInChildren<JumpPad>().Length == 0,
+            "Removed Train Yard JumpPads are still present.");
+        RailCart cart = trainYard.GetComponentInChildren<RailCart>();
+        Require(cart != null && cart.axle != null && cart.path != null && cart.IsOnRail,
+            "Train Yard RailCart is not fully wired on its rail.");
+        Rigidbody cartBody = cart.GetComponent<Rigidbody>();
+        RailCartRider cartRider = cart.GetComponent<RailCartRider>();
+        MethodInfo boardMethod = typeof(RailCartRider).GetMethod("Board", BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo unboardMethod = typeof(RailCartRider).GetMethod("Unboard", BindingFlags.Instance | BindingFlags.NonPublic);
+        Require(cartRider != null && boardMethod != null && unboardMethod != null,
+            "RailCart rider test hooks are missing.");
+        boardMethod.Invoke(cartRider, new object[] { sphere, sphereBody });
+        Require(sphereBody.isKinematic && sphere.transform.parent == cart.transform,
+            "Player shape did not board the RailCart.");
 
         PlayerMover cube = Array.Find(FindObjectsOfType<PlayerMover>(), p => p.name == "Player_Cube");
+        Rigidbody cubeBody = cube.GetComponent<Rigidbody>();
+        Vector3 cartStart = cartBody.position;
+        Vector3 forwardPush = -cart.axle.crank.forward;
+        cube.ExternallyDriven = true;
+        Place(cube, cart.axle.crank.position + cart.axle.crank.right * 0.9f - forwardPush * 1.2f);
+        cubeBody.velocity = forwardPush * 3f;
+        for (int i = 0; i < 60 && cart.axle.CurrentCharge == 0f; i++) yield return tick;
+        cube.ExternallyDriven = false;
+        Require(cart.axle.CurrentCharge > 0f,
+            "Forward crank push did not produce positive RailCart charge.");
+        Require(cart.axle.crank.GetComponent<Collider>().isTrigger,
+            "Train Yard crank must remain a pass-through trigger.");
+        yield return new WaitForSeconds(0.25f);
+        Require(Vector3.Dot(cart.axle.crank.right, forwardPush) > 0.7f,
+            "Crank end rotated opposite to the player's forward push.");
+        Place(cube, new Vector3(30f, 0.1f, 20f));
+        yield return new WaitForSeconds(1f);
+        Require(Vector3.Distance(cartBody.position, cartStart) < 0.35f,
+            "RailCart moved before its release delay elapsed.");
+        yield return new WaitForSeconds(cart.releaseDelay + 1f);
+        float cartTravel = Vector3.Distance(cartBody.position, cartStart);
+        Require(cartTravel > 0.75f && cart.IsOnRail,
+            "Released RailCart did not travel safely along its curved rail. travel=" + cartTravel +
+            ", onRail=" + cart.IsOnRail + ", position=" + cartBody.position + ", velocity=" + cart.Velocity +
+            ", charge=" + cart.axle.CurrentCharge + ", output=" + cart.axle.OutputPower);
+        float riderSeatError = Vector3.Distance(sphere.transform.position, cartRider.seat.position);
+        Require(riderSeatError < 0.1f,
+            "Boarded player moved away from the RailCart seat. error=" + riderSeatError +
+            ", rider=" + sphere.transform.position + ", seat=" + cartRider.seat.position);
+
+        float forwardDistance = Vector3.Distance(cartBody.position, cartStart);
+        Transform crank = cart.axle.crank;
+        Vector3 reversePush = crank.forward;
+        cube.ExternallyDriven = true;
+        Place(cube, crank.position + crank.right * 0.9f - reversePush * 1.2f);
+        cubeBody.velocity = reversePush * 3f;
+        for (int i = 0; i < 60 && cart.axle.CurrentCharge >= 0f; i++) yield return tick;
+        cube.ExternallyDriven = false;
+        Require(cart.axle.CurrentCharge < 0f,
+            "Opposite crank push did not reverse the signed charge.");
+        yield return new WaitForSeconds(0.25f);
+        Require(Vector3.Dot(crank.right, reversePush) > 0.7f,
+            "Crank end rotated opposite to the player's reverse push.");
+        Place(cube, new Vector3(30f, 0.1f, 20f));
+        yield return new WaitForSeconds(cart.releaseDelay + 2f);
+        float reverseDistance = Vector3.Distance(cartBody.position, cartStart);
+        Require(reverseDistance < forwardDistance - 0.1f && cart.IsOnRail,
+            "Negative charge did not drive the RailCart back toward its start. before=" +
+            forwardDistance + ", after=" + reverseDistance);
+
+        unboardMethod.Invoke(cartRider, null);
+        Vector3 trackPoint = cart.path.Evaluate(2, 0.5f);
+        Place(cube, trackPoint + Vector3.up * 1.5f);
+        yield return new WaitForSeconds(0.8f);
+        Require(cubeBody.position.y < trackPoint.y - 0.5f,
+            "Player shape stood on the RailCart-only track instead of falling through it.");
+        Place(cube, new Vector3(30f, 0.1f, 20f));
+        Debug.Log("[ToyWorldPlaySmoke] PASS bidirectional crank/cart travel, boarded rider sync, and player-only track pass-through.");
+
         Portal[] portals = FindObjectsOfType<Portal>();
         Portal enter = Array.Find(portals, p => p.action == Portal.PortalAction.Enable);
         Portal leave = Array.Find(portals, p => p.action == Portal.PortalAction.Disable);
@@ -264,18 +325,6 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Require(surface.Current == null && surface.ResolvedCollider.sharedMaterial == originalMaterial,
             "Sticker retraction did not restore original ramp material.");
         Debug.Log("[ToyWorldPlaySmoke] PASS existing ramp sticker swap/retraction.");
-
-        RotatingPlate bridge = GameObject.Find("DYN_Train_Bridge_Bypass").GetComponent<RotatingPlate>();
-        Quaternion bridgeRest = bridge.GetComponent<Rigidbody>().rotation;
-        for (int i = 0; i < 20; i++)
-        {
-            bridge.ApplyDriveTorque(8f);
-            yield return tick;
-        }
-        Require(Quaternion.Angle(bridge.GetComponent<Rigidbody>().rotation, bridgeRest) > 1f,
-            "Existing rotating bridge is blocked from rotating.");
-        bridge.GetComponent<PuzzleResettable>().ResetPuzzleObject();
-        Debug.Log("[ToyWorldPlaySmoke] PASS existing RotatingPlate motion and reset.");
 
         RespawnController respawn = FindObjectOfType<RespawnController>();
         RespawnZone cp = GameObject.Find("CP_FinalRoom").GetComponent<RespawnZone>();

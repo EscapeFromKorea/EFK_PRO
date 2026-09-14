@@ -75,9 +75,45 @@ public static class ToyWorldPrototypeValidator
         Require(pads.Length == 2, "Toy Box and final room require existing LiftSystem sets.", ref errors);
         foreach (LiftPad pad in pads)
             Require(pad.targetLift != null, pad.name + " has no target lift.", ref errors);
-        CloudTrampoline[] shuttles = UnityEngine.Object.FindObjectsOfType<CloudTrampoline>(true);
-        Require(shuttles.Length == 1 && shuttles[0].pointA != null && shuttles[0].pointB != null,
-            "Train Yard existing CloudTrampoline shuttle endpoints are missing.", ref errors);
+        Transform trainYard = FindChildByName(root.transform, "Branch_TrainYard");
+        if (trainYard != null)
+        {
+            Require(trainYard.GetComponentsInChildren<JumpPad>(true).Length == 0,
+                "Train Yard must not contain the removed JumpPad route.", ref errors);
+            Require(trainYard.GetComponentsInChildren<AccelPad>(true).Length == 0,
+                "Train Yard must not contain the removed acceleration-pad route.", ref errors);
+            RailCart[] carts = trainYard.GetComponentsInChildren<RailCart>(true);
+            Require(carts.Length == 1, "Train Yard requires exactly one RailCart.", ref errors);
+            if (carts.Length == 1)
+            {
+                RailCart cart = carts[0];
+                RailCartRider rider = cart.GetComponent<RailCartRider>();
+                Require(cart.path != null && cart.path.SegmentCount >= 4,
+                    "Train Yard RailCart needs the complete curved route.", ref errors);
+                Require(cart.path != null && cart.path.GetComponent<RailTrackVisual>() != null,
+                    "Train Yard RailCart path needs RailTrackVisual.", ref errors);
+                Require(cart.axle != null, "Train Yard RailCart has no WindupAxle.", ref errors);
+                Require(cart.axle != null && cart.axle.crank != null &&
+                        cart.axle.crank.GetComponent<WindupPaddleInput>() != null &&
+                        cart.axle.crank.GetComponent<ToyWorldTrainAxleInput>() != null,
+                    "Train Yard station crank needs official and normal-player push input.", ref errors);
+                Require(cart.axle != null && cart.axle.crank.GetComponent<Collider>() != null &&
+                        cart.axle.crank.GetComponent<Collider>().isTrigger,
+                    "Train Yard crank needs a pass-through input trigger.", ref errors);
+                Require(cart.axle != null && !cart.axle.transform.IsChildOf(cart.transform) &&
+                        cart.axle.transform.parent == trainYard,
+                    "Train Yard WindupAxle must be fixed to the station, not attached to the cart.", ref errors);
+                Require(cart.cargoBay != null, "Train Yard RailCart has no cargo bay.", ref errors);
+                Require(rider != null && rider.seat != null,
+                    "Train Yard RailCart boarding seat is not wired.", ref errors);
+                Require(cart.GetComponentInChildren<ThreadAnchor>(true) != null,
+                    "Train Yard RailCart needs its moving DreamThread anchor.", ref errors);
+                ToyWorldRailCartOnlyTrack trackFilter = cart.path != null
+                    ? cart.path.GetComponent<ToyWorldRailCartOnlyTrack>() : null;
+                Require(trackFilter != null && trackFilter.trackColliders != null && trackFilter.trackColliders.Length > 0,
+                    "Train Yard track needs its player pass-through collision filter.", ref errors);
+            }
+        }
         Require(director != null && director.musicBox != null && director.musicBox.activationLever != null &&
                 director.musicBox.activationDoor != null, "Existing final lever/door are not wired.", ref errors);
         Require(UnityEngine.Object.FindObjectsOfType<RotatingPlate>(true).Length >= 5,
@@ -108,12 +144,16 @@ public static class ToyWorldPrototypeValidator
                                     go.name.StartsWith("DOOR_", StringComparison.Ordinal) ||
                                     go.name.StartsWith("PLATFORM_", StringComparison.Ordinal) ||
                                     go.name.StartsWith("DYN_", StringComparison.Ordinal);
+            RailCart owningCart = go.GetComponentInParent<RailCart>();
             if (gameplayGeometry)
-                Require(go.GetComponent<Collider>() != null, go.name + " needs a gameplay Collider.", ref errors);
+                Require(go.GetComponent<Collider>() != null ||
+                        (go.GetComponent<RailCart>() != null && go.GetComponentInChildren<Collider>(true) != null),
+                    go.name + " needs a gameplay Collider.", ref errors);
 
             Collider collider = go.GetComponent<Collider>();
             Renderer renderer = go.GetComponent<Renderer>();
-            if (collider != null)
+            // RailCartSystem intentionally uses primitive renderers and compound child colliders as one body.
+            if (collider != null && owningCart == null)
                 Require(renderer == null, go.name + " mixes gameplay Collider and visual Mesh on the same object.", ref errors);
 
             if (go.name.StartsWith("TRG_", StringComparison.Ordinal) ||
