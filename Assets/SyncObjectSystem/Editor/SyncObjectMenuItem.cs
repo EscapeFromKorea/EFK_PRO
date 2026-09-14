@@ -35,6 +35,14 @@ public static class SyncObjectMenuItem
         Rigidbody rb = go.AddComponent<Rigidbody>();
         rb.useGravity = false;
         rb.isKinematic = role == SyncObject.SyncRole.Follower;
+        // 중력을 꺼서 "떠 있는 플랫폼" 느낌을 내는 건 의도한 설계지만, drag가 0이면 한 번 밀린 뒤
+        // 마찰 없이 영원히 미끄러져가 버려 데모/QA에서 원하는 자리에 세워두기가 안 된다(2026-09-14
+        // QA에서 발견). Leader(다이나믹)에만 감쇠를 넣어 밀면 이동하다 자연히 멈추게 한다.
+        if (role == SyncObject.SyncRole.Leader)
+        {
+            rb.drag = 3f;
+            rb.angularDrag = 3f;
+        }
 
         SyncObject sync = go.AddComponent<SyncObject>();
         sync.pairId = pairId;
