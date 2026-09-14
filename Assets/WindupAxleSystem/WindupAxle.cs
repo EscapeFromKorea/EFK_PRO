@@ -45,7 +45,10 @@ public class WindupAxle : MonoBehaviour
     public Transform crank;
     [Tooltip("손잡이가 목표 각도까지 도는 속도(초당 도). 높을수록 더 빠르고 팍팍하게 돈다.")]
     public float crankDegreesPerSecond = 540f;
-    [Tooltip("한 번 밀 때마다 손잡이가 돌아가는 각도(도).")]
+    [Tooltip("입력 크기(ApplyRotation의 signedDelta, 정육면체 1회 텀블 = 1.0 기준) 1단위당 손잡이가 " +
+             "돌아가는 각도(도). 기본값 90은 정육면체 텀블각(90°)과 같아, 더 크게 미는 입력(정사면체 " +
+             "109.47° 텀블 = 1.2163단위)이 들어오면 그 비율만큼 더 돈다 — 고정폭 스윙이 아니라 " +
+             "'민 만큼' 돈다.")]
     public float crankSwingDegrees = 90f;
     [Tooltip("한 번 밀고 나서 다음 밀기를 받아들이기까지 기다리는 시간(초). 너무 짧으면 손잡이가 " +
              "채 다 돌기도 전에 같은 밀기가 중복으로 감지될 수 있다.")]
@@ -100,8 +103,11 @@ public class WindupAxle : MonoBehaviour
 
         CurrentCharge = ApplyChargeRotation(CurrentCharge, signedDelta, chargeRate, maxCharge, directionDeadzone);
         IsWinding = true;
-        crankTargetAngle += Mathf.Sign(signedDelta) * crankSwingDegrees;
+        crankTargetAngle += signedDelta * crankSwingDegrees;
         nextCrankSwingTime = Time.time + crankSwingCooldown;
+
+        // TODO(임시 진단, 2026-09-14): HoldPad 미반응 조사 끝나면 제거.
+        LokiTelemetry.Event("windup_axle_apply_rotation", $"axle={name} delta={signedDelta:F3} charge={CurrentCharge:F3}");
 
         float swingSign = Mathf.Sign(signedDelta);
         for (int i = 0; i < receivers.Count; i++)

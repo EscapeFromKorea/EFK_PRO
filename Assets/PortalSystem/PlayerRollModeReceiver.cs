@@ -134,6 +134,11 @@ public class PlayerRollModeReceiver : MonoBehaviour
     public static readonly float CubeCellSize = CubeGeometry.inradius * 2f;
     public static readonly float TetrahedronCellSize = TetrahedronGeometry.inradius * 2f;
 
+    /// <summary>도형별 텀블 1회 회전각(도). 콜라이더 bounds로 재면 안 되는 것과 같은 이유로 여기
+    /// 상수를 그대로 가져다 쓴다(WindupAxleSystem/WindupPaddleInput — "몸으로 민 만큼만" 반영).</summary>
+    public static readonly float CubeTumbleAngleDegrees = CubeGeometry.tumbleAngle;
+    public static readonly float TetrahedronTumbleAngleDegrees = TetrahedronGeometry.tumbleAngle;
+
     /// <summary>매 텀블 재접지가 흡수할 수 있는 낙차 상한(스케일 1 기준). <see cref="SnapPivotToGround"/>
     /// 참고 — 이보다 큰 낙차는 절벽과 똑같이 취급돼 "텀블→뜸→낙하→재접지"가 반복되는 스타카토
     /// 동작이 된다(2026-08-20 계단 테스트에서 실측 확인). 계단형 지형을 설계할 땐 단 높이를 이

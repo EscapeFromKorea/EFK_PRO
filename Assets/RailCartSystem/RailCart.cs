@@ -18,6 +18,13 @@ using UnityEngine;
 /// 그 지점의 접선 방향으로 밀고, 그 지점으로 옆 이탈을 되돌린다. 별도의 누적 진행값을 따로 들고
 /// 다니지 않아 직접 밀려도 자연히 보정된다.
 ///
+/// <see cref="activationMode"/>(2026-09-14 추가)가 `ReleaseDelay`(위 설명 그대로)와, 발판을 밟고
+/// 있는 동안만 구동력이 걸리는 `HoldPad`를 가른다(`RotatingPlatform`과 같은 enum 공유,
+/// `WindupActivationMode` 문서 참고). ⚠ HoldPad로 발판에서 대기하는 동안에도 `WindupAxle` 자체의
+/// `dischargeRate` 소모는 계속된다 — 축은 어떤 수신자가 왜 대기 중인지 모르는 단방향 발신자라
+/// (PRD §3) 수신자 상태를 axle에 되먹이지 않는다. ReleaseDelay 대기 중에도 이미 같은 특성이라
+/// 새로 생긴 문제는 아니지만, 발판 대기가 길어지면 밟았을 때 이미 힘이 빠져 있을 수 있다는 뜻이다.
+///
 /// 탈선 조건은 "속도 임계"와 "분기"를 별개로 두지 않는다 — `RailPath`가 구간마다 갖는
 /// `maxSafeSpeed`를 넘으면 탈선한다(분기는 그 값을 낮게 잡아둔 구간일 뿐). 탈선 후에는 "낙하"
 /// 또는 "완전 전복"이 확정될 때만(그리고 그 뒤로도 `overturnRecoveryDelaySec`만큼 더 기다렸다가)
@@ -45,10 +52,17 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     [Tooltip("화물 적재 트리거(가칭 RailCartCargoBay). 비워두면 화물 없이 항상 기본 질량으로 구동.")]
     public RailCartCargoBay cargoBay;
 
-    [Header("지연 발동 — RotatingPlatform과 동일 규칙(2026-09-05 확정)")]
+    [Header("발동 방식 (2026-09-14 추가)")]
+    [Tooltip("ReleaseDelay = 마지막으로 민 시점부터 releaseDelay가 지나면 자동 발동(기존 동작). " +
+             "HoldPad = activationPad를 밟고 있는 동안만 구동력이 걸리고, 내려오면 즉시 멈춘다.")]
+    public WindupActivationMode activationMode = WindupActivationMode.ReleaseDelay;
+    [Tooltip("activationMode가 HoldPad일 때만 쓰는 발판. 비워두면 경고를 내고 구동하지 않는다.")]
+    public WindupActivationPad activationPad;
+
+    [Header("지연 발동 — ReleaseDelay 모드 전용, RotatingPlatform과 동일 규칙(2026-09-05 확정)")]
     [Tooltip("축을 마지막으로 민 시점부터 이 시간(초)이 지나야 구동력이 걸리기 시작한다. 그 " +
              "사이에 또 밀면 타이머가 그 시점부터 다시 시작된다(RotatingPlatform.releaseDelay와 " +
-             "같은 규칙).")]
+             "같은 규칙). HoldPad 모드에서는 쓰지 않는다.")]
     public float releaseDelay = 3f;
 
     [Header("시각 회전 — 레일 접선 방향 추종(2026-09-06 추가)")]
@@ -64,6 +78,12 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     [Tooltip("레일에서 옆으로 벗어난 만큼 되돌리는 복원력 계수 — 탈선과는 별개로 '안정적으로 " +
              "주행'하는 근거다.")]
     public float railRestoreForce = 80f;
+    [Tooltip("복원력의 감쇠 계수(옆 방향 속도에 반대로 건다). Rigidbody의 drag가 0이고 " +
+             "rollingFriction은 레일 방향 속도만 깎아서, 감쇠가 없으면 순수 스프링 힘이 옆으로 " +
+             "튕겼다 되돌아오기를 반복한다(방향이 꺾이는 구간에서 특히 눈에 띈다) — 임계감쇠 근사값" +
+             "(2*sqrt(railRestoreForce*mass))을 기본값으로 둔다. 너무 낮으면 좌우로 흔들리고, " +
+             "너무 높으면 복귀가 굼떠진다.")]
+    public float restoreDamping = 100f;
     [Tooltip("적재 질량이 가속·충돌 세기에 반영되는 계수. 매 틱 rb.mass = 기본 질량 + 적재 질량 " +
              "합 × 이 값으로 갱신한다 — 같은 힘(drivingForce)이 무거울수록 덜 가속하고, 충돌 시에도 " +
              "그 무게가 그대로 물리 운동량에 반영된다(가속·충돌 두 요구를 질량 하나로 통합).")]
@@ -105,6 +125,10 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     private int segmentIndex;
     private float outputPower;
     private float lastSwingTime = float.NegativeInfinity;
+    private bool warnedMissingPad;
+    private bool loggedReleasedOnce; // TODO(임시 진단, 2026-09-14): 조사 끝나면 이 필드와 관련 로그 제거
+    private bool lastReleasedState;
+    private float nextPathSampleTime; // TODO(임시 진단, 2026-09-14): 조사 끝나면 이 필드와 관련 로그 제거
 
     private Vector3 recoverPosition;
     private Quaternion recoverRotation;
@@ -157,6 +181,44 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     public void OnCrankSwing(float direction)
     {
         lastSwingTime = Time.time;
+    }
+
+    /// <summary>ReleaseDelay 모드는 기존 타이머 규칙 그대로. HoldPad 모드는 activationPad가
+    /// 눌려 있는 동안만 true다(RotatingPlatform.IsOperating과 같은 판단 — 구동 방식만
+    /// 이산 걸음/연속 힘으로 다르다).</summary>
+    private bool IsReleased()
+    {
+        bool released;
+        if (activationMode != WindupActivationMode.HoldPad)
+        {
+            released = Time.time - lastSwingTime >= releaseDelay;
+        }
+        else if (activationPad == null)
+        {
+            if (!warnedMissingPad)
+            {
+                Debug.LogWarning($"[RailCart] '{name}': activationMode가 HoldPad인데 " +
+                    "activationPad가 비어 있어 장치를 작동시키지 않습니다.");
+                warnedMissingPad = true;
+            }
+            released = false;
+        }
+        else
+        {
+            released = activationPad.IsHeld;
+        }
+
+        // TODO(임시 진단, 2026-09-14): HoldPad 미반응 조사 끝나면 이 블록 제거.
+        if (!loggedReleasedOnce || released != lastReleasedState)
+        {
+            LokiTelemetry.Event("windup_railcart_released",
+                $"name={name} released={released} mode={activationMode} " +
+                $"pad={(activationPad != null ? activationPad.name : "null")} outputPower={outputPower:F3}");
+            loggedReleasedOnce = true;
+            lastReleasedState = released;
+        }
+
+        return released;
     }
 
     // 플레이 중이 아닐 때만 레일 위 가장 가까운 지점으로 스냅한다(클래스 상단 "에디터 자동 스냅"
@@ -259,7 +321,7 @@ public class RailCart : MonoBehaviour, IWindupReceiver
         float drivePower = outputPower;
         if ((atStart && drivePower < 0f) || (atEnd && drivePower > 0f)) drivePower = 0f;
 
-        bool released = Time.time - lastSwingTime >= releaseDelay;
+        bool released = IsReleased();
         if (released)
             rb.AddForce(tangent * (drivingForce * drivePower), ForceMode.Force);
 
@@ -280,7 +342,8 @@ public class RailCart : MonoBehaviour, IWindupReceiver
         // 레일(곡선 포함)에서 옆으로 벗어난 만큼 되돌리는 복원력 — 탈선(별도 조건)과 무관하게
         // 항상 작동해 "안정적으로 주행한다"는 요구를 만족시킨다. 지연 중에도 유지해 대기하는
         // 동안 레일에서 미끄러지지 않는다.
-        rb.AddForce((point - transform.position) * railRestoreForce, ForceMode.Force);
+        Vector3 lateralVelocity = rb.velocity - tangent * Vector3.Dot(rb.velocity, tangent);
+        rb.AddForce((point - transform.position) * railRestoreForce - lateralVelocity * restoreDamping, ForceMode.Force);
 
         if (logDiagnostics)
             Debug.Log($"[RailCart] seg={segmentIndex} t={t:F3} pos={transform.position:F3} pathPt={point:F3} " +
@@ -289,14 +352,39 @@ public class RailCart : MonoBehaviour, IWindupReceiver
                       $"angVel={rb.angularVelocity:F3} rot={rb.rotation.eulerAngles:F1} released={released} " +
                       $"power={outputPower:F2} drivePower={drivePower:F2} atStart={atStart} atEnd={atEnd}", this);
 
+        // TODO(임시 진단, 2026-09-14): 레일카트 경로 추종 조사 끝나면 이 블록 제거.
+        // logDiagnostics(Console)와 달리 항상 켜져 있다 — 재현을 몇 번이고 다시 시키지 않고 이번
+        // 플레이 한 번으로 Grafana/Loki에서 바로 조회하려는 것. 스팸 방지로 0.2초 간격만 샘플링.
+        if (Time.time >= nextPathSampleTime)
+        {
+            nextPathSampleTime = Time.time + 0.2f;
+            float dist = (point - transform.position).magnitude;
+            LokiTelemetry.Event("railcart_path_sample",
+                $"seg={segmentIndex} t={t:F3} pos={transform.position:F2} pathPt={point:F2} dist={dist:F3} " +
+                $"speed={rb.velocity.magnitude:F2} maxSafe={path.MaxSafeSpeed(segmentIndex):F2} " +
+                $"power={outputPower:F2} drivePower={drivePower:F2} released={released} " +
+                $"atStart={atStart} atEnd={atEnd}");
+        }
+
         if (rb.velocity.magnitude > path.MaxSafeSpeed(segmentIndex))
         {
+            LokiTelemetry.Event("railcart_derail",
+                $"seg={segmentIndex} t={t:F3} pos={transform.position:F2} speed={rb.velocity.magnitude:F2} " +
+                $"maxSafe={path.MaxSafeSpeed(segmentIndex):F2}");
             Derail();
             return;
         }
 
-        if (t >= 1f && segmentIndex < path.SegmentCount - 1) segmentIndex++;
-        else if (t <= 0f && segmentIndex > 0) segmentIndex--;
+        if (t >= 1f && segmentIndex < path.SegmentCount - 1)
+        {
+            LokiTelemetry.Event("railcart_segment_change", $"from={segmentIndex} to={segmentIndex + 1} dir=forward");
+            segmentIndex++;
+        }
+        else if (t <= 0f && segmentIndex > 0)
+        {
+            LokiTelemetry.Event("railcart_segment_change", $"from={segmentIndex} to={segmentIndex - 1} dir=backward");
+            segmentIndex--;
+        }
     }
 
     private void Derail()
@@ -340,6 +428,9 @@ public class RailCart : MonoBehaviour, IWindupReceiver
 
     private void Recover()
     {
+        // TODO(임시 진단, 2026-09-14): 조사 끝나면 제거.
+        LokiTelemetry.Event("railcart_recover",
+            $"from={transform.position:F2} to={recoverPosition:F2} seg={segmentIndex}");
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         transform.position = recoverPosition;
@@ -360,6 +451,9 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     /// 웨이포인트 0은 아니므로 레일 배열 인덱스로 되찾지 않는다.</summary>
     private void RespawnAtRailStart()
     {
+        // TODO(임시 진단, 2026-09-14): 조사 끝나면 제거.
+        LokiTelemetry.Event("railcart_respawn_at_start",
+            $"from={transform.position:F2} to={initialPosition:F2} seg={segmentIndex}");
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
