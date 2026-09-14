@@ -118,18 +118,26 @@ public class InertiaCapacitor : MonoBehaviour
     /// <summary>충전 입력 경계. impulseMagnitude = 이번 충돌의 운동량 크기(Collision.impulse.magnitude 등).</summary>
     public void AddImpulse(float impulseMagnitude)
     {
-        if (impulseMagnitude < minImpulseToCharge) return;
+        if (impulseMagnitude < minImpulseToCharge)
+        {
+            Debug.Log($"[InertiaCapacitor] 충격량 {impulseMagnitude:0.##} < 최소 기준 {minImpulseToCharge:0.##} — 무시.");
+            return;
+        }
 
         float gain = impulseMagnitude * chargeGainPerImpulse;
         if (maxChargePerHit > 0f) gain = Mathf.Min(gain, maxChargePerHit);
 
+        float before = CurrentCharge;
         CurrentCharge = Mathf.Clamp(CurrentCharge + gain, 0f, maxCharge);
+        Debug.Log($"[InertiaCapacitor] 충전 +{(CurrentCharge - before):0.##} → {CurrentCharge:0.##}/{maxCharge:0.##} " +
+                  $"(비율 {ChargeRatio:P0}, 충격량 {impulseMagnitude:0.##})");
     }
 
     /// <summary>버스트 방출을 시작한다(한 번에 쏟아내기). 수동 키 또는 외부 기믹이 호출.</summary>
     public void Discharge()
     {
         burstUntil = Time.time + Mathf.Max(0f, burstSeconds);
+        Debug.Log($"[InertiaCapacitor] 버스트 방출 시작 ({burstSeconds:0.##}초간 {burstMultiplier}배속, 현재 충전 {CurrentCharge:0.##}/{maxCharge:0.##})");
         for (int i = 0; i < receivers.Count; i++)
             receivers[i].OnCrankSwing(1f);
     }
@@ -196,11 +204,19 @@ public class InertiaCapacitor : MonoBehaviour
         OutputPower = dischargeCurve.Evaluate(shaped) * maxOutputPower;
 
         bool fullyCharged = ratio >= 1f;
-        if (fullyCharged && !wasFullyCharged) onFullyCharged.Invoke();
+        if (fullyCharged && !wasFullyCharged)
+        {
+            Debug.Log("[InertiaCapacitor] 완충! (onFullyCharged 발행)");
+            onFullyCharged.Invoke();
+        }
         wasFullyCharged = fullyCharged;
 
         bool nonZero = CurrentCharge > 0f;
-        if (!nonZero && wasNonZero) onFullyDischarged.Invoke();
+        if (!nonZero && wasNonZero)
+        {
+            Debug.Log("[InertiaCapacitor] 완전 방전 (onFullyDischarged 발행)");
+            onFullyDischarged.Invoke();
+        }
         wasNonZero = nonZero;
 
         if (!Mathf.Approximately(ratio, lastReportedRatio))
