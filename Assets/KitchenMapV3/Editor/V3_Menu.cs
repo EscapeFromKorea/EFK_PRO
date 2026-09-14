@@ -23,6 +23,7 @@ public static class V3Menu
     [MenuItem("Tools/KitchenMapV3/5. Trolley 도킹 토글", false, 20)]
     public static void ToggleTrolley()
     {
+        if (!V3.EnsureOwnedScene("Trolley 도킹 토글", checkForeign: false)) return;   // [K01]
         GameObject t = GameObject.Find("Trolley_카트");
         if (t == null) { V3.Warn("Trolley 없음 — Build All 먼저."); return; }
         // 도킹 = 갭 중앙으로 이동(정적) / 비도킹 = 아일랜드 안쪽 대기
@@ -39,9 +40,9 @@ public static class V3Menu
     /// <summary>[후보 구현 — P5 뒷마당 카메라 제한] 근거: 맵2_V3_릴레이설계/
     /// 하18_P5카메라_산출보고서_2026-09-05.md §5(구현 스펙 초안). 정식 채택 아님 — 릴레이 질의
     /// (마)-2 [수단 인정 여부] 판정 전까지의 T0 체감 측정용 후보. 기본값 ON(true)을 끄면 뒷마당
-    /// 구간 거리 상한(8U)·충돌 당김(0.3U)이 비활성화되고 실내와 동일한 원래 동작(거리 3~30)으로
-    /// 돌아간다.</summary>
-    [MenuItem("Tools/KitchenMapV3/8d. Toggle P5 Camera Limit (뒷마당 거리상한·충돌당김)", false, 39)]
+    /// 구간 거리 상한(8U)이 비활성화되고 실내와 동일한 원래 동작(거리 3~30)으로 돌아간다.
+    /// [K09, 2026-09-12] 충돌 당김(0.3U)은 이 토글과 무관하게 실내·실외 상시 실행된다(V3ThirdPersonCamera).</summary>
+    [MenuItem("Tools/KitchenMapV3/8d. Toggle P5 Camera Limit (뒷마당 거리상한)", false, 39)]
     public static void ToggleYardCameraLimit()
     {
         V3ThirdPersonCamera cam = Object.FindObjectOfType<V3ThirdPersonCamera>();

@@ -182,7 +182,7 @@ public static class V3Checkpoints
         // 촘촘 배치 원칙(2026-09-01 사용자 피드백): 높은 상판보다 "다음에 갈 곳"의 진입부·바닥에
         // 우선 배치 — 깃발이 걷는 눈높이에서 보여 길잡이를 겸한다.
         ("T0RS_01_스폰_러그초입",       63.0f, 13.0f,  0.0f,  DefaultH, 0f),   // (구 T0RS_01) START 매트 바로 앞
-        ("T0RS_02_계단_발치",           42.0f, 45.0f,  0.0f,  DefaultH, 0f),   // (구 T0RS_03) 아일랜드行 수납상자 계단 앞 바닥
+        ("T0RS_02_계단_발치",           39.0f, 43.0f,  0.0f,  DefaultH, 0f),   // (구 T0RS_03) 아일랜드行 수납상자 계단 앞 바닥
         ("T0RS_03_아일랜드",            39.5f, 68.0f,  9.6f,  DefaultH, 0f),   // (구 T0RS_04) P1 출발
         ("T0RS_04_코너_상판",           86.5f, 81.0f,  9.6f,  DefaultH, 0f),   // (구 T0RS_07) P2 진입(커피머신 동쪽) — 동쪽 화력 징검다리 도착
         ("T0RS_05_조리대_싱크옆",       31.0f, 80.0f,  9.6f,  DefaultH, 0f),   // (구 T0RS_05) V3 싱크 옆 — 서쪽 복귀 후
@@ -202,8 +202,15 @@ public static class V3Checkpoints
     };
 
     [MenuItem("Tools/KitchenMapV3/8. Place T0RS Flags (T0 보조 리스폰 깃발)", false, 32)]
-    public static void Place()
+    public static void Place() => PlaceChecked();
+
+    /// <summary>[K01·K04, 2026-09-12 — Codex 검수 지시] 첫 줄 가드(팀 씬·additive·표식 없는 동명
+    /// 오브젝트/RespawnController면 무변경 중단). 생성기 실패·검증 실패·예외·컨트롤러 미확보는 전부
+    /// Debug.LogError + false — 예전엔 V3.Warn 후 return이라 무인 검증이 성공으로 기록할 수 있었다.
+    /// 우리가 만든 RespawnController에만 V3_Owned 표식을 붙이고 dropExtraHeight를 설정한다.</summary>
+    public static bool PlaceChecked()
     {
+        if (!V3.EnsureOwnedScene("Place T0RS Flags")) return false;
         GameObject root = V3.Root();
         // 재실행 대비: 기존 그룹 삭제 후 재배치
         Transform old = root.transform.Find("V3_Checkpoints");
@@ -221,17 +228,26 @@ public static class V3Checkpoints
         // 검문 §E-1 L4 — 상시 표시는 불허, 토글 가능 + 기본 OFF 조건).
 
         // 컨트롤러(씬에 하나) — 정식 메뉴 경유. Clear()가 지우는 루트 밖에 있어 재빌드에도 유지된다.
-        if (Object.FindObjectOfType<RespawnController>() == null)
-            EditorApplication.ExecuteMenuItem("Tools/Respawn/Create Respawn Controller");
-
-        RespawnController controller = Object.FindObjectOfType<RespawnController>();
-        if (controller != null)
+        // [K01] 표식 없는 기존 컨트롤러는 위 가드가 이미 걸렀다 — 여기서 찾은 것은 우리 것이거나 방금 만든 것.
+        bool allOk = true;
+        RespawnController controller = Object.FindObjectOfType<RespawnController>(true);
+        if (controller == null)
+        {
+            if (!EditorApplication.ExecuteMenuItem("Tools/Respawn/Create Respawn Controller"))
+                Debug.LogError("[V3_Checkpoints] 'Tools/Respawn/Create Respawn Controller' 메뉴 실행 실패 — RespawnSystem이 프로젝트에 있는지 확인.");
+            controller = Object.FindObjectOfType<RespawnController>(true);
+            if (controller != null) V3.MarkOwned(controller.gameObject, "V3_Checkpoints");
+        }
+        if (controller != null && V3.IsOwned(controller.gameObject))
         {
             controller.dropExtraHeight = DropExtraHeight;   // [R5] — 저장소 코드는 무수정, 인스턴스 값만 설정
             EditorUtility.SetDirty(controller);              // [경미 반려] 인스펙터 값 변경을 씬에 확실히 반영
         }
         else
-            V3.Warn("RespawnController를 찾지 못해 dropExtraHeight를 설정하지 못했다.");
+        {
+            Debug.LogError("[V3_Checkpoints] RespawnController를 만들지/찾지 못해 dropExtraHeight를 설정하지 못했다 — 낙하 스폰 높이가 저장소 기본값으로 남는다(R5 검산 전제가 깨짐).");
+            allOk = false;
+        }
 
         int made = 0;
         RespawnZone previousZone = null;               // [순차 활성화] 직전 깃발의 RespawnZone
@@ -249,8 +265,9 @@ public static class V3Checkpoints
 
             if (!EditorApplication.ExecuteMenuItem("Tools/Respawn/Create Checkpoint Pole"))
             {
-                V3.Warn($"{d.name}: 체크포인트 정식 생성기 메뉴 실행 실패 — RespawnSystem이 프로젝트에 있는지 확인. 중단.");
-                return;
+                // [K04] Warn→Error + false: 무인 검증 exitCode에 반영(V3_Batch는 Error/Exception만 센다).
+                Debug.LogError($"[V3_Checkpoints] {d.name}: 체크포인트 정식 생성기 메뉴 실행 실패 — RespawnSystem이 프로젝트에 있는지 확인. 중단(배치 {made}/{Defs.Length}).");
+                return false;
             }
 
             var newOnes = new List<RespawnZone>();
@@ -272,7 +289,7 @@ public static class V3Checkpoints
                 // Undo.DestroyObjectImmediate로 되돌린다(Undo 스택에서도 등록을 해제).
                 foreach (RespawnZone z in newOnes)
                     if (z != null) Undo.DestroyObjectImmediate(z.gameObject);
-                return;
+                return false;
             }
 
             RespawnZone created = newOnes[0];
@@ -332,6 +349,7 @@ public static class V3Checkpoints
                                     "체크포인트는 순차 잠금 사슬에서 빠진다(Place() 재실행 권장).");
                     previousZone = created;
                     made++;
+                    allOk = false;   // [K04] 사슬 결손은 최종 실패로 전달(항목 자체는 유지).
                     continue;
                 }
 
@@ -378,7 +396,7 @@ public static class V3Checkpoints
                     EditorUtility.SetDirty(linkedGate);
                 }
                 if (cp != null) Undo.DestroyObjectImmediate(cp);
-                return;
+                return false;
             }
         }
         V3.Log($"T0RS 보조 리스폰 {made}/{Defs.Length}개 배치 완료 — 정식 CP0~CP8(🔒K3)이 아님. " +
@@ -386,6 +404,9 @@ public static class V3Checkpoints
                "언락(자기 BoxCollider ON), 02~12는 직전 깃발을 밟기 전까지 잠금(자기 " +
                "BoxCollider OFF — 체크포인트 등록 자체가 안 됨). 게이트 전용 자식(_Gate)의 " +
                "트리거는 잠금과 무관하게 항상 살아 있다.");
+        if (!allOk)
+            Debug.LogError("[V3_Checkpoints] Place: 일부 항목이 실패했다(위 오류 참조) — 12/12 배치 로그와 무관하게 이 단계는 실패다.");
+        return allOk;
     }
 
     /// <summary>[L4] T0 보조 리스폰 그룹 전체 표시 토글 — 검문 §E-1 L4: "메뉴 토글로 끌 수 있어야
@@ -397,6 +418,7 @@ public static class V3Checkpoints
     [MenuItem("Tools/KitchenMapV3/8b. Toggle T0RS Flags (T0 보조 리스폰 표시)", false, 37)]
     public static void ToggleVisible()
     {
+        if (!V3.EnsureOwnedScene("8b Toggle T0RS Flags", checkForeign: false)) return;
         GameObject root = GameObject.Find(V3.RootName);
         Transform t = root != null ? root.transform.Find("V3_Checkpoints") : null;
         if (t == null)
@@ -422,6 +444,7 @@ public static class V3Checkpoints
     [MenuItem("Tools/KitchenMapV3/8c. Toggle T0RS Sequential Lock (순차 잠금 해제/복원)", false, 38)]
     public static void ToggleSequentialLock()
     {
+        if (!V3.EnsureOwnedScene("8c Toggle T0RS Sequential Lock", checkForeign: false)) return;
         GameObject root = GameObject.Find(V3.RootName);
         Transform t = root != null ? root.transform.Find("V3_Checkpoints") : null;
         if (t == null)

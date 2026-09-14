@@ -47,16 +47,23 @@ public static class V3Gimmicks
     // "3. Setup Play" 사이에 끼워 넣는 원래 의도는 정수 우선순위로는 여전히 불가능해 근사(4)를
     // 그대로 쓴다. 기능(BuildAll 체인 호출)에는 영향 없다.
     [MenuItem("Tools/KitchenMapV3/2b. Wire Gimmicks (DoorSystem+DreamThread)", false, 4)]
-    public static void Wire()
+    public static void Wire() => WireChecked();
+
+    /// <summary>[K01·K04, 2026-09-12 — Codex 검수 지시] 첫 줄 가드(팀 씬·additive·표식 없는 동명 오브젝트면
+    /// 무변경 중단). 필수 배선(B2 시작판·P5 GOAL 판 3+게이트)이 실패하면 false — 스윙 고리·빨랫줄·P2
+    /// 게이트는 선택 배선이라 실패해도 Error 로그만 남기고 반환값에는 넣지 않는다(무인 검증 errorCount에는
+    /// 이미 잡힌다).</summary>
+    public static bool WireChecked()
     {
+        if (!V3.EnsureOwnedScene("Wire Gimmicks (2b)")) return false;
         GameObject root = V3.Root();
         Transform old = root.transform.Find(GroupName);
         if (old != null) Object.DestroyImmediate(old.gameObject);
         GameObject group = new GameObject(GroupName);
         group.transform.SetParent(root.transform, false);
 
-        WireStartMat(group);
-        WireP5Goal(group);
+        bool startMatOk = WireStartMat(group);
+        bool p5Ok = WireP5Goal(group);
         WireSwingRings(group);
         WireClothesline(group);
         WireP2Gate(group);
@@ -65,9 +72,19 @@ public static class V3Gimmicks
         // 상신 판정 전) 상태라 Build All을 돌릴 때마다 기본으로 깨지게 두지 않는다. 별도 실험
         // 메뉴 "2c. Wire Catapult"로만 켠다(기본 OFF, 아래 WireCatapultMenu 참고).
 
+        // [K13, 2026-09-12] 팀 생성기(DoorSystem ExitWeightPlate 등)가 붙인 Standard 재질은 URP에서 마젠타 —
+        // 이 그룹 아래 렌더러만 URP Lit로 참조 교체(팀 코드·에셋 무수정, Built-in RP면 무동작).
+        V3.ReplaceBuiltinMaterialsForPipeline(group, "K13 Wire Gimmicks");
+
+        if (!startMatOk || !p5Ok)
+        {
+            Debug.LogError($"[KitchenMapV3] Wire Gimmicks: 필수 배선 실패 — B2 시작판 {(startMatOk ? "OK" : "실패")} · P5 GOAL {(p5Ok ? "OK" : "실패")}. 위 오류 참조.");
+            return false;
+        }
         V3.Log("Wire Gimmicks 완료 — B2 시작판 · P5 GOAL(판A/B/C+게이트) · P4 스윙고리 6 · " +
                "P4 빨랫줄 · P2 실게이트. P3 투석기는 Build All 체인에서 분리됨 — " +
                "'2c. Wire Catapult' 메뉴로 별도 실행(실험 전용, 기본 OFF, 상신 판정 전).");
+        return true;
     }
 
     // ── 공통 헬퍼 ────────────────────────────────────────────────────────────────────
@@ -138,12 +155,37 @@ public static class V3Gimmicks
     /// <summary>대상(target)의 위치·스케일을 footprintSource 콜라이더의 world bounds "상면"에
     /// 맞춘다(target 자신은 시각적으로 보여야 하는 판 — ExitWeightPlate 등). thickness는 판
     /// 두께(Unity Y).</summary>
+    /// <summary>[K12, 2026-09-12 — 신규 확인] 빌드 중(같은 에디터 프레임에 V3.Box로 만든 직후)에는
+    /// Collider.bounds가 아직 물리 엔진에 동기화되지 않아 "원점의 단위 큐브" 값(center 0, size 1)을
+    /// 돌려준다. 그래서 판 A/B/C 센서와 B2 시작판이 전부 (0, 0.65, 0)·1×0.3×1로 생성됐다(Codex 09-12
+    /// 검수 사본 씬 YAML과 수정 전 소스 사본 씬 모두에서 확인 — 기획작업/부엌맵_플레이검수_2026-09-12/
+    /// TestProject/Assets/CodexPlayReview.unity, 맵2_V3_릴레이설계/로컬수정_2026-09-12/증거/scene_pos.py).
+    /// 렌더러 bounds를 쓰는 앵커(TryMarkerTopCenter)는 정상이었다. 물리 상태에 의존하지 않고
+    /// transform·center·size로 월드 AABB를 직접 계산한다(V3_Audit.ApproxWorldAABB와 같은 방식). Box가
+    /// 아닌 콜라이더는 Physics.SyncTransforms() 후 bounds를 읽는다.</summary>
+    private static Bounds WorldBoundsOf(Collider col)
+    {
+        if (col is BoxCollider box)
+        {
+            Transform t = box.transform;
+            Vector3 half = box.size * 0.5f;
+            Bounds b = new Bounds(t.TransformPoint(box.center), Vector3.zero);
+            for (int xi = -1; xi <= 1; xi += 2)
+                for (int yi = -1; yi <= 1; yi += 2)
+                    for (int zi = -1; zi <= 1; zi += 2)
+                        b.Encapsulate(t.TransformPoint(box.center + Vector3.Scale(half, new Vector3(xi, yi, zi))));
+            return b;
+        }
+        Physics.SyncTransforms();
+        return col.bounds;
+    }
+
     private static void FitOnTop(GameObject target, GameObject footprintSource, float thickness)
     {
         if (footprintSource == null) { V3.Warn($"{target.name}: 발자국 대상 오브젝트가 없다(null)."); return; }
         Collider col = footprintSource.GetComponent<Collider>();
         if (col == null) { V3.Warn($"{target.name}: '{footprintSource.name}'에 콜라이더가 없어 발자국을 못 읽었다."); return; }
-        Bounds b = col.bounds;
+        Bounds b = WorldBoundsOf(col);   // [K12] col.bounds(빌드 중 미동기화) 대신 transform 기반 AABB.
         target.transform.position = new Vector3(b.center.x, b.max.y + thickness * 0.5f, b.center.z);
         target.transform.localScale = new Vector3(b.size.x, thickness, b.size.z);
     }
@@ -163,7 +205,7 @@ public static class V3Gimmicks
         }
         Collider srcCol = footprintSource.GetComponent<Collider>();
         if (srcCol == null) { V3.Warn($"{name}: '{footprintSource.name}'에 콜라이더가 없어 발자국을 못 읽었다."); return null; }
-        Bounds b = srcCol.bounds;
+        Bounds b = WorldBoundsOf(srcCol);   // [K12] srcCol.bounds(빌드 중 미동기화) 대신 transform 기반 AABB.
 
         GameObject go = new GameObject(name);
         go.transform.SetParent(parent.transform, true);
@@ -190,7 +232,7 @@ public static class V3Gimmicks
 
     // ── B2 시작 매트 = 무게판 Teach (기믹배선_계획 §1.2 첫 항목) ──────────────────────
 
-    private static void WireStartMat(GameObject parent)
+    private static bool WireStartMat(GameObject parent)
     {
         GameObject sub = SubGroup(parent, "B2_StartMat");
         GameObject mat = GameObject.Find("Start_Mat_무게판2.75");
@@ -201,7 +243,7 @@ public static class V3Gimmicks
         // true인 채였다면 그 뒤 셋이 흩어져 매트를 완전히 떠나도 열림 상태가 영구 고정돼
         // "시작 즉시 눌림 → 떠나면 원복" 요구와 반대로 동작했다. false면 ExitWeightPlate.Update()가
         // 매 프레임 무게를 재판정해 떠나면 자동으로 닫힘 상태로 되돌아간다.
-        WireExitPlateWithSensor(sub, mat, "B2_StartMat", 2.75f, latchOpen: false,
+        return WireExitPlateWithSensor(sub, mat, "B2_StartMat", 2.75f, latchOpen: false,
             addSensor: false, searchCabinetDoor: true, sensor: out _);
     }
 
@@ -277,13 +319,14 @@ public static class V3Gimmicks
         {
             sensor = go.AddComponent<V3_PlateSensor>();
             sensor.requiredWeight = requiredWeight;
+            sensor.supportCollider = footprintSource != null ? footprintSource.GetComponent<Collider>() : null;   // [r3 재보완] 지지체 = 판 박스
         }
         return true;
     }
 
     // ── P5 GOAL 판정 (판 A·B·C + 실 게이트 앵커 2개 + V3_GoalGate) ───────────────────
 
-    private static void WireP5Goal(GameObject parent)
+    private static bool WireP5Goal(GameObject parent)
     {
         GameObject sub = SubGroup(parent, "P5_Goal");
 
@@ -294,7 +337,7 @@ public static class V3Gimmicks
             // exitCode에 반영되게 Debug.LogError로 올린다(V3_Batch.RunAll의 errorCount는
             // LogType.Error/Exception만 센다) — 이미 정상 배선된 것은 건드리지 않는다.
             Debug.LogError("[KitchenMapV3] GOAL_Gate_닫힘(0/1·무변화)를 찾지 못했다 — P5 배선 전체를 건너뛴다.");
-            return;
+            return false;
         }
 
         // 판 A: 실좌표 위치에 ExitWeightPlate(2.75, latchOpen=false, targetDoor 없음) +
@@ -318,8 +361,9 @@ public static class V3Gimmicks
 
         if (sensorA == null || sensorB == null || sensorC == null)
         {
-            V3.Warn("P5 GoalGate: 판 센서 3개 중 일부를 만들지 못해 V3_GoalGate 배선을 생략한다.");
-            return;
+            // [K04] Warn→Error + false: GOAL 판정이 없는 맵은 완주 불가 — 필수 실패.
+            Debug.LogError($"[KitchenMapV3] P5 GoalGate: 판 센서 3개 중 일부를 만들지 못해 V3_GoalGate 배선을 생략한다(A {(sensorA != null ? "OK" : "없음")} · B {(sensorB != null ? "OK" : "없음")} · C {(sensorC != null ? "OK" : "없음")}).");
+            return false;
         }
 
         GameObject logicGo = new GameObject("P5_GoalGateLogic");
@@ -330,6 +374,7 @@ public static class V3Gimmicks
         gg.plateC = sensorC;
         gg.toleranceSec = 3f;     // 지시: "마지막 눌림 기준 3초 이내 전부 true".
         gg.gateObject = goalGate;
+        return true;
     }
 
     private static V3_PlateSensor WirePresenceSensor(GameObject parent, GameObject footprintSource, string name)
@@ -338,6 +383,7 @@ public static class V3Gimmicks
         if (box == null) return null;
         V3_PlateSensor sensor = box.AddComponent<V3_PlateSensor>();
         sensor.requiredWeight = 0f; // 도형 존재만(가중치 없음) — "실 게이트 너머 도달" 판정.
+        sensor.supportCollider = footprintSource.GetComponent<Collider>();   // [r3 재보완] 지지체 = 판 박스
         // [A1 반영, map-reviewer 24차] FootprintTrigger가 만드는 box는 콜라이더만 있고 렌더러가
         // 없어(빈 GameObject) V3_PlateSensor.Awake()의 자기/자식 렌더러 탐색이 항상 실패했다 —
         // 판 B·C만 자기 판 조명(Q2)이 안 걸리고 판 A만 걸리던 원인. footprintSource(실제로 보이는
@@ -545,6 +591,7 @@ public static class V3Gimmicks
     [MenuItem("Tools/KitchenMapV3/2c. Wire Catapult (실험 — 기본 OFF, Audit 깨짐)", false, 5)]
     public static void WireCatapultMenu()
     {
+        if (!V3.EnsureOwnedScene("Wire Catapult (2c)")) return;   // [K01]
         // [R2 반영, map-reviewer 28차] 마커 존재 확인을 V3.Root()·그룹 생성보다 먼저로 옮긴다 —
         // 이전엔 이 확인이 WireCatapult() 안에만 있어, Build All 없이 2c만 눌러 마커가 없는
         // 상태로 실행하면 V3.Root()가 새 루트를("KitchenMapV3_Blockout") 만들고 그 아래 빈

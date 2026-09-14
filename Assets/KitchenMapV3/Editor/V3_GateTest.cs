@@ -35,6 +35,7 @@ public static class V3_GateTest
             return;
         }
 
+        if (!V3.EnsureOwnedScene("8e Test Sequential Gate", checkForeign: false)) return;   // [K01]
         if (!VerifyScenePreconditions()) return;
 
         SessionState.SetBool(PendingKey, true);

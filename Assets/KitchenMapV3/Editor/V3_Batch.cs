@@ -86,9 +86,25 @@ public static class V3Batch
         summary.AppendLine();
         summary.AppendLine("── 단계별 실행 ──");
         int stepFailCount = 0;
-        if (!RunStep(summary, "1. Clear", () => V3Menu.Clear())) stepFailCount++;
-        if (!RunStep(summary, "2. BuildAll", () => V3Menu.BuildAll())) stepFailCount++;
-        if (!RunStep(summary, "3. SetupPlay", () => V3Menu.SetupPlay())) stepFailCount++;
+        // [K04, 2026-09-12 — Codex 검수 지시] 단계가 bool을 돌려주면 false도 실패로 센다 — 예외만 실패로
+        // 보던 이전 방식은 V3.Warn 후 return하는 "조용한 실패"(생성기 메뉴 실패·전용 씬 가드 거부 등)를
+        // [성공]으로 기록했다. 필수 생성(2. BuildAll)이 실패하면 거기에 의존하는 3. SetupPlay는 실행하지
+        // 않고 [건너뜀]으로 적되 실패로 센다. 진단용 Audit은 실행하되 최종 판정은 실패로 유지된다.
+        bool clearOk = RunStep(summary, "1. Clear", () => V3Build.Clear());
+        if (!clearOk) stepFailCount++;
+        bool buildOk = RunStep(summary, "2. BuildAll", () => V3Build.BuildAll());
+        if (!buildOk) stepFailCount++;
+        bool setupOk;
+        if (buildOk)
+        {
+            setupOk = RunStep(summary, "3. SetupPlay", () => V3Play.SetupPlay());
+        }
+        else
+        {
+            setupOk = false;
+            summary.AppendLine("  [건너뜀] 3. SetupPlay — 2. BuildAll 실패(의존 단계, 실패로 계수)");
+        }
+        if (!setupOk) stepFailCount++;
         if (!RunStep(summary, "3b. Physics.SyncTransforms", () => Physics.SyncTransforms())) stepFailCount++;
         if (!RunStep(summary, "4. Audit", () => V3Menu.Audit())) stepFailCount++;
 
@@ -110,6 +126,10 @@ public static class V3Batch
         bool sameGroupFound = ParseCategoryCount(logSnapshot, "같은 그룹 내 겹침", out sameGroupCount);
         bool triggerFound = ParseCategoryCount(logSnapshot, "트리거 볼륨 겹침", out triggerCount);
         bool rigidbodyFound = ParseCategoryCount(logSnapshot, "kinematic 가동 프롭 겹침", out rigidbodyCount);
+        // [K03, 2026-09-12] 비지원 형상 조합(ComputePenetration 불가)은 "미검증 쌍 n건"으로 따로 집계된다 —
+        // 통과로도 실패로도 계수하지 않고 판정 줄에 병기한다(0이 아니면 감사가 전체 콜라이더를 본 것이 아니다).
+        int unverifiedCount;
+        bool unverifiedFound = ParseCategoryCount(logSnapshot, "미검증 쌍", out unverifiedCount);
 
         // 4) 요약 수집
         // 부수 실패 카운터(2026-09-05 17차 재검 반영) — CollectSceneSummary·CaptureShots
@@ -154,8 +174,9 @@ public static class V3Batch
             string sameGroupText = sameGroupFound ? sameGroupCount.ToString() : "?";
             string triggerText = triggerFound ? triggerCount.ToString() : "?";
             string rigidbodyText = rigidbodyFound ? rigidbodyCount.ToString() : "?";
+            string unverifiedText = unverifiedFound ? unverifiedCount.ToString() : "?";
             // 2026-09-06 [결정] 6: 판정 대상 두 건수를 각각 병기(①+② 모두 ❌ 계수 대상).
-            topLine = $"감사 판정: 정적 관통 {crossCount} · 가동체 {movingCount} {(auditFailed ? "❌" : "✅")} · 같은 그룹 {sameGroupText} · 트리거 {triggerText} · kinematic 가동 프롭 {rigidbodyText} · 단계 실패 {stepFailCount} · 에러 로그 {errorCount} · 부수 실패 {auxFailCount}";
+            topLine = $"감사 판정: 정적 관통 {crossCount} · 가동체 {movingCount} {(auditFailed ? "❌" : "✅")} · 같은 그룹 {sameGroupText} · 트리거 {triggerText} · kinematic 가동 프롭 {rigidbodyText} · 미검증 쌍 {unverifiedText} · 단계 실패 {stepFailCount} · 에러 로그 {errorCount} · 부수 실패 {auxFailCount}";
         }
         string finalSummaryText = topLine + Environment.NewLine + summary.ToString();
 
@@ -354,6 +375,22 @@ public static class V3Batch
             action();
             summary.AppendLine($"  [성공] {label}");
             return true;
+        }
+        catch (Exception e)
+        {
+            summary.AppendLine($"  [실패] {label}: {e}");
+            return false;
+        }
+    }
+
+    /// <summary>[K04, 2026-09-12] bool을 돌려주는 단계용 — false(조용한 실패)도 [실패]로 적는다.</summary>
+    private static bool RunStep(StringBuilder summary, string label, Func<bool> step)
+    {
+        try
+        {
+            bool ok = step();
+            summary.AppendLine(ok ? $"  [성공] {label}" : $"  [실패] {label}: 단계가 false를 반환(콘솔 전문의 [Error] 참조)");
+            return ok;
         }
         catch (Exception e)
         {

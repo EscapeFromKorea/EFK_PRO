@@ -243,6 +243,12 @@ public static class V3PhysLab
     [MenuItem("Tools/KitchenMapV3/물리실험 (V3PhysLab)", false, 50)]
     public static void RunAll()
     {
+        // [K01, 2026-09-12] 전용 씬 가드 — 팀 씬·additive·표식 없는 동명 Player_*가 있으면 무변경 중단.
+        if (!V3.EnsureOwnedScene("물리실험 (V3PhysLab)"))
+        {
+            if (Application.isBatchMode) EditorApplication.Exit(1);
+            return;
+        }
         SimulationMode prevMode = Physics.simulationMode;
         bool switcherPreexisted = UnityEngine.Object.FindObjectOfType<PlayerControlSwitcher>() != null;
         // [신규 2026-09-09, 검문27차 A5] 정식 생성기(PlayerObjectMenuItem.EnsureFollowCamera())는 씬에
@@ -437,6 +443,7 @@ public static class V3PhysLab
 
         GameObject root = GameObject.Find(goName);
         if (root == null) throw new Exception(goName + " 스폰 후 오브젝트를 찾지 못함");
+        V3.MarkOwned(root, "V3_PhysLab");   // [K01] 이번 실행이 만든 것 — 표식(실행 끝에 인스턴스ID로 정리된다).
         // [정정 2026-09-09, A5] 예외로 이 케이스가 중간에 끊겨도 바깥 finally가 인스턴스ID로
         // 찾아 정리할 수 있도록 생성 직후 등록해둔다.
         createdInstanceIds.Add(root.GetInstanceID());

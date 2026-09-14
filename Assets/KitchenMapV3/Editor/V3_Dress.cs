@@ -36,6 +36,7 @@ public static class V3Dress
     [MenuItem("Tools/KitchenMapV3/7. Naturalize (자연화)", false, 31)]
     public static void Apply()
     {
+        if (!V3.EnsureOwnedScene("Naturalize", checkForeign: false)) return;   // [K01] 우리 루트 안만 만진다.
         GameObject root = GameObject.Find(V3.RootName);
         if (root == null) { V3.Warn("블록아웃이 없다 — 먼저 2. Build All."); return; }
 
@@ -453,15 +454,15 @@ public static class V3Dress
                               {68,41,0f},{58,42.5f,0f},{49,41,0f},{46.5f,37.5f,0f}}),
             // B: 바닥→계단 발치 (구 seg2, C의 검산: 직결선 최소여유 1.569U — coord-auditor 확인).
             // (44.5,42.5)·(42,46) 모두 CP02(x39~45·y42~48) 안.
-            Seg(new float[,]{{47,39,0f},{44.5f,42.5f,0f},{42,46,0f}}),
+            Seg(new float[,]{{47,39,0f},{47,41.7f,0f},{40,41.7f,0f},{40,45,0f}}),
             // C: Crate_Step 10단 계단 오르기 (구 seg3, 무변경).
-            Seg(new float[,]{{42,48.5f,1.0f},{42,51,3.85f},{42,53.5f,5.81f},{42,56,8.64f},{42.5f,58.5f,9.65f}}),
+            Seg(new float[,]{{40,47,.8f},{40,49,1.6f},{40,51,2.4f},{40,53,3.2f},{40,55.5f,3.2f},{44,55.5f,3.2f},{44,53,4f},{44,51,4.8f},{44,49,5.6f},{44,47,6.4f},{44,44.5f,6.4f},{48,44.5f,6.4f},{48,47,7.2f},{48,49,8f},{48,51,8.8f},{48,53,9.6f},{48,58.5f,9.6f}}),
             // [O1 반영, map-reviewer 검문] C끝(42.5,58.5)→D시작(44,64) 5.70U가 점선 없이 끊겨
             // 있었다 — 관문이 아니라 Island_Top 위 평지(z9.65 그대로)라 메울 수 있다. 직선(2점)
             // 으로 처음 채웠더니 x43·y60.33 보간점이 IS_Board_도마(x36~43·y60~66.6)를 스쳤다 —
             // 중계점(44.5,59)을 끼워 도마 y시작(60) 아래에서 먼저 x44.5(도마 밖)로 빠진 뒤
             // 북상하도록 꺾었다(자가검증: 실물 침범 0·공중부양 0, 아래 검산표 참고).
-            Seg(new float[,]{{42.5f,58.5f,9.65f},{44.5f,59,9.65f},{44,64,9.65f}}),
+            Seg(new float[,]{{48,58.5f,9.65f},{44.5f,59,9.65f},{44,64,9.65f}}),
             // D: 아일랜드 위→CP03 관통(x36.5~42.5·y65~71)→카트→조리대 착지.
             // IS_Board_도마(x36~43·y60~66.6·z9.6~10.1)와 Molding_W(북쪽 가장자리, y≥68.25 매끈
             // 비탈)를 모두 피해야 한다 — 안전대는 y67.1~67.75(폭 0.65) 뿐이라 y67.2~67.5로 관통.
@@ -557,30 +558,43 @@ public static class V3Dress
         // 17.1%가 그 아래 Counter_W_L 상면 9.6 위 0.65U 공중) — 크기를 1.1U(대각 1.556U)로
         // 줄이고 중심을 그 얕은 선반 안(y82.1)으로 옮겨 발자국 전체가 선반 상면(10.2) 위에만
         // 오도록 했다(마진 y0.12U 양쪽, x는 원래도 넉넉).
-        (string label, float x, float y, float z, string num, float sz)[] arrows =
+        // [K08, 2026-09-12 — Codex 검수 지시] 45° 회전 정사각형(마름모)은 방향이 없었다. 화살표마다
+        // "가리킬 목표점"(문서 tx,ty)을 두고 그 방향으로 꼭짓점이 향하는 "V" 쉐브론(얇은 바 2개)을
+        // 만든다. 위치(x,y,z)·순서·번호·색·sz(발자국)는 이전 표와 동일 — 경로 좌표는 바꾸지 않는다.
+        // 목표점 근거(전부 이 파일의 기존 점선 웨이포인트 또는 원 주석에서 인용):
+        //   decor_crate→Crate 계단 시작(42,48.5 · seg C 첫 점) · decor_cart_gap→카트 갭 북단(49,74.6 · seg D)
+        //   gate_cue→CP04 점선 재개점(84.5,81 · seg F) · west_return_cue→서행 시작(55.2,83 · seg G)
+        //   pantry_entry_cue→팬트리 방향 "서·남"(원 주석) = 대각(−1,−1) 방향 → (12,81.1)
+        //   swing_cue→CP08 점선 시작(93.5,57.5 · seg J) · duct_drop_cue→마당 점선 시작(6.5,87.5 · seg L)
+        //   final_goal_cue→PlateA(49,104 · 원 주석).
+        (string label, float x, float y, float z, string num, float sz, float tx, float ty)[] arrows =
         {
-            ("decor_crate",      42f,   46.5f, 0.05f,  null,  1.6f),
-            ("decor_cart_gap",   49f,   72f,   8.65f,  null,  1.6f),
+            ("decor_crate",      40f,   44.5f, 0.05f,  null,  1.6f, 40f,   47f),
+            ("decor_cart_gap",   49f,   72f,   8.65f,  null,  1.6f, 49f,   74.6f),
             // 게이트 큐(구 화살표#7, 무변경 좌표) — P2 진입 직전. 다음 번호 "04"(코너 상판).
-            ("gate_cue",         54.5f, 79.3f, 9.65f,  "04",  1.6f),
+            ("gate_cue",         54.5f, 79.3f, 9.65f,  "04",  1.6f, 84.5f, 81f),
             // 신규: CP04 옆 서향 복귀 큐 — CoffeeMachine(x79.8~83.6) 밖 CP04 동쪽 여유 지점.
-            ("west_return_cue",  87f,   81f,   9.65f,  "05",  1.6f),
+            ("west_return_cue",  87f,   81f,   9.65f,  "05",  1.6f, 55.2f, 83f),
             // 신규: IN선반 위에서 팬트리 방향(서·남)을 가리키는 진입 큐. [O2] y81.7→82.1·크기
             // 1.6→1.1(위 sz 열 설명 참고).
-            ("pantry_entry_cue", 13f,   82.1f, 10.25f, "07",  1.1f),
+            ("pantry_entry_cue", 13f,   82.1f, 10.25f, "07",  1.1f, 12f,   81.1f),
             // 스윙 큐(구 화살표#4=57,81,22.28, 무변경 좌표) — 다음 번호 "08"(냉장고 위 착지).
-            ("swing_cue",        57f,   81f,   22.28f, "08",  1.6f),
+            ("swing_cue",        57f,   81f,   22.28f, "08",  1.6f, 93.5f, 57.5f),
             // 덕트 낙하 큐(구 화살표#5=5,84,24.08, 무변경 좌표) — 다음 번호 "10"(뒷마당 착지).
-            ("duct_drop_cue",    5f,    84f,   24.08f, "10",  1.6f),
+            ("duct_drop_cue",    5f,    84f,   24.08f, "10",  1.6f, 6.5f,  87.5f),
             // 신규: CP12에서 PlateA(49,104) 방향 최종 큐 — 다음 CP가 없어 번호 없음(골 지시자).
-            ("final_goal_cue",   56.5f, 101f,  0.05f,  null,  1.6f),
+            ("final_goal_cue",   56.5f, 101f,  0.05f,  null,  1.6f, 49f,   104f),
         };
         foreach (var a in arrows)
         {
-            GameObject go = Vis($"DRESS_guide_arrow_{a.label}", g.transform, GuideArw);
+            // 부모(빈 오브젝트, 이름은 이전과 동일)가 위치·방향을 갖고, 자식 바 2개가 쉐브론을 이룬다.
+            GameObject go = new GameObject($"DRESS_guide_arrow_{a.label}");
+            go.transform.SetParent(g.transform, false);
             go.transform.position = V3.Doc(a.x, a.y, a.z);
-            go.transform.localScale = new Vector3(a.sz, 0.08f, a.sz);
-            go.transform.rotation = Quaternion.Euler(0, 45f, 0);
+            // 문서 (x,y) → unity (x,z)이므로 목표 방향 yaw = atan2(dx, dy)(도). 부모 +z(앞)가 목표를 향한다.
+            float yawDeg = Mathf.Atan2(a.tx - a.x, a.ty - a.y) * Mathf.Rad2Deg;
+            go.transform.rotation = Quaternion.Euler(0f, yawDeg, 0f);
+            MakeChevron(go.transform, a.sz);
             if (a.num != null)
                 MakeNumber(g.transform, a.x + 0.9f, a.y - 0.4f, a.z + 0.02f, a.num);
         }
@@ -677,6 +691,24 @@ public static class V3Dress
         GameObject go = Vis(name, parent, tint);
         go.transform.position = V3.Doc((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, (z0 + z1) * 0.5f);
         go.transform.localScale = new Vector3(x1 - x0, z1 - z0, y1 - y0);
+    }
+
+    /// <summary>[K08] 부모의 +z(앞)를 가리키는 "V" 쉐브론 — 얇은 바 2개. 발자국은 sz×sz 안
+    /// (꼬리 x ±0.4sz · z −0.35sz, 꼭짓점 z +0.5sz), 두께 0.08(이전 마름모와 동일 높이).</summary>
+    static void MakeChevron(Transform parent, float sz)
+    {
+        Vector3 tip = new Vector3(0f, 0f, 0.5f * sz);
+        MakeBar(parent, "_L", new Vector3(-0.4f * sz, 0f, -0.35f * sz), tip, sz);
+        MakeBar(parent, "_R", new Vector3(0.4f * sz, 0f, -0.35f * sz), tip, sz);
+    }
+
+    static void MakeBar(Transform parent, string suffix, Vector3 from, Vector3 to, float sz)
+    {
+        GameObject bar = Vis(parent.name + suffix, parent, GuideArw);
+        Vector3 dir = to - from;
+        bar.transform.localPosition = (from + to) * 0.5f;
+        bar.transform.localRotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
+        bar.transform.localScale = new Vector3(0.18f * sz, 0.08f, dir.magnitude);
     }
 
     static GameObject Vis(string name, Transform parent, Color tint)

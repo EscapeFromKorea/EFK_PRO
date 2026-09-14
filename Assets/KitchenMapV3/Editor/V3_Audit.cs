@@ -61,9 +61,32 @@ public static class V3Audit
         // 1대1이라 모집단 총 개수(staticCount)는 이전과 동일하게 유지된다. 출력에 나오는 이름은
         // 그래서 "T0RS_nn_Gate"가 된다 — 아래 ③ 트리거 볼륨 겹침 집계 문구에 이 사실을 명시한다.
         // ComputePenetrationPair는 이제 자식(둘 다 항상 enabled)끼리만 계산하므로 그대로 유효하다.
-        List<BoxCollider> all = new List<BoxCollider>(root.GetComponentsInChildren<BoxCollider>())
+        // [K03, 2026-09-12 — Codex 검수 지시] 모집단을 BoxCollider에서 Collider 전체(Box·Sphere·Capsule·
+        // MeshCollider)로 넓힌다 — 이전엔 루트 하위 BoxCollider만 모아, Rigidbody가 있는 구↔구 실제 관통
+        // 0.75U(09-10 local-probes.txt)를 "가동체 겹침 0건"으로 통과시켰다. 씬의 플레이어(PlayerMover 보유,
+        // 루트 밖)의 콜라이더도 모집단에 넣는다(Sphere·Box·convex Mesh). Physics.ComputePenetration이
+        // 지원하지 않는 형상 조합(비볼록 MeshCollider 등)은 판정하지 않고 "미검증 쌍"으로 따로 센다 —
+        // 통과로도 실패로도 계수하지 않는다(검사 밖 대상을 전체 정상으로 표현하지 않기 위함).
+        List<Collider> all = new List<Collider>(root.GetComponentsInChildren<Collider>())
             .Where(c => !(c.gameObject.name.StartsWith("T0RS_") && !c.gameObject.name.EndsWith("_Gate")))
             .ToList();
+        foreach (PlayerMover pm in Object.FindObjectsOfType<PlayerMover>())
+            foreach (Collider pc in pm.GetComponentsInChildren<Collider>())
+                if (!all.Contains(pc)) all.Add(pc);
+        int boxN = 0, sphereN = 0, capsuleN = 0, meshConvexN = 0, unsupportedN = 0;
+        foreach (Collider c in all)
+        {
+            switch (c)
+            {
+                case BoxCollider _: boxN++; break;
+                case SphereCollider _: sphereN++; break;
+                case CapsuleCollider _: capsuleN++; break;
+                case MeshCollider mc when mc.convex: meshConvexN++; break;
+                default: unsupportedN++; break;
+            }
+        }
+        int unsupportedPairs = 0;
+        StringBuilder unsupportedLines = new StringBuilder();
 
         // [R2] a.bounds.Intersects(b.bounds) 선필터도 disabled 콜라이더에 취약하다(위와 같은
         // 이유 — 빈 바운딩 박스는 뭐든 "안 겹침"으로 잘못 판정한다). enabled·activeInHierarchy와
@@ -83,8 +106,15 @@ public static class V3Audit
         for (int i = 0; i < all.Count; i++)
             for (int j = i + 1; j < all.Count; j++)
             {
-                BoxCollider a = all[i], b = all[j];
+                Collider a = all[i], b = all[j];
                 if (!approxBounds[i].Intersects(approxBounds[j])) continue;
+                if (!SupportedShape(a) || !SupportedShape(b))
+                {
+                    // [K03] AABB가 겹치는데 판정 불가 — 미검증으로 노출(통과 아님).
+                    unsupportedLines.AppendLine($"  [미검증] {Path(a)}({ShapeName(a)}) ↔ {Path(b)}({ShapeName(b)}) — ComputePenetration 비지원 형상 조합");
+                    unsupportedPairs++;
+                    continue;
+                }
 
                 Rigidbody aRbComp = a.attachedRigidbody;
                 Rigidbody bRbComp = b.attachedRigidbody;
@@ -118,7 +148,8 @@ public static class V3Audit
                 if (movingPair)
                 {
                     string rbTag = (aNonKinematicRb && bNonKinematicRb) ? "[가동↔가동]" : "[가동↔콜라이더]";
-                    movingLines.AppendLine("  " + rbTag + " " + line.TrimStart());
+                    // [r3 사본 전용] ② 계수 쌍은 감사가 실제로 쓴 동일 쌍·동일 포즈의 원시 깊이를 F6으로 병기(Codex r2 재검수 §6).
+                    movingLines.AppendLine("  " + rbTag + " " + line.TrimStart() + $" (raw {dist:F6}U = {dist:E3})");
                     movingBad++;
                 }
                 else if (rigidbodyPair)
@@ -156,7 +187,14 @@ public static class V3Audit
         int judgedBad = crossBad + movingBad;
         sb.Append(crossLines);
         sb.Append(movingLines);
-        sb.AppendLine($"── 1. 겹침 감사: 정적 박스 {staticCount}개(트리거 {staticTriggerCount}개 포함, ① 모집단 {staticCount - staticTriggerCount}개) · ① 정적 관통 {crossBad}건 · ② 가동체 겹침 {movingBad}건 → {(judgedBad == 0 ? "✅" : "❌")}");
+        // [K03] 헤더 형식은 V3_Batch.ParseAuditVerdict가 읽는 토큰("겹침 감사"·"① 정적 관통 n건"·
+        // "② 가동체 겹침 n건"·"❌")을 유지한다. 형상별 개수와 미검증 쌍 수를 병기한다.
+        string verdict = judgedBad == 0 ? (unsupportedPairs == 0 ? "✅" : $"✅(미검증 {unsupportedPairs}쌍 제외)") : "❌";
+        sb.AppendLine($"── 1. 겹침 감사: 정적 콜라이더 {staticCount}개(트리거 {staticTriggerCount}개 포함, ① 모집단 {staticCount - staticTriggerCount}개 · 형상 Box {boxN}·Sphere {sphereN}·Capsule {capsuleN}·Mesh(convex) {meshConvexN}·비지원 {unsupportedN}) · ① 정적 관통 {crossBad}건 · ② 가동체 겹침 {movingBad}건 → {verdict}");
+        if (all.Count == 0)
+            sb.AppendLine("     ⚠️ 검사 대상 콜라이더 0개 — 미검증(감사 통과가 아니다)");
+        sb.Append(unsupportedLines);
+        sb.AppendLine($"     미검증 쌍 {unsupportedPairs}건(비지원 형상 조합 — 통과로 계수하지 않음)");
 
         // 참고: 같은 그룹 내 솔리드↔솔리드(의도된 맞닿음이 섞여 있을 수 있음) — 판정 제외.
         sb.Append(sameGroupLines);
@@ -184,18 +222,63 @@ public static class V3Audit
     /// 회전된 박스(예: T0RS_10, Y180)에도 정확하다 — 근사가 아니라 정확한 AABB이며, 선필터
     /// 용도이므로 이후 ComputePenetrationPair(회전 인식, 정확한 겹침 판정)가 최종 판정을
     /// 담당한다.</summary>
-    static Bounds ApproxWorldAABB(BoxCollider c)
+    static Bounds ApproxWorldAABB(Collider c)
     {
-        Vector3 half = c.size * 0.5f;
-        Bounds b = new Bounds(c.transform.TransformPoint(c.center), Vector3.zero);
+        // [K03] 형상별로 로컬 AABB(center·half)를 구해 8개 꼭짓점을 월드로 변환해 감싼다 — Box는 이전과
+        // 동일(정확), Sphere는 최대 축 스케일 기준 반지름, Capsule은 축 방향 half=height/2, Mesh는
+        // sharedMesh.bounds. 선필터일 뿐이며 최종 판정은 ComputePenetrationPair가 담당한다.
+        Transform t = c.transform;
+        Vector3 center, half;
+        switch (c)
+        {
+            case BoxCollider box:
+                center = box.center; half = box.size * 0.5f; break;
+            case SphereCollider s:
+            {
+                Vector3 ls = t.lossyScale;
+                float r = s.radius * Mathf.Max(Mathf.Abs(ls.x), Mathf.Abs(ls.y), Mathf.Abs(ls.z));
+                return new Bounds(t.TransformPoint(s.center), Vector3.one * (2f * r));
+            }
+            case CapsuleCollider cap:
+            {
+                center = cap.center;
+                half = Vector3.one * cap.radius;
+                half[Mathf.Clamp(cap.direction, 0, 2)] = Mathf.Max(cap.height * 0.5f, cap.radius);
+                break;
+            }
+            case MeshCollider mc:
+            {
+                if (mc.sharedMesh == null) return new Bounds(t.position, Vector3.zero);
+                center = mc.sharedMesh.bounds.center; half = mc.sharedMesh.bounds.extents; break;
+            }
+            default:
+                return c.bounds;
+        }
+        Bounds b = new Bounds(t.TransformPoint(center), Vector3.zero);
         for (int xi = -1; xi <= 1; xi += 2)
             for (int yi = -1; yi <= 1; yi += 2)
                 for (int zi = -1; zi <= 1; zi += 2)
                 {
-                    Vector3 localCorner = c.center + Vector3.Scale(half, new Vector3(xi, yi, zi));
-                    b.Encapsulate(c.transform.TransformPoint(localCorner));
+                    Vector3 localCorner = center + Vector3.Scale(half, new Vector3(xi, yi, zi));
+                    b.Encapsulate(t.TransformPoint(localCorner));
                 }
         return b;
+    }
+
+    /// <summary>[K03] Physics.ComputePenetration 지원 형상: Box·Sphere·Capsule·convex Mesh.</summary>
+    static bool SupportedShape(Collider c) =>
+        c is BoxCollider || c is SphereCollider || c is CapsuleCollider || (c is MeshCollider mc && mc.convex);
+
+    static string ShapeName(Collider c)
+    {
+        switch (c)
+        {
+            case BoxCollider _: return "Box";
+            case SphereCollider _: return "Sphere";
+            case CapsuleCollider _: return "Capsule";
+            case MeshCollider mc: return mc.convex ? "Mesh(convex)" : "Mesh(non-convex)";
+            default: return c.GetType().Name;
+        }
     }
 
     /// <summary>Physics.ComputePenetration은 트리거 콜라이더에도 그대로 동작한다(콜라이더의
@@ -203,7 +286,7 @@ public static class V3Audit
     /// 무인검증/무인검증_보고_2026-09-05.md §3(15:04 콘솔 보존본)에서 트리거 15건이 실제
     /// 계산된 실출력으로 확인됨). 폴백 없음 — try/catch로
     /// 감싸지 않고 그대로 호출한다(R6: 이름에서 "Safe"를 빼 폴백이 있다는 암시를 없앤다).</summary>
-    static bool ComputePenetrationPair(BoxCollider a, BoxCollider b, out float dist)
+    static bool ComputePenetrationPair(Collider a, Collider b, out float dist)
     {
         return Physics.ComputePenetration(
             a, a.transform.position, a.transform.rotation,
@@ -254,7 +337,7 @@ public static class V3Audit
         sb.AppendLine($"  ㉠ P1: 갭 4.80U [검증] · 착지 평면부 폭 {planeW:F1}U (도킹 폭) — 조건① ≥3.0 {(planeW >= 3f ? "✅" : "❌")}");
         sb.AppendLine("       T0-1a: ▶에서 구 단독 도약 → 평면 밖 몰딩에 서지지는지 (조준 궤도와 분리 측정 — 감독 §⑦-3)");
         sb.AppendLine("       T0-1b: Trolley isKinematic 해제·도킹 후 실효 착지 폭 ≥3.0 확인 (1a 단독 통과 계수 금지 — 🔒M6-b)");
-        sb.AppendLine("  ㉡ V1 5분 예산: ▶ 스톱워치 — 매트→러그 존→아일랜드行 수납상자 계단(Crate_Step 10단)→아일랜드→카트→상판 (초과 시 놀이터 삭감 순서표)");
+        sb.AppendLine("  ㉡ V1 5분 예산: ▶ 스톱워치 — 매트→러그 존→아일랜드行 수납상자 계단(Crate_StableStep 12단)→아일랜드→카트→상판 (초과 시 놀이터 삭감 순서표)");
         sb.AppendLine("  ㉢ P4 반복 체감: 스윙 고리 z24 · 상부장 22.2→냉장고 20 — CP6 반복 재도전 시 피로 확인");
         sb.AppendLine("  ㉣ S1 성능: 위 2번 리포트의 S1_* 합계 (예산 32/40 · 초과 시 P-9 삭감 1→3순위)");
         // 검증 상수 대조표
