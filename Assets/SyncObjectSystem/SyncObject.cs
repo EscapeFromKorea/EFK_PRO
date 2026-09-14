@@ -157,6 +157,8 @@ public class SyncObject : MonoBehaviour
             Debug.LogWarning($"[SyncObject] pairId '{pairId}'에 SyncObject가 3개 이상입니다 — 첫 번째만 짝으로 씁니다.", this);
 
         partner = matches[0];
+        Debug.Log($"[SyncObject] '{name}' ↔ '{partner.name}' 페어링 완료 (pairId '{pairId}', " +
+                  $"{shapeKind}, role={role}, mode={mode}).", this);
     }
 
     private void FixedUpdate()
@@ -332,7 +334,14 @@ public class SyncObject : MonoBehaviour
         line.endColor = c;
     }
 
-    private void SetLinkBlocked(bool blocked) => linkBlocked = blocked;
+    // 상태가 바뀔 때만 로그(매 FixedUpdate 호출되므로 스팸 방지).
+    private void SetLinkBlocked(bool blocked)
+    {
+        if (blocked == linkBlocked) { linkBlocked = blocked; return; }
+        linkBlocked = blocked;
+        if (blocked) Debug.Log($"[SyncObject] '{name}' 범위 초과/링크 끊김 — 연결선 빨강.", this);
+        else Debug.Log($"[SyncObject] '{name}' 범위 내로 복귀 — 연결선 정상.", this);
+    }
 
     private void OnDrawGizmosSelected()
     {
