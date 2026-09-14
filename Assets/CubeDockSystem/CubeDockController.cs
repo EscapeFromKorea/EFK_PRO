@@ -38,8 +38,9 @@ public class CubeDockController : MonoBehaviour
     [Tooltip("도킹 가능한 결합 구조물의 최대 총 질량. 초과하면 도킹을 거부한다.")]
     public float maxDockedMass = 12f;
 
-    [Tooltip("도킹 / 해제 토글 키. (E=결합, V=스티커, C=블록 들기, F·G=실타래와 겹치지 않게 G 사용)")]
-    public KeyCode dockKey = KeyCode.G;
+    [Tooltip("도킹 / 해제 토글 키. (E=결합, V=스티커, C=블록 들기, F/G/T=실타래(ThreadPinPlacer 포함)가 " +
+             "이미 씀, X=관성 축전기 방출 — 안 겹치는 H 사용)")]
+    public KeyCode dockKey = KeyCode.H;
 
     [Tooltip("몇 초마다 씬에서 플레이어를 다시 훑어 도킹 컴포넌트를 보장할지(초).")]
     public float rescanInterval = 1f;

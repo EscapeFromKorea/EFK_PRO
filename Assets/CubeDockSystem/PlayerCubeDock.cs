@@ -48,8 +48,8 @@ public class PlayerCubeDock : MonoBehaviour
     public float maxDockedMass = 12f;
 
     [Header("입력 키")]
-    [Tooltip("도킹 / 해제 토글 키.")]
-    public KeyCode dockKey = KeyCode.G;
+    [Tooltip("도킹 / 해제 토글 키. (G는 ThreadPinPlacer가 이미 써서 H로 변경 — 2026-09-14 QA에서 발견)")]
+    public KeyCode dockKey = KeyCode.H;
 
     [Header("자동 해제 감지")]
     [Tooltip("한 프레임에 플레이어가 이 거리(Unit) 넘게 순간이동하면 리스폰/리셋으로 보고 즉시 해제한다.")]
