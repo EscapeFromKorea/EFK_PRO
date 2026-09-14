@@ -327,10 +327,18 @@ public class PlayerCubeDock : MonoBehaviour
         joint.connectedBody = blockBody;
         joint.autoConfigureConnectedAnchor = true;
         joint.xMotion = joint.yMotion = joint.zMotion = ConfigurableJointMotion.Locked;
-        joint.angularXMotion = joint.angularYMotion = joint.angularZMotion = ConfigurableJointMotion.Locked;
+        // 각축 Free — 회전은 Rigidbody.constraints(FreezeRotation)에 맡긴다(DreamThreadController와
+        // 동일 이유). 정육면체 Rigidbody는 이미 FreezeRotation이라 월드 기준으로 절대 안 도는데,
+        // 여기서 angular까지 Locked를 걸면 "블록 기준 상대 회전 고정"과 "월드 기준 회전 고정"이라는
+        // 서로 다른 두 구속이 동시에 걸려 못 풀리는 각 오차를 솔버가 매 스텝 떠안는다 — 그 미해결
+        // 오차가 선형 쪽으로 새어나와 조작도 안 했는데 위치가 끌려다니는 것처럼 보였다(플레이테스트로
+        // 재현: 여러 블록이 결합된 구조물에 도킹하면 특히 두드러짐 — 상대 구조물도 자체 Weld
+        // 조인트로 살짝씩 안 맞아 있어서 대상 자체가 절대 회전 기준으로 안 고정돼 있기 때문).
+        joint.angularXMotion = joint.angularYMotion = joint.angularZMotion = ConfigurableJointMotion.Free;
+        // JointProjectionMode엔 Position 단독 값이 없다(None / PositionAndRotation 둘뿐 — Unity API).
+        // 각 구속은 Free라 투영에서 "회전" 쪽은 사실상 손댈 게 없고, 선형 드리프트만 정리된다.
         joint.projectionMode = JointProjectionMode.PositionAndRotation;
         joint.projectionDistance = 0.01f;
-        joint.projectionAngle = 1f;
         joint.enablePreprocessing = false;
         joint.breakForce = jointBreakForce;
         joint.breakTorque = jointBreakTorque;
