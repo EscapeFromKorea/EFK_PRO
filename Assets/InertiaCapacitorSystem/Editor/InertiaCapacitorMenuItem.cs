@@ -90,6 +90,9 @@ public static class InertiaCapacitorMenuItem
         platformGo.transform.localScale = new Vector3(3f, 0.2f, 3f);
 
         RotatingPlatform platform = platformGo.AddComponent<RotatingPlatform>();
+        // 기본 15도는 시연/QA에서 눈에 잘 안 띈다 — 이 데모 리그에서만 90도로. WindupAxleSystem
+        // 원본 기본값(RotatingPlatform.gearStepDegrees = 15f)은 그대로 둔다(mnppi 요청 2026-09-14).
+        platform.gearStepDegrees = 90f;
         platformGo.GetComponent<Renderer>().sharedMaterial =
             new Material(Shader.Find("Standard")) { color = new Color(0.55f, 0.55f, 0.6f) };
         CreateSpoke(platformGo.transform, new Vector3(2.7f / 3f, 0.15f / 0.2f, 0.2f / 3f));
