@@ -315,6 +315,12 @@ public class PlayerMover : MonoBehaviour
         // 보였다. Y는 항상 `rb.velocity.y`를 그대로 보존하고(중력/점프의 소유물), 투영은 X/Z 방향에만
         // 적용한다 — 원래 코드가 항상 지키던 계약을 그대로 유지한다.
         Vector3 groundNormal = groundContact != null ? groundContact.GroundNormal : Vector3.up;
+        // 밟고 있는 바닥이 스스로 움직이는 dynamic Rigidbody(시소 등)면 그 접촉점의 속도를 목표
+        // velocity에 더한다 — 안 더하면 아래에서 그대로 월드 고정값(0 또는 target)을 대입해 회전하는
+        // 표면 위에서 플레이어가 제자리에 붙박이고, 그 어긋남이 매 프레임 판에 토크로 되먹임돼 계속
+        // 진동한다(2026-09-08 시소 플레이테스트로 실측). Y는 건드리지 않는다(점프/낙하 규격 보존).
+        Vector3 groundVel = groundContact != null ? groundContact.GroundVelocity : Vector3.zero;
+        Vector3 groundVelXZ = new Vector3(groundVel.x, 0f, groundVel.z);
         // 평지(접선 성분이 0)와 무거운 도형(기본값에서 네모)은 경사 로직 전체에서 빠져 예전 동작
         // 그대로 간다. 가감속·착지 충격·흘러내림 보존이 모두 같은 조건이어야 하므로 한 번만 판정한다.
         bool slopeAffected = groundNormal.y <= idleStopMaxNormalY
@@ -376,6 +382,8 @@ public class PlayerMover : MonoBehaviour
                 target += driftVec - Vector3.Project(driftVec, target);
             }
             else lastTravelVelocity = Vector3.zero;
+            target += groundVelXZ;
+            lastTravelVelocity += groundVelXZ; // 다음 스텝 drift 계산이 이 몫까지 "물리 몫"으로 오인하지 않도록 같이 반영
             rb.velocity = new Vector3(target.x, rb.velocity.y, target.z);
             if (rollRadius > 0.0001f)
                 rb.angularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
@@ -386,14 +394,15 @@ public class PlayerMover : MonoBehaviour
             // 여기서도 slopeSpeedBonus를 지우지 않는다(위 공중 분기와 같은 이유) — 지우면 비탈에서
             // 입력을 한 프레임 뗐다 다시 누르는 것만으로 오르막 페널티가 초기화된다. 얼려 두면
             // 다시 누른 순간 그 비탈의 floor 클램프가 잡아 곧바로 그 경사의 유지 속도로 들어간다.
-            // 입력이 없을 때 수평 속도를 0으로 대입하는 건 평지에서 "미끄러지지 않고 딱 멈추는"
-            // 감각을 위한 것이다. 그런데 경사면에서는 중력이 만드는 비탈 방향 성분이 거의 전부
-            // 수평 성분이라, 이 대입이 매 스텝 그걸 지워 도형이 비탈에 붙박이가 된다(경사각을
-            // 올려도 상수 0을 대입하므로 증상이 똑같다 — 2026-08-10 플레이테스트로 확인).
+            // 입력이 없을 때 수평 속도를 바닥 속도(정적 바닥이면 0)로 대입하는 건 평지에서
+            // "미끄러지지 않고 딱 멈추는" 감각을 위한 것이다. 그런데 경사면에서는 중력이 만드는
+            // 비탈 방향 성분이 거의 전부 수평 성분이라, 이 대입이 매 스텝 그걸 지워 도형이 비탈에
+            // 붙박이가 된다(경사각을 올려도 상수 0을 대입하므로 증상이 똑같다 —
+            // 2026-08-10 플레이테스트로 확인).
             // 경사면에서는 대입을 건너뛰고 물리에 맡긴다. 마찰(PhysicMaterial)이 도형별로
             // 얼마나 미끄러질지를 결정하므로 여기서 따로 도형 분기를 두지 않는다.
             if (groundNormal.y > idleStopMaxNormalY)
-                rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+                rb.velocity = new Vector3(groundVelXZ.x, rb.velocity.y, groundVelXZ.z);
         }
     }
 
