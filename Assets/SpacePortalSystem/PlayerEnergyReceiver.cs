@@ -81,7 +81,8 @@ public class PlayerEnergyReceiver : MonoBehaviour
         HandleAim();
     }
 
-    /// <summary>EnergyBall이 근접 F 판정에서 호출한다.</summary>
+    /// <summary>EnergyBall이 근접 F 판정에서 호출한다. 이미 다른 색을 들고 있으면 주울 수 없다
+    /// (기존 동작 그대로 — 재생성은 스왑이 아니라 설치 시점에 건다, <see cref="ConfirmPlacement"/>).</summary>
     public void TryPickup(EnergyBall ball)
     {
         if (ball == null) return;
@@ -346,7 +347,9 @@ public class PlayerEnergyReceiver : MonoBehaviour
 
         if (CarriedBall != null)
         {
-            CarriedBall.SetInstalled(this);
+            EnergyBall installed = CarriedBall;
+            installed.SetInstalled(this);
+            installed.Respawn(); // "사용"(설치) 시점 — 5초 뒤 원래 자리에 재생성(2026-09-15).
             CarriedBall = null;
             ApplyGlow(null);
         }

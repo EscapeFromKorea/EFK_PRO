@@ -61,11 +61,22 @@ public class SnapBlock : MonoBehaviour
     /// <summary>이 블록이 other와 이미 결합돼 있는가.</summary>
     public bool HasConnectionTo(SnapBlock other) => other != null && joints.ContainsKey(other);
 
+    private void Reset()
+    {
+        // "InteractionItem" 태그 — Player 전용이던 존재/무게 게이트형 패드(DoorSystem/LiftSystem/
+        // WindupAxleSystem/RainbowBridgeSystem)가 이 태그도 함께 인식하도록 확장했다. 딱딱 블록이
+        // 어느 패드를 밟아도 자동으로 반응한다. Reset은 컴포넌트가 붙는 즉시(에디터 타임) 불려
+        // Tools로 생성한 직후에도 바로 태그가 붙는다 — Awake는 플레이 모드 진입 전까지 안 불린다.
+        gameObject.tag = "InteractionItem";
+    }
+
     private void Awake()
     {
         body = GetComponent<Rigidbody>();
         box = GetComponent<BoxCollider>();
         ApplyStabilitySettings();
+
+        if (!gameObject.CompareTag("InteractionItem")) gameObject.tag = "InteractionItem";
     }
 
     private void OnDestroy()
