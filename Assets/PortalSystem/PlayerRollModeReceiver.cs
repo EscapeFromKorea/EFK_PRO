@@ -523,10 +523,12 @@ public class PlayerRollModeReceiver : MonoBehaviour
         if (raw.sqrMagnitude < 0.01f) return false;
         hasInput = true;
 
-        // PlayerMover는 입력을 그대로 쓰지 않고 inputYawOffset만큼 월드 up 축으로 돌린 뒤 쓴다
-        // (씬의 플레이어 3종 모두 90). 같은 보정을 하지 않으면 90° 어긋난 방향으로 굴러가는데,
-        // 정사면체는 원래 월드 축으로 못 가므로 증상이 "원래 그런 기믹인가?"로 보여 잡기 어렵다.
-        Vector3 want = Quaternion.AngleAxis(mover.inputYawOffset, Vector3.up) * raw;
+        // PlayerMover는 입력을 그대로 쓰지 않고 EffectiveInputYaw()만큼 월드 up 축으로 돌린 뒤
+        // 쓴다(cameraRelativeInput/궤도 카메라가 꺼져 있으면 inputYawOffset 고정, 씬의 플레이어
+        // 3종 모두 90). 같은 보정을 하지 않으면 일반 이동은 카메라를 따라가는데 굴리기 모드만
+        // WASD 절대 방향으로 고정돼 버린다(2026-09-15 제보). 그 메서드는 PlayerMover의 private라
+        // 여기서 같은 공개 멤버로 재현한다 — PlayerMover.cs는 건드리지 않는다.
+        Vector3 want = Quaternion.AngleAxis(EffectiveInputYaw(), Vector3.up) * raw;
         want.y = 0f;
         if (want.sqrMagnitude < 0.0001f) return false;
         want.Normalize();
@@ -544,6 +546,17 @@ public class PlayerRollModeReceiver : MonoBehaviour
         }
 
         return bestDot >= Mathf.Cos(inputSnapTolerance * Mathf.Deg2Rad);
+    }
+
+    // PlayerMover.EffectiveInputYaw()와 같은 식이다(그쪽은 private라 호출할 수 없어 공개 멤버로
+    // 재현). cameraRelativeInput이 켜져 있거나 팔로우 카메라가 마우스 궤도 중이면 카메라 현재
+    // yaw(ViewYaw)를, 아니면 mover의 고정 inputYawOffset을 쓴다. PlayerMover.cs는 안 건드린다.
+    private float EffectiveInputYaw()
+    {
+        float? viewYaw = PlayerFollowCamera.ViewYaw;
+        if (viewYaw.HasValue && (PlayerFollowCamera.MouseOrbitActive || mover.cameraRelativeInput))
+            return viewYaw.Value;
+        return mover.inputYawOffset;
     }
 
     /// <summary>i번째 유효 방향(월드 수평 단위벡터). 정사면체는 정준 자세 A/B에 따라 세트가 60° 돈다.</summary>
