@@ -327,14 +327,21 @@ public class PlayerCubeDock : MonoBehaviour
         joint.connectedBody = blockBody;
         joint.autoConfigureConnectedAnchor = true;
         joint.xMotion = joint.yMotion = joint.zMotion = ConfigurableJointMotion.Locked;
-        // 각축 Free — 회전은 Rigidbody.constraints(FreezeRotation)에 맡긴다(DreamThreadController와
-        // 동일 이유). 정육면체 Rigidbody는 이미 FreezeRotation이라 월드 기준으로 절대 안 도는데,
-        // 여기서 angular까지 Locked를 걸면 "블록 기준 상대 회전 고정"과 "월드 기준 회전 고정"이라는
-        // 서로 다른 두 구속이 동시에 걸려 못 풀리는 각 오차를 솔버가 매 스텝 떠안는다 — 그 미해결
-        // 오차가 선형 쪽으로 새어나와 조작도 안 했는데 위치가 끌려다니는 것처럼 보였다(플레이테스트로
-        // 재현: 여러 블록이 결합된 구조물에 도킹하면 특히 두드러짐 — 상대 구조물도 자체 Weld
-        // 조인트로 살짝씩 안 맞아 있어서 대상 자체가 절대 회전 기준으로 안 고정돼 있기 때문).
-        joint.angularXMotion = joint.angularYMotion = joint.angularZMotion = ConfigurableJointMotion.Free;
+        // 각축 Free/Locked는 대상 블록이 다른 블록과 결합돼 있는지에 따라 갈린다.
+        //  · 결합된 구조물(HasConnections)이면 그 구조물의 자체 Weld 조인트가 이미 상대 회전을
+        //    고정한다. 여기서 또 Locked를 걸면 "블록 기준 상대 회전 고정"(이 조인트)과 "월드 기준
+        //    회전 고정"(정육면체의 FreezeRotation)이라는 서로 다른 두 구속이 동시에 걸려 못 풀리는
+        //    각 오차를 솔버가 매 스텝 떠안는다 — 그 미해결 오차가 선형 쪽으로 새어나와 조작도 안
+        //    했는데 위치가 끌려다니는 것처럼 보였다(플레이테스트로 재현, 이중 구속이 원인). → Free.
+        //  · 반대로 대상이 아무 결합도 없는 "허공에 뜬 블록 하나"면, 그 블록의 회전을 잡아주는 게
+        //    이 조인트 말고는 아예 없다(SnapBlock엔 RigidbodyConstraints가 없음) — Free로 두면
+        //    "블록 1개로 다리 놓기" 시나리오에서 축 없는 블록이 그대로 처지거나 돈다. 이땐 경쟁하는
+        //    두 번째 구속이 없으므로 Locked를 걸어도 위 문제가 재발하지 않고, 블록 자세가 안정된다
+        //    (PR #92 리뷰에서 지적, 실제로 검증되지 않았던 시나리오 — 후속 수정).
+        ConfigurableJointMotion angularMotion = aimed.HasConnections
+            ? ConfigurableJointMotion.Free
+            : ConfigurableJointMotion.Locked;
+        joint.angularXMotion = joint.angularYMotion = joint.angularZMotion = angularMotion;
         // JointProjectionMode엔 Position 단독 값이 없다(None / PositionAndRotation 둘뿐 — Unity API).
         // 각 구속은 Free라 투영에서 "회전" 쪽은 사실상 손댈 게 없고, 선형 드리프트만 정리된다.
         joint.projectionMode = JointProjectionMode.PositionAndRotation;
@@ -344,6 +351,12 @@ public class PlayerCubeDock : MonoBehaviour
         joint.breakTorque = jointBreakTorque;
 
         dockedBlock = aimed;
+        // SnapBlock 컴포넌트 비활성화 — PlayerBlockCarrier·SnapBlockController·다른 PlayerCubeDock이
+        // 전부 FindObjectsOfType<SnapBlock>()로 후보를 찾는데, 비활성 컴포넌트는 기본 오버로드에서
+        // 제외된다. 안 숨기면 도킹 중인 블록을 다른 플레이어가 그대로 들어올릴 수 있어, 든 순간
+        // kinematic+강제 위치추종이 걸려 이 도킹 조인트가 블록을 지형 관통까지 끌고 다닌다
+        // (PR #92 리뷰에서 지적).
+        dockedBlock.enabled = false;
         aimed = null;
         hasCandidate = false;
         Debug.Log($"[CubeDock] '{dockedBlock.name}' 구조물에 도킹했습니다.");
@@ -359,6 +372,7 @@ public class PlayerCubeDock : MonoBehaviour
 
     private void CleanupDockState()
     {
+        if (dockedBlock != null) dockedBlock.enabled = true; // 다시 용접·픽업·도킹 대상 탐색에 보이게.
         joint = null;
         dockedBlock = null;
     }

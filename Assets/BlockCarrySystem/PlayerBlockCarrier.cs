@@ -133,6 +133,15 @@ public class PlayerBlockCarrier : MonoBehaviour
             return;
         }
 
+        // 정육면체는 애초에 못 든다(EvaluateReject가 항상 거부) — CubeDock이 !IsCube를 미리
+        // 걸러두는 것과 똑같이, 스캔·조준점도 아예 안 띄운다(PR #92 리뷰 지적, 경미).
+        if (shapeId != null && shapeId.Kind == PlayerShapeStats.ShapeKind.Cube)
+        {
+            aimed = null;
+            HideReticle();
+            return;
+        }
+
         // FindObjectsOfType로 씬을 훑는 건 매 프레임이 아니라 retargetInterval마다만 — 안 그러면
         // 매 프레임 GC 할당이 생겨 물리로 구르는 도형(특히 구)에서 눈에 띄는 히치가 난다.
         if (carried == null && Time.time >= nextRetargetTime)
@@ -246,6 +255,14 @@ public class PlayerBlockCarrier : MonoBehaviour
         carriedBody = rb;
         carriedRotation = rb.transform.rotation;
 
+        // SnapBlock 컴포넌트를 비활성화 — SnapBlockController(용접 대상 탐색)와 PlayerCubeDock
+        // (도킹 대상 탐색)는 전부 FindObjectsOfType<SnapBlock>()로 후보를 찾는데, 비활성 컴포넌트는
+        // 기본 오버로드에서 제외된다. 든 블록을 숨기지 않으면: 든 채로 다른 플레이어가 용접하면
+        // 다음 프레임 이 컴포넌트의 강제 위치 갱신이 그 결합을 덮어쓰고, 내려놓는 순간 물리가 밀린
+        // 조인트 오차를 한 번에 해소하며 블록이 먼 파트너 쪽으로 튕겨나간다(PR #92 리뷰에서 지적).
+        // 다른 플레이어가 동시에 같은 블록을 들려는 이중 픽업도 같은 이유로 막힌다.
+        carried.enabled = false;
+
         carriedKinematicWas = rb.isKinematic;
         carriedInterpWas = rb.interpolation;
         rb.isKinematic = true;
@@ -301,7 +318,11 @@ public class PlayerBlockCarrier : MonoBehaviour
             rb.angularVelocity = Vector3.zero;
         }
 
-        if (block != null) IgnoreCollisionWithPlayer(block, false);
+        if (block != null)
+        {
+            IgnoreCollisionWithPlayer(block, false);
+            block.enabled = true; // 다시 용접·도킹 대상 탐색에 보이게.
+        }
         ClearCarryState();
 
         Debug.Log($"[BlockCarry] '{(block != null ? block.name : "블록")}' 을(를) 내려놨습니다 ({reason}).");

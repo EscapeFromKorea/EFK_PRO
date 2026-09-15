@@ -226,16 +226,20 @@ public class SyncObject : MonoBehaviour
     {
         float sign = ForceInvert ? -1f : 1f;
 
+        // body가 있으면 kinematic 여부와 무관하게 Move*를 쓴다. 다이나믹(Bidirectional의 팔로워
+        // 순간)에 transform.position/rotation을 직접 대입하면 물리 표현이 그 프레임 동안 갱신 안 돼
+        // 솔버가 순간이동으로 인식하고, 얇은 지오메트리를 그냥 통과하거나 다음 스텝에 떨림이 난다
+        // (PR #92 리뷰에서 지적). Move*는 다이나믹 바디에도 안전하게 적용되며 물리 표현을 즉시 갱신한다.
         if (partner.mode == SyncMode.Rotation || mode == SyncMode.Rotation)
         {
             Quaternion target = initialRot * Quaternion.Euler(partner.SharedEuler * (sign * followRatio));
-            if (body != null && body.isKinematic) body.MoveRotation(target);
+            if (body != null) body.MoveRotation(target);
             else transform.rotation = target;
         }
         else
         {
             Vector3 target = initialPos + partner.SharedOffset * (sign * followRatio);
-            if (body != null && body.isKinematic) body.MovePosition(target);
+            if (body != null) body.MovePosition(target);
             else transform.position = target;
         }
 
