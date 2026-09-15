@@ -15835,16 +15835,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 0}
-  offset: {x: 0, y: 6, z: -10}
+  offset: {x: 0, y: 4, z: -10}
   cameraYawOffset: 90
-  followSmoothness: 0.2
+  followSmoothness: 0.07
   verticalDampingMultiplier: 3
   lookHeightOffset: 1
-  lookSmoothness: 8
   enableMouseOrbit: 1
   mouseSensitivity: 2
   minPitch: -50
-  maxPitch: 75
+  maxPitch: 60
   invertY: 0
   lockCursorOnPlay: 1
 --- !u!1 &968496101

@@ -548,9 +548,11 @@ public class PlayerRollModeReceiver : MonoBehaviour
         return bestDot >= Mathf.Cos(inputSnapTolerance * Mathf.Deg2Rad);
     }
 
-    // PlayerMover.EffectiveInputYaw()와 같은 식이다(그쪽은 private라 호출할 수 없어 공개 멤버로
-    // 재현). cameraRelativeInput이 켜져 있거나 팔로우 카메라가 마우스 궤도 중이면 카메라 현재
-    // yaw(ViewYaw)를, 아니면 mover의 고정 inputYawOffset을 쓴다. PlayerMover.cs는 안 건드린다.
+    // PlayerMover.EffectiveInputYaw()와 같은 식이다. 그쪽 메서드는 private라 직접 호출할 수 없으므로
+    // (이 메서드 자체도 private — 여기서만 쓴다), PlayerMover/PlayerFollowCamera가 공개로 노출한
+    // 멤버(inputYawOffset·cameraRelativeInput·ViewYaw·MouseOrbitActive)만 조합해 같은 식을
+    // 다시 계산한다. cameraRelativeInput이 켜져 있거나 팔로우 카메라가 마우스 궤도 중이면 카메라
+    // 현재 yaw(ViewYaw)를, 아니면 mover의 고정 inputYawOffset을 쓴다. PlayerMover.cs는 안 건드린다.
     private float EffectiveInputYaw()
     {
         float? viewYaw = PlayerFollowCamera.ViewYaw;
