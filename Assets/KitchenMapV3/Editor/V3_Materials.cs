@@ -88,6 +88,7 @@ public static class V3Materials
     [MenuItem("Tools/KitchenMapV3/6. Apply Kitchen Materials (질감)", false, 30)]
     public static void Apply()
     {
+        if (!V3.EnsureOwnedScene("Apply Kitchen Materials", checkForeign: false)) return;   // [K01] 우리 루트 안만 만진다.
         GameObject root = GameObject.Find(V3.RootName);
         if (root == null) { V3.Warn("블록아웃이 없다 — 먼저 2. Build All."); return; }
 
