@@ -5,6 +5,17 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
+/// <summary>
+/// [보안 주의 — 2026-09-15 감사에서 확인, 코드로는 해결하지 않기로 결정]
+/// <see cref="_config"/>의 URL/User/Token은 `LokiConfigSync`가 매 빌드 전처리(`LokiConfigBuildHook`)
+/// 때마다 `.env`에서 `Assets/TelemetrySystem/Resources/LokiConfig.asset`로 구워 넣는다. 이 asset은
+/// git에는 안 올라가지만(.gitignore), Resources 폴더에 있는 이상 실제 플레이어 빌드(특히
+/// `release_testing` 온라인 배포 단계)에는 평문으로 그대로 포함되어, 빌드를 손에 넣은 사람은 누구나
+/// Basic Auth 자격증명을 추출할 수 있다. 완화하려면 Grafana 쪽에서 **쓰기 전용/제한된 스코프
+/// 토큰**을 발급하는 인프라 조치가 필요하다(코드만으로는 못 없앤다 — 클라이언트에 내장된 자격증명은
+/// 근본적으로 추출 가능하다는 한계 자체가 원인). 지금은 그 인프라 작업이 별도 논의 대상이라
+/// 코드는 바꾸지 않기로 했다.
+/// </summary>
 public class LokiClient : MonoBehaviour
 {
     const float FlushIntervalSeconds = 10f;

@@ -8,9 +8,11 @@ using UnityEngine;
 /// 한 번 밟으면 정해진 배율로 커지고(또는 작아지고), 같은 종류를 다시 밟으면 원래 크기로 복귀.
 /// 커진 상태에서 작아지기 패드를 밟으면 곧바로 작아진 상태로 전환됩니다.
 ///
-/// PlayerJump(10), PlayerGroundContact(20)가 이 컴포넌트(기본 순서 0)보다 나중에
-/// 실행되도록 각자 [DefaultExecutionOrder]로 코드 차원에서 순서를 보장하므로,
-/// Project Settings의 Script Execution Order를 수동으로 설정할 필요는 없습니다.
+/// PlayerJump는 [DefaultExecutionOrder(10)]로 이 컴포넌트(기본 순서 0)보다 나중에 실행되도록
+/// 보장되어 있다. [정정 — 2026-09-15 문서 정합성 감사] 이전 버전은 PlayerGroundContact도
+/// [DefaultExecutionOrder(20)]로 같이 보장된다고 적었으나, 실제 PlayerGroundContact.cs에는
+/// 그 속성이 없다(둘 다 기본 순서 0). PlayerGroundContact.IsGrounded는 유예 시간(0.1초) 기반이라
+/// 실행 순서가 어긋나도 증상이 잘 드러나지 않았을 뿐 — 코드 차원의 보장은 없다.
 /// </summary>
 public class PlayerShapeController : MonoBehaviour
 {
@@ -41,10 +43,10 @@ public class PlayerShapeController : MonoBehaviour
     [Tooltip("Player_Collider 오브젝트를 여기에 드래그하세요.")]
     public Transform colliderTransform;  //
 
-    [Tooltip("SphereCollider처럼 비균일(X/Y 개별) 스케일에서 축별로 반영되지 못하는 콜라이더를 " +
-        "쓸 때 true로 설정하세요. Unity SphereCollider는 반지름을 두 축 중 큰 쪽 기준으로만 " +
-        "키우므로, X/Y 평균으로 world scale을 강제 균일화해 이 왜곡을 상쇄합니다. " +
-        "BoxCollider(정육면체/정사면체)는 각 축을 독립적으로 반영하므로 false로 둡니다.")]
+    [Tooltip("[현재 런타임 미사용 — 2026-09-15 확인] 스케일이 1:1:1 균일 배율로만 변하도록 바뀐 " +
+        "뒤로는 SphereCollider의 비균일(X/Y 개별) 왜곡 자체가 안 생겨 이 필드를 읽는 코드가 없다. " +
+        "PlayerObjectMenuItem이 여전히 값을 채워 넣지만 아래 클래스 상단 주석 참고 — 비균일 스케일을 " +
+        "다시 쓰게 되면 그때 이 값을 실제로 읽는 보정 코드를 되살려야 한다.")]
     public bool useAverageColliderScale = false;
 
     [Header("접지 판단 (isGrounded)")]

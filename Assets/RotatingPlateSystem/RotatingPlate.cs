@@ -13,10 +13,16 @@ using UnityEngine;
 ///   · 회전 저항 = Rigidbody.angularDrag / 최대 각속도 = Rigidbody.maxAngularVelocity
 ///   · 회전 범위 = HingeJoint.limits (limit은 각도 제한일 뿐 스냅이 아니다)
 ///
-/// [태엽 축 연동 — 이번 PR은 진입점만]
-/// 태엽 동력 회전은 별도 `태엽 축` 기믹(미착수) 담당이다. 여기서는 외부 시스템이 매 FixedUpdate
-/// <see cref="ApplyDriveTorque"/>로 힌지 축 토크를 주입할 수 있는 창구와, 축 방향을 알려주는
-/// <see cref="HingeAxisWorld"/>만 노출한다. 태엽 축이 나오면 그쪽에서 이 두 개만 호출하면 된다.
+/// [태엽 축 연동 — 이 진입점은 현재 아무도 호출하지 않는다, 2026-09-15 확인]
+/// 이 클래스가 작성된 시점엔 `WindupAxleSystem`이 미착수였고, 태엽이 나오면 여기 노출한
+/// <see cref="ApplyDriveTorque"/>/<see cref="HingeAxisWorld"/>를 호출할 것으로 가정했다. 실제로는
+/// `WindupAxleSystem`이 이 클래스를 쓰지 않고, **완전히 별개의 클래스**
+/// `Assets/WindupAxleSystem/RotatingPlatform.cs`(`IWindupReceiver` 구현, `transform.Rotate` 직접
+/// 회전 — 이 클래스처럼 물리 힌지 토크가 아니다)로 태엽 연동 회전판을 새로 만들었다. 이름이 "Plate"
+/// vs "Platform"으로 한 글자 차이라 혼동하기 쉽다 — **태엽 축과 연동된 회전판이 필요하면
+/// `WindupAxleSystem/RotatingPlatform`을 쓰고, 이 클래스는 건드리지 마라.** `ApplyDriveTorque`는
+/// 저장소 전체에 호출하는 곳이 없는 죽은 API로 남아 있다(순수 물리 힌지 기반 회전판이 필요해지면
+/// 그때 다시 쓸 수 있게 삭제하지 않고 남겨둔다).
 ///
 /// [와이어 앵커] 자식으로 ThreadAnchor(DreamThreadSystem) 마커를 두면 실타래 스윙 지점이 된다.
 /// DreamThreadController의 진자 피벗은 연결 시점의 월드 좌표 스냅샷이라, 연결 후 판이 돌아도
@@ -52,9 +58,10 @@ public class RotatingPlate : MonoBehaviour
     [Tooltip("판이 중력을 받는가. 끄면(기본) 밀어 놓은 각도에 그대로 머문다. 켜면 무게로 아래쪽 각도/제한까지 처진다.")]
     public bool plateUseGravity = false;
 
-    [Header("태엽 축 연동 (외부 토크 주입 창구)")]
+    [Header("외부 토크 주입 창구 (현재 미사용 — 태엽 축 연동은 WindupAxleSystem/RotatingPlatform이 대신 담당)")]
     [Tooltip("ApplyDriveTorque로 들어온 값에 곱하는 배율. 태엽 축 쪽 수치를 안 건드리고 여기서 세기를 맞춘다. " +
-             "토크는 ForceMode.Acceleration으로 인가한다(질량/관성 무관, 저장소 관례) — 값은 각가속(rad/s²) 느낌.")]
+             "토크는 ForceMode.Acceleration으로 인가한다(질량/관성 무관, 저장소 관례) — 값은 각가속(rad/s²) 느낌. " +
+             "클래스 상단 주석 참고 — ApplyDriveTorque를 실제로 호출하는 곳은 현재 저장소에 없다.")]
     public float driveTorqueScale = 1f;
 
     private Rigidbody rb;

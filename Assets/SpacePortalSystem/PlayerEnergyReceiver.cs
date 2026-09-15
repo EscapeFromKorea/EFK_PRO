@@ -48,9 +48,6 @@ public class PlayerEnergyReceiver : MonoBehaviour
     private GameObject silhouette;
     private MeshRenderer silhouetteRenderer;
 
-    // ponytail: PortalSurface 인식 문제 진단용 임시 계측(Loki로 전송). 원인 확정되면 지운다.
-    private float nextAimLogTime;
-
     private float rHoldTimer;
     private bool rRecallFired;
 
@@ -150,11 +147,22 @@ public class PlayerEnergyReceiver : MonoBehaviour
         }
 
         EnergyColor color = InstalledColor.Value;
+        EnergyBall ball = FindBallOfColor(color);
+
+        // 설치 후 자동 재생성(EnergyBall.Respawn)된 볼을 다른 플레이어가 이미 주워 간 경우 —
+        // State/Owner를 안 보고 무조건 가져오면 그 플레이어의 CarriedBall 참조가 끊긴 채로 남아
+        // 소지 상태가 꼬인다(2026-09-15 감사에서 발견, Tab 전환만으로도 재현). 이 경우 포탈도
+        // 파괴하지 않고 회수 자체를 취소한다 — 볼을 못 돌려받을 바엔 최소한 포탈이라도 남긴다.
+        if (ball != null && ball.State == EnergyBall.BallState.Carried && ball.Owner != this)
+        {
+            Debug.Log($"[SpacePortal] {color} 에너지볼을 다른 플레이어가 이미 들고 있어 포탈을 회수할 수 없다.");
+            return;
+        }
+
         SpacePortal portal = color == EnergyColor.Orange ? SpacePortal.Orange : SpacePortal.Blue;
         InstalledColor = null;
         if (portal != null) Destroy(portal.gameObject);
 
-        EnergyBall ball = FindBallOfColor(color);
         if (ball != null)
         {
             CarriedBall = ball;
@@ -211,7 +219,6 @@ public class PlayerEnergyReceiver : MonoBehaviour
         {
             placementValid = false;
             HideSilhouette();
-            LogAimDebug("no-hit", null, 0f);
             return;
         }
 
@@ -220,7 +227,6 @@ public class PlayerEnergyReceiver : MonoBehaviour
         {
             placementValid = false;
             ShowSilhouette(false, hit.point, Quaternion.LookRotation(-hit.normal, Vector3.up), hit.normal, w, h, hit.distance);
-            LogAimDebug("no-surface", hit.collider, hit.distance);
             return;
         }
 
@@ -239,16 +245,6 @@ public class PlayerEnergyReceiver : MonoBehaviour
         aimUp = up;
 
         ShowSilhouette(placementValid, center, Quaternion.LookRotation(normal, up), normal, w, h, hit.distance);
-        LogAimDebug(placementValid ? "valid" : "surface-blocked", hit.collider, hit.distance);
-    }
-
-    // ponytail: 0.3초 간격 throttle — 매 프레임 전송하면 버퍼만 불필요하게 커진다.
-    private void LogAimDebug(string state, Collider hitCollider, float dist)
-    {
-        if (Time.time < nextAimLogTime) return;
-        nextAimLogTime = Time.time + 0.3f;
-        string name = hitCollider != null ? hitCollider.name : "none";
-        LokiTelemetry.Event("aim_debug", $"state={state} hit={name} dist={dist:F2}");
     }
 
     // 조준 판정·실루엣 크기를 이미 설치된 그 색 포탈의 실제 인스턴스 크기에 맞춘다(설치 전이면

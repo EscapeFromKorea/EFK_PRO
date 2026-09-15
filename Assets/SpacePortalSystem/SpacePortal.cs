@@ -300,12 +300,6 @@ public class SpacePortal : MonoBehaviour
         float speed = body.velocity.magnitude;
         Vector3 newVel = partner.transform.forward * (speed + partner.exitForwardSpeed) + partner.transform.up * partner.exitHopSpeed;
 
-        // ponytail: "벽 방향으로 나간다" 신고 진단용 임시 계측(Loki). partner.transform.forward가
-        // 실제로 벽 쪽을 향하고 있는지(= 그 패널의 rotation이 뒤집혀 있는지)를 직접 확인한다.
-        bool blockedAhead = Physics.Raycast(partner.transform.position, partner.transform.forward, out RaycastHit fwdHit, 1.5f, ~0, QueryTriggerInteraction.Ignore);
-        LokiTelemetry.Event("exit_debug",
-            $"exitPortal={partner.color} fwd={partner.transform.forward:F2} newVel={newVel:F2} blockedAhead={blockedAhead} blockedBy={(blockedAhead ? fwdHit.collider.name : "none")}");
-
         PlayerShapeIdentity identity = body.GetComponentInParent<PlayerShapeIdentity>();
         if (identity != null)
         {

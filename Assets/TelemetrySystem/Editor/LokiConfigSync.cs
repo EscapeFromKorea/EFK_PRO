@@ -4,6 +4,8 @@ using UnityEngine;
 
 namespace TelemetrySystem.Editor
 {
+    // 보안 주의: 이 클래스가 Resources/LokiConfig.asset에 구워 넣는 자격증명은 빌드 시 플레이어
+    // 바이너리에 그대로 포함된다 — 상세는 LokiClient.cs 클래스 상단 주석 참고(2026-09-15 감사).
     public static class LokiConfigSync
     {
         const string AssetDir = "Assets/TelemetrySystem/Resources";
