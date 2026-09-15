@@ -436,98 +436,69 @@ public static class V3Dress
     // Branch–GuideArw 0.908 — 청록·주황 계열은 확실히 회피했고 나머지 팔레트와도 구분된다.
     static readonly Color GuideBranch = new Color(0.45f, 0.95f, 0.05f);
 
+    [MenuItem("Tools/KitchenMapV3/7b. Refresh Route Guide (안내만 갱신)", false, 32)]
+    public static void RefreshGuide()
+    {
+        if (!V3.EnsureOwnedScene("Refresh Route Guide", checkForeign: false)) return;
+        var root = GameObject.Find(V3.RootName);
+        if (root == null) return;
+        var old = root.transform.Find("DRESS_RouteGuide");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        DressGuide(root);
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(root.scene);
+    }
+
+    // 안내점만 실제 경사로/계단참 표면에 맞춘다. 물리·지형은 수정하지 않는다.
+    static void AlignRampGuide(Transform dot, GameObject root)
+    {
+        var origin = dot.position + Vector3.up * 1.5f;
+        float nearest = float.PositiveInfinity;
+        RaycastHit chosen = default;
+        foreach (var col in root.GetComponentsInChildren<Collider>())
+        {
+            if (col.isTrigger || !col.enabled ||
+                !(col.name.StartsWith("Crate_Ramp_") || col.name.StartsWith("Crate_StableLanding_"))) continue;
+            if (col.Raycast(new Ray(origin, Vector3.down), out var hit, 3f) && hit.normal.y > .7f && hit.distance < nearest)
+            { nearest = hit.distance; chosen = hit; }
+        }
+        if (float.IsPositiveInfinity(nearest)) return;
+        dot.position = chosen.point + chosen.normal * .04f;
+        dot.rotation = Quaternion.FromToRotation(Vector3.up, chosen.normal) * Quaternion.Euler(0,45,0);
+    }
+
     static void DressGuide(GameObject root)
     {
+        Physics.SyncTransforms();
         GameObject g = new GameObject("DRESS_RouteGuide");
         g.transform.SetParent(root.transform, false);
-        // 구간별 웨이포인트 (문서 x, y, 점이 놓일 표면 z) — 사이를 ~2U 간격으로 보간.
-        // 세그 이름 접미사(A~L)는 CP01→CP12 진행 순서를 그대로 따른다.
+        // 문서 좌표(x,z,높이). 경사로 표면 투영, 팀 실다리 양 끝, 현재 CP05/07 기준 안내.
         float[][][] segs = new float[][][]
         {
-            // A: 스폰(매트)→CP01 관통→식탁 동쪽 우회(식탁 밑 통과 금지 유지)→CP02 방향
-            // R3'-④ 계승: 매트 구간(63,6)→(63,9)은 매트 상면(z0.3) 유지, (63,10)에서 바닥(z0)으로.
-            // 신규: (63,13)에 CP01(x60~66·y10~16) 중심을 정확히 찍고 (65,15.5)로 빠져나간 뒤
-            // 동쪽 아크(옛 seg0 후반부, Table_Top x30~70·y18~34 밑을 지나지 않도록 x72부터 우회)로
-            // 합류한다.
             Seg(new float[,]{{63,6,0.3f},{63,9,0.3f},{63,10,0f},{63,13,0f},{65,15.5f,0f},
                               {72,17,0f},{78,20,0f},{79,22,0f},{79,30,0f},{76,37,0f},
                               {68,41,0f},{58,42.5f,0f},{49,41,0f},{46.5f,37.5f,0f}}),
-            // B: 바닥→계단 발치 (구 seg2, C의 검산: 직결선 최소여유 1.569U — coord-auditor 확인).
-            // (44.5,42.5)·(42,46) 모두 CP02(x39~45·y42~48) 안.
             Seg(new float[,]{{47,39,0f},{47,41.7f,0f},{40,41.7f,0f},{40,45,0f}}),
-            // C: Crate_Step 10단 계단 오르기 (구 seg3, 무변경).
-            Seg(new float[,]{{40,47,.8f},{40,49,1.6f},{40,51,2.4f},{40,53,3.2f},{40,55.5f,3.2f},{44,55.5f,3.2f},{44,53,4f},{44,51,4.8f},{44,49,5.6f},{44,47,6.4f},{44,44.5f,6.4f},{48,44.5f,6.4f},{48,47,7.2f},{48,49,8f},{48,51,8.8f},{48,53,9.6f},{48,58.5f,9.6f}}),
-            // [O1 반영, map-reviewer 검문] C끝(42.5,58.5)→D시작(44,64) 5.70U가 점선 없이 끊겨
-            // 있었다 — 관문이 아니라 Island_Top 위 평지(z9.65 그대로)라 메울 수 있다. 직선(2점)
-            // 으로 처음 채웠더니 x43·y60.33 보간점이 IS_Board_도마(x36~43·y60~66.6)를 스쳤다 —
-            // 중계점(44.5,59)을 끼워 도마 y시작(60) 아래에서 먼저 x44.5(도마 밖)로 빠진 뒤
-            // 북상하도록 꺾었다(자가검증: 실물 침범 0·공중부양 0, 아래 검산표 참고).
+            Seg(new float[,]{{40,47,.44f},{40,53,3.11f},{40,55.5f,3.2f},{44,55.5f,3.2f},{44,53,3.64f},{44,47,6.31f},{44,44.5f,6.4f},{48,44.5f,6.4f},{48,47,6.84f},{48,53,9.51f},{48,55.5f,9.6f},{48,58.5f,9.6f}}),
             Seg(new float[,]{{48,58.5f,9.65f},{44.5f,59,9.65f},{44,64,9.65f}}),
-            // D: 아일랜드 위→CP03 관통(x36.5~42.5·y65~71)→카트→조리대 착지.
-            // IS_Board_도마(x36~43·y60~66.6·z9.6~10.1)와 Molding_W(북쪽 가장자리, y≥68.25 매끈
-            // 비탈)를 모두 피해야 한다 — 안전대는 y67.1~67.75(폭 0.65) 뿐이라 y67.2~67.5로 관통.
-            // x44 이서(도마 x범위 밖)에서 접근·이탈해 도마를 우회한다.
             Seg(new float[,]{{44,64,9.65f},{44,67.5f,9.65f},{41,67.4f,9.65f},{39.5f,67.4f,9.65f},
                               {41,67.3f,9.65f},{45,67.2f,9.65f},{47,66.5f,9.65f},
-                              {49,69.5f,9.65f},{49,72.4f,8.65f},{49,74.6f,8.65f},{49,76,9.65f},{49,79,9.65f}}),
-            // E: 조리대→화력 징검다리 진입부(여기서 끊음, 구 seg 무변경). 이후 P2 화력 징검다리·
-            // 코너 클라임(PlateStack_C∪Tray_Corner∪CoffeeMachine, x77.6~83.6 병목 0.60U — 같은
-            // 높이 우회 불가, coord-auditor 확정)은 관문 미표시 원칙대로 점선을 긋지 않는다.
+                              {49,67.2f,9.65f}}),
+            Seg(new float[,]{{49,77,9.65f},{49,79,9.65f}}),
             Seg(new float[,]{{49,79,9.65f},{55,79.2f,9.65f}}),
-            // F: 관문 통과 후 CP04(코너 상판, x83.5~89.5·y78~84) 안에서 점선 재개(구 seg 무변경).
             Seg(new float[,]{{84.5f,81,9.65f},{86.5f,81,9.65f}}),
-            // G(신규): 사용자 결정 2번 — T자 갈림 해소. CP04에서 온 길을 되짚어 코너 클러스터·
-            // 스토브를 다시 지나는 점선은 긋지 않는다(F/E와 같은 관문 재표시 금지). 서쪽 복귀는
-            // CP04 옆 화살표+"05" 숫자로만 안내(아래 arrows)하고, 점선은 Stove_Frame 서쪽 끝
-            // (x56) 밖에서 새로 시작한다. 동행선(y≈79.0~79.2)과 겹치지 않도록 y82.5~83.5(Counter_E
-            // 상면 위, Stove_Frame과 y74.8~84.95 겹치지만 z9.6 상면이라 안전)로 서행해 (43,80.5)
-            // 에서 H(구 seg5)에 합류한다.
-            // [O4 반영, map-reviewer 검문] 첫 점 55.5→55.2 — 마름모 동단(55.5+0.495=55.995)이
-            // Stove_Frame 서면(x56)과 여유 0.005U뿐이었다. 55.2+0.495=55.695로 여유 0.305U 확보.
             Seg(new float[,]{{55.2f,83,9.65f},{50,83,9.65f},{45,81.5f,9.65f},{43,80.5f,9.65f}}),
-            // H: 서행→CP05(x28~34·y77~83) 관통→IN선반 앞턱 (구 seg5, 무변경 — (35,80.5)→(27,77.2)
-            // 보간 구간이 이미 (33,79.68) 부근에서 CP05 안을 지난다, 좌표 계산으로 확인).
-            Seg(new float[,]{{43,80.5f,9.65f},{35,80.5f,9.65f},{27,77.2f,9.65f},{20,77.2f,9.65f},{15,77.2f,9.65f}}),
-            // I(신규): IN선반 앞턱→CP06(x11.5~17.5·y79.6~85.6) 관통. 싱크볼 개구부(x14~26·
-            // y77.5~83.5)를 피해 x13.5(Counter_W_L 쪽, 개구부 밖)로 접근한 뒤 카운터 상면(9.6)에서
-            // Shelf_IN 상면(10.2)으로 0.6U 단차 상승(≤1.0 기준 통과) — 상승 지점(14,82)은 Pot_A·
-            // Cup_A 사이 빈 자리(y82, 각각 y83.1↑·y80.4↓)로 계산해서 잡았다.
+            Seg(new float[,]{{43,80.5f,9.65f},{35,77,9.65f},{31,77,9.65f},{27,77.2f,9.65f},{20,77.2f,9.65f},{15,77.2f,9.65f}}),
             Seg(new float[,]{{15,77.2f,9.65f},{13.5f,79,9.65f},{13.5f,81,9.65f},{14,82,10.25f},{14.5f,82.6f,10.25f}}),
-            // ── 여기부터 CP07까지 "가이드 없음"(사용자 결정 2번+지시 D): 팬트리 G0~G5 체인은
-            // 점선 없이 진입 화살표(pantry_entry, "07")만 둔다. CP07(상부장 능선, h0.6)은 06→07·
-            // 07→08 두 무점선 구간 사이에 있어 점선이 볼륨 자체를 지나지 않는다 — 의도된 예외.
-            // J: 냉장고→덕트 계단→동측 패드 (구 seg8, 무변경). 시작점이 CP08(x90.5~96.5·y52~58)
-            // 안, 끝점이 CP09(x89~95·y77~83·z24~27) 안.
             Seg(new float[,]{{93.5f,57.5f,20.05f},{94,61.5f,20.05f},{94,62.3f,20.55f},{94,64.7f,21.05f},
                               {94,66.7f,21.55f},{94,68.8f,22.05f},{94,73,23.05f},{93,75.5f,23.55f},
                               {92.5f,78,24.0f},{92,79.5f,24.05f}}),
-            // [O1 반영, map-reviewer 검문] J끝(92,79.5)→K시작(85,82) 7.43U가 점선 없이 끊겨
-            // 있었다 — 관문이 아니라 Duct_East_Pad/Duct_Floor 위 평지(z24.05 그대로)라 메운다.
             Seg(new float[,]{{92,79.5f,24.05f},{85,82,24.05f}}),
-            // K: 덕트 서행→출구 패드 (구 seg9, 무변경). 출구 이후 뒷마당 낙하는 편도(🔒L2)라
-            // 점선을 잇지 않고 화살표+"10"만 둔다(아래 arrows).
             Seg(new float[,]{{85,82,24.05f},{70,82,24.05f},{55,82,24.05f},{40,82,24.05f},{25,82,24.05f},
                               {12,82,24.05f},{5.5f,82.5f,24.05f},{5,85,24.05f}}),
-            // L: 마당(통로 안 6.5,87.5 시작 — 기존 N6 판정 유지)→CP10→CP11→CP12(x54~60·y99~105)
-            // 관통. (41,102.5) 이전은 구 seg10과 완전히 동일(PinchA/B 유지). 그 뒤가 신규 — 옛
-            // 종점(PlateA 직행)을 폐기하고 CP12로 우회한다: Jangdok_1(x33~41) 밖(x44.5)에서 살짝
-            // 남하해 Bench_평상(y103~·x~44까지) 아래를 피하고, Jangdok_2(x46~54) 위는 y103.2로
-            // 넘어(여유 1.2U), FarSide_LeverPad(x52.1~55.9·y103.28~) 밑을 지나는 마지막 구간만
-            // PinchD(아래)로 축소한다. CP12에서 점선을 멈추고 PlateA(49,104)를 가리키는 화살표로
-            // 마무리한다(지시 D의 "또는 12에서 판A를 가리키는 최종 화살표" 채택 — 되짚어가는
-            // 왕복 점선을 피하기 위해).
             Seg(new float[,]{{6.5f,87.5f,0.0f},{18.5f,87.5f,0.0f},{22,93,0.0f},{25,93,0.0f},{28.5f,93.5f,0.0f},
                               {30,99,0.0f},{32.5f,102.3f,0.0f},{33,102.5f,0.0f},{41,102.5f,0.0f},
                               {44.5f,102.2f,0.0f},{48,103.2f,0.0f},{52,102.64f,0.0f},{57,102.3f,0.0f}}),
         };
-        // 축소존(pinch): 기본 점(0.7U, 대각반경0.495)이 좁은 통로(폭 1.0U 안팎)에서 양쪽 실재물에
-        // 동시에 닿는 구간만 줄인다. PinchA·B·C는 이전 라운드 그대로 유지(🔒 규칙 유지 지시).
-        //  · PinchA = 벽(Wall_N_B1)~세탁기 서측 코너 일대 → 0.5U.
-        //  · PinchB = 장독열 상단~평상 하단(x30~42) → 0.5U.
-        //  · PinchC = Apron Step2 잔재 좌표(seg L 이전 구간엔 더 이상 안 쓰이지만, 다른 좌표와
-        //    안 겹치므로 유지 — 회귀 방지) → 0.2U.
-        //  · PinchD(신규, L 구간): Jangdok_2 상단(y102)↔FarSide_LeverPad 하단(y103.28) 사이
-        //    1.28U 통로, x50~56 — 0.5U(대각0.354)로 확보 마진 0.286U 양쪽.
         (float x0, float x1, float y0, float y1) pinchA = (2f, 19f, 86f, 90f);
         (float x0, float x1, float y0, float y1) pinchB = (30f, 42f, 102f, 103f);
         (float x0, float x1, float y0, float y1) pinchC = (41f, 42f, 34.9f, 35.35f);
@@ -545,72 +516,40 @@ public static class V3Dress
                          : (InPinch(pinchA, p[0], p[1]) || InPinch(pinchB, p[0], p[1]) || InPinch(pinchD, p[0], p[1])) ? 0.5f : 0.7f;
                 d.transform.localScale = new Vector3(sz, 0.06f, sz);
                 d.transform.rotation = Quaternion.Euler(0, 45f, 0);   // 마름모꼴 점
+                AlignRampGuide(d.transform, root);
             }
-
-        // 갈림/끊김 화살표(큰 마름모) — 순번 숫자가 붙는 것과 순수 장식(계속 직진)인 것을 구분.
-        // 좌표 뒤 문자열이 null이면 "다음 깃발 번호" 표시가 없는 장식/최종 큐다(지시 E: 번호는
-        // 갈림점·끊김점에만). decor_crate·decor_cart_gap은 구간 내내 점선이 이어지는 지점이라
-        // 번호 없이 유지(구 화살표#2·#3, 무변경). 화살표#1(46.5,36.5 — 구 "의자 점프" 방향 큐)과
-        // 화살표#6(44.3,100.5 — 구 PlateA 직행 큐)은 각각 삭제된 식탁 경로/직행 경로 전용이라
-        // 제거한다.
-        // sz 열: 기본 1.6U 마름모. pantry_entry_cue만 [O2 반영] Shelf_IN_전면부(y81.2~83.0,
-        // 깊이 1.8U)가 기본 크기(대각 2.263U)보다 얕아 전체 발자국이 안 들어갔다(구 위치 기준
-        // 17.1%가 그 아래 Counter_W_L 상면 9.6 위 0.65U 공중) — 크기를 1.1U(대각 1.556U)로
-        // 줄이고 중심을 그 얕은 선반 안(y82.1)으로 옮겨 발자국 전체가 선반 상면(10.2) 위에만
-        // 오도록 했다(마진 y0.12U 양쪽, x는 원래도 넉넉).
-        // [K08, 2026-09-12 — Codex 검수 지시] 45° 회전 정사각형(마름모)은 방향이 없었다. 화살표마다
-        // "가리킬 목표점"(문서 tx,ty)을 두고 그 방향으로 꼭짓점이 향하는 "V" 쉐브론(얇은 바 2개)을
-        // 만든다. 위치(x,y,z)·순서·번호·색·sz(발자국)는 이전 표와 동일 — 경로 좌표는 바꾸지 않는다.
-        // 목표점 근거(전부 이 파일의 기존 점선 웨이포인트 또는 원 주석에서 인용):
-        //   decor_crate→Crate 계단 시작(42,48.5 · seg C 첫 점) · decor_cart_gap→카트 갭 북단(49,74.6 · seg D)
-        //   gate_cue→CP04 점선 재개점(84.5,81 · seg F) · west_return_cue→서행 시작(55.2,83 · seg G)
-        //   pantry_entry_cue→팬트리 방향 "서·남"(원 주석) = 대각(−1,−1) 방향 → (12,81.1)
-        //   swing_cue→CP08 점선 시작(93.5,57.5 · seg J) · duct_drop_cue→마당 점선 시작(6.5,87.5 · seg L)
-        //   final_goal_cue→PlateA(49,104 · 원 주석).
         (string label, float x, float y, float z, string num, float sz, float tx, float ty)[] arrows =
         {
             ("decor_crate",      40f,   44.5f, 0.05f,  null,  1.6f, 40f,   47f),
-            ("decor_cart_gap",   49f,   72f,   8.65f,  null,  1.6f, 49f,   74.6f),
-            // 게이트 큐(구 화살표#7, 무변경 좌표) — P2 진입 직전. 다음 번호 "04"(코너 상판).
-            ("gate_cue",         54.5f, 79.3f, 9.65f,  "04",  1.6f, 84.5f, 81f),
-            // 신규: CP04 옆 서향 복귀 큐 — CoffeeMachine(x79.8~83.6) 밖 CP04 동쪽 여유 지점.
+            ("thread_bridge_entry",49f, 67.2f,9.65f,  null,  1.1f, 49f,   76f),
+            ("counter_route_cue",54.5f, 79.3f, 9.65f,  "04",  1.6f, 84.5f, 81f),
             ("west_return_cue",  87f,   81f,   9.65f,  "05",  1.6f, 55.2f, 83f),
-            // 신규: IN선반 위에서 팬트리 방향(서·남)을 가리키는 진입 큐. [O2] y81.7→82.1·크기
-            // 1.6→1.1(위 sz 열 설명 참고).
             ("pantry_entry_cue", 13f,   82.1f, 10.25f, "07",  1.1f, 12f,   81.1f),
-            // 스윙 큐(구 화살표#4=57,81,22.28, 무변경 좌표) — 다음 번호 "08"(냉장고 위 착지).
-            ("swing_cue",        57f,   81f,   22.28f, "08",  1.6f, 93.5f, 57.5f),
-            // 덕트 낙하 큐(구 화살표#5=5,84,24.08, 무변경 좌표) — 다음 번호 "10"(뒷마당 착지).
+            ("swing_cue",        55.5f, 77f,   22.25f, "08",  1.6f, 60f,   77.5f),
             ("duct_drop_cue",    5f,    84f,   24.08f, "10",  1.6f, 6.5f,  87.5f),
-            // 신규: CP12에서 PlateA(49,104) 방향 최종 큐 — 다음 CP가 없어 번호 없음(골 지시자).
             ("final_goal_cue",   56.5f, 101f,  0.05f,  null,  1.6f, 49f,   104f),
         };
         foreach (var a in arrows)
         {
-            // 부모(빈 오브젝트, 이름은 이전과 동일)가 위치·방향을 갖고, 자식 바 2개가 쉐브론을 이룬다.
             GameObject go = new GameObject($"DRESS_guide_arrow_{a.label}");
             go.transform.SetParent(g.transform, false);
             go.transform.position = V3.Doc(a.x, a.y, a.z);
-            // 문서 (x,y) → unity (x,z)이므로 목표 방향 yaw = atan2(dx, dy)(도). 부모 +z(앞)가 목표를 향한다.
             float yawDeg = Mathf.Atan2(a.tx - a.x, a.ty - a.y) * Mathf.Rad2Deg;
             go.transform.rotation = Quaternion.Euler(0f, yawDeg, 0f);
             MakeChevron(go.transform, a.sz);
             if (a.num != null)
                 MakeNumber(g.transform, a.x + 0.9f, a.y - 0.4f, a.z + 0.02f, a.num);
         }
-
-        // 지선(선택 경로) 마커 — 점선 없이 GuideBranch 색 마름모 1~2개만(지시 F). 낙하받이는
-        // 넓은 선반이라 0.6U, 계단 3종은 발판 폭(0.6U)보다 좁은 0.3U로 이웃 단 침범을 피한다.
+        // 연두색은 선택 경로 입구·출구 마커. 조리대 진입은 남쪽에서 북쪽으로.
         (string name, float x, float y, float z, float sz)[] branches =
         {
+            ("조리대_경사로_남쪽입구", 11.6f, 66.5f, 0.05f, 0.6f),
+            ("조리대_경사로_출구", 43f, 75f, 9.65f, 0.6f),
             ("낙하받이",       24.0f,  87.7f, 10.2f, 0.6f),   // Shelf_OUT_낙하받이 중앙
             ("복귀계단_기슭",  22.25f, 87.6f, 10.8f, 0.3f),   // Shelf_OUT_복귀계단 Step1 상면
             ("복귀계단_창턱",  22.25f, 86.4f, 12.0f, 0.3f),   // Shelf_OUT_복귀계단 Step3 상면(창턱)
             ("IN창턱계단_기슭", 25.25f, 82.7f, 10.8f, 0.3f),  // Shelf_IN_창턱계단 Step1 상면
             ("IN창턱계단_창턱", 25.25f, 83.9f, 12.0f, 0.3f),  // Shelf_IN_창턱계단 Step3 상면(창턱)
-            // [7번 반영, map-reviewer 검문] 이름·주석 명확화(좌표 불변): 🔒L1-b 우회·수집 존
-            // 바닥 입구(V1·V2 접근) — 상부장行 팬트리 체인(pantry_entry_cue, 06→07 화살표)과는
-            // 별개다(그쪽은 주 경로의 무점선 구간, 이 마커는 그 우회 존으로 들어가는 지선 입구).
             ("팬트리_우회존_바닥입구", 7.0f, 29.0f, 0.05f, 0.6f),   // G0 climb 진입부 앞 바닥
         };
         foreach (var b in branches)
@@ -744,3 +683,4 @@ public static class V3Dress
     }
 }
 #endif
+

@@ -283,6 +283,9 @@ public static class V3Build
     static void S6_UpperRidge()
     {
         GameObject g = V3.Group("S6_Ridge_P4");
+        // Keep the team default 10m respawn drop clear of the duct above the ridge.
+        // Same ridge height; the 5x4.2m landing joins the existing ridge at z79.
+        V3.Box(g, "Ridge_CP07_Landing", 53, 75, 21.9f, 58, 79.2f, RidgeTop, "GrayHi");
         V3.Box(g, "Cab_Upper_A_22.2", 0.05f, 74.8f, 16f, 9f, 84.95f, RidgeTop, "Gray");
         V3.Box(g, "Cab_Upper_B_22.2", 31f, 79f, 16f, 58f, 84.95f, RidgeTop, "Gray");   // 동쪽 끝 x58 = 스윙 시작
         V3.Box(g, "CurtainBox_21.2", 9.5f, 84f, 20.2f, 30.5f, 84.95f, 21.2f, "Gray");  // A 22.2 ↓ 21.2 ↑ B 22.2
