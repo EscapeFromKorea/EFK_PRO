@@ -65,7 +65,7 @@ public class ExitWeightPlate : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag(playerTag)) return;
+        if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
         overlaps.TryGetValue(rb, out int n);
@@ -74,7 +74,7 @@ public class ExitWeightPlate : MonoBehaviour
 
     void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag(playerTag)) return;
+        if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
         if (!overlaps.TryGetValue(rb, out int n)) return;

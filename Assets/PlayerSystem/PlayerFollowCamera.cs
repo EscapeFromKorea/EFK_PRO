@@ -21,8 +21,12 @@ using UnityEngine;
 /// 정상적인 결과로 매 모서리마다 위아래로 통통 튄다(회전과 달리 이건 실제 이동이라 그대로 두면
 /// 화면이 흔들린다). 기존에는 위치만 SmoothDamp로 지연시키고 회전(LookRotation)은 그 튀는
 /// 타깃을 매 프레임 즉시 스냅해 바라봤는데, "부드럽게 지연된 위치 + 즉각 반응하는 회전"의
-/// 불일치 자체가 출렁이는 느낌을 더했다. 그래서 (1) 타깃의 Y만 더 강하게 감쇠해 상하 튐을
-/// 완화하고(verticalDampingMultiplier), (2) 회전도 Slerp로 부드럽게 따라붙게 했다(lookSmoothness).
+/// 불일치 자체가 출렁이는 느낌을 더했다. 그래서 타깃의 Y만 더 강하게 감쇠해 상하 튐을
+/// 완화했다(verticalDampingMultiplier).
+/// [2026-09-15 정정] 회전도 한때 Slerp(lookSmoothness)로 지연시켰으나, 그건 이 시점(마우스 궤도
+/// 도입 전, position 전체가 SmoothDamp)의 조치였다. 이후 mnppi가 즉시-반영 orbit offset을
+/// 추가하며 "position은 마우스에 즉각 반응·회전만 지연"이라는 새 불일치가 생겨 마우스 회전이
+/// 버벅이게 됐다 — 제거하고 즉시 LookRotation을 대입한다(LateUpdate 주석 참고).
 ///
 /// [mnppi 추가 — 마우스 궤도 회전 (feat/mnppi-orbit-cam #75, 박진수 승인 2026-09-03)]
 /// offset을 고정 yaw(cameraYawOffset) 하나로만 돌리던 것을, 마우스로 누적하는 궤도 각도
@@ -40,18 +44,24 @@ public class PlayerFollowCamera : MonoBehaviour
     public Transform target;
 
     [Header("따라가기")]
-    [Tooltip("타깃 기준 카메라 위치 오프셋(월드 공간). 예: (0, 6, -10) = 뒤/위에서 내려다봄. " +
+    [Tooltip("타깃 기준 카메라 위치 오프셋(월드 공간). 예: (0, 4, -10) = 뒤/위에서 내려다봄. " +
              "cameraYawOffset만큼 회전해 적용된다. 월드 공간 고정이라 플레이어가 굴러도(회전해도) " +
-             "시점이 휩쓸리지 않는다.")]
-    public Vector3 offset = new Vector3(0f, 6f, -10f);
+             "시점이 휩쓸리지 않는다.\n" +
+             "[2026-09-15] Y/Z 비율이 곧 '피치로 이 오프셋을 얼마나 돌리면 카메라가 타깃 정수직 " +
+             "위에 오는가'를 정한다(그 각도 = atan(|Z|/Y), 극점 — 그 근방에서 카메라 yaw가 수학적으로 " +
+             "정의가 안 돼 실측(Loki)으로 화면이 튀는 걸 확인했다). Y를 6→4로 낮춰 극점을 59°→68°로 " +
+             "밀어내고 maxPitch(아래)와 같이 여유를 벌었다 — Y만 더 낮추면 여유는 늘지만 카메라가 " +
+             "그만큼 덜 높은 위치에서 내려다보게 돼 기본 시점 느낌이 바뀐다.")]
+    public Vector3 offset = new Vector3(0f, 4f, -10f);
 
     [Tooltip("[mnppi] 이제 '초기 yaw'다 — Start에서 orbitYaw의 시작값으로 쓰인다. enableMouseOrbit이 " +
              "켜져 있으면 이후 마우스로 orbitYaw가 바뀌고, 꺼져 있으면 이 값에 고정된다(기존 동작). " +
              "방향키 보정(PlayerMover.inputYawOffset)과 시점을 맞추는 값. 방향이 반대면 -90으로 뒤집는다.")]
     public float cameraYawOffset = 90f;
 
-    [Tooltip("위치 추적 부드러움(SmoothDamp 시간, 초). 작을수록 즉각적이고, 클수록 부드럽지만 느리다.")]
-    public float followSmoothness = 0.2f;
+    [Tooltip("위치 추적 부드러움(SmoothDamp 시간, 초). 작을수록 즉각적이고, 클수록 부드럽지만 느리다. " +
+             "[2026-09-15] 0.2→0.12→0.07로 낮춰 카메라가 플레이어를 더 즉각적으로 따라가게 했다.")]
+    public float followSmoothness = 0.07f;
 
     [Tooltip("타깃의 Y(상하) 위치만 추가로 감쇠하는 배수(1 = X/Z와 동일). 정육면체/정사면체가 " +
              "모서리를 넘을 때마다 Root가 실제로 위아래로 튀는데, 이 값을 키우면 카메라가 그 상하 " +
@@ -60,10 +70,6 @@ public class PlayerFollowCamera : MonoBehaviour
 
     [Tooltip("시선이 향하는 지점을 타깃 위치에서 이만큼 위로 올린다(발밑이 아니라 몸통을 보게).")]
     public float lookHeightOffset = 1f;
-
-    [Tooltip("카메라 회전이 목표 방향으로 따라붙는 속도(초당 보간 비율). 낮을수록 부드럽지만 시선이 " +
-             "느리게 반응하고, 높을수록 즉각적이지만 타깃의 상하 튐이 회전에도 그대로 묻어난다.")]
-    public float lookSmoothness = 8f;
 
     // ═══════════ [mnppi 추가 시작] 마우스 궤도 회전 — feat/mnppi-orbit-cam (#75), 박진수 승인 2026-09-03 ═══════════
     // 원신/ZZZ식 3인칭: 마우스로 타깃 주변을 yaw/pitch 궤도 회전한다. 타깃의 "위치"만 읽는 기존 설계는
@@ -76,15 +82,27 @@ public class PlayerFollowCamera : MonoBehaviour
     public float mouseSensitivity = 2f;
     [Tooltip("상하(pitch) 회전 하한(도). 이 밑으로는 안 내려간다.")]
     public float minPitch = -50f;
-    [Tooltip("상하(pitch) 회전 상한(도). 이 위로는 안 올라간다(뒤집힘 방지).")]
-    public float maxPitch = 75f;
+    [Tooltip("상하(pitch) 회전 상한(도). 이 위로는 안 올라간다(뒤집힘 방지).\n" +
+             "[2026-09-15] offset의 Y/Z 비율이 만드는 극점(atan(|offset.z|/offset.y), 현재 설정에선 " +
+             "68°)보다 충분히 낮게 잡아야 한다 — 극점 근방(수평 성분이 이동 지연 잡음(대략 " +
+             "moveSpeed×followSmoothness ≈ 1유닛) 정도로 작아지는 구간)에서는 위를 봐도 안 봐도 " +
+             "화면이 스스로 요동친다. 75→60으로 낮춰 극점까지 8° 여유(수평 성분 기준 1.5유닛 이상)를 " +
+             "벌었다 — 이 값을 다시 올리려면 offset도 같이 넓혀 극점을 더 밀어내야 한다.")]
+    public float maxPitch = 60f;
     [Tooltip("마우스 Y축 반전.")]
     public bool invertY = false;
     [Tooltip("플레이 시작 시 커서를 화면 중앙에 고정(숨김). Game 뷰 클릭 시 재고정, Esc로 해제.")]
     public bool lockCursorOnPlay = true;
+    [Tooltip("마우스 델타에 거는 저역통과 필터 시간(초, SmoothDamp). 고주사율 마우스나 프레임타임 " +
+             "편차로 생기는 델타 자체의 미세 떨림만 걸러내려는 값이라 아주 짧게 잡는다 — 0이면 필터 " +
+             "없이 원래 델타를 그대로 쓴다. 크게 잡으면 조준 반응이 늦어져 방금 없앤 것과 같은 " +
+             "종류의 '버벅임'이 다른 형태로 되살아난다(2026-09-15 추가).")]
+    public float mouseDeltaSmoothingTime = 0.03f;
 
     private float orbitYaw;    // 누적 yaw(도). Start에서 cameraYawOffset으로 초기화.
     private float orbitPitch;  // 누적 pitch(도). minPitch~maxPitch로 클램프.
+    private float smoothedMouseX, smoothedMouseY;         // 저역통과 필터를 거친 프레임당 델타.
+    private float mouseXVelocity, mouseYVelocity;         // SmoothDamp 내부 속도 누산기.
 
     /// <summary>PlayerMover가 카메라 상대 이동에 쓰는 현재 시점 yaw(도). 씬에 이 카메라가 없으면
     /// null → PlayerMover가 기존 inputYawOffset로 폴백한다.</summary>
@@ -159,6 +177,44 @@ public class PlayerFollowCamera : MonoBehaviour
     private float smoothedTargetY;
     private float targetYVelocity;
 
+    // ═══════════ [진단 전용, 2026-09-15] "위를 볼 때 시점이 계속 바뀐다" 제보 조사 — Grafana/Loki ═══════════
+    // 의심 지점: dir(카메라→lookPoint)이 피치가 커질수록 Vector3.up에 가까워지고, LookRotation은
+    // dir이 up과 거의 나란해지면 수평 성분(분모 역할)이 아주 작아져 target Y의 미세한 잡음(SmoothDamp
+    // 수렴 오차·접지 튐)조차 결과 yaw를 크게 흔들 수 있다 — 가설일 뿐이라 고치지 않고 실측부터 한다.
+    // 굴리기 모드(rollBlend>0)는 PortalSystem이 미는 기준점까지 섞여 원인 후보가 늘어나므로 뺀다
+    // (사용자 지시 — 일반 이동 상태 기준). 조사가 끝나면 이 블록과 호출부를 통째로 지운다.
+    [Header("[진단 전용] 카메라 시점 로그 (Grafana/Loki)")]
+    [Tooltip("일반 이동 상태(굴리기 앵커 블렌드 밖)에서 주기적으로 카메라 방향 진단값을 Loki로 " +
+             "보낸다. 조사용 — 기본 꺼짐, 재현 중에만 켠다.")]
+    public bool logCameraDebug = false;
+    [Tooltip("로그 전송 간격(초). ponytail: 매 프레임 보내면 버퍼만 커진다.")]
+    public float cameraDebugLogInterval = 0.2f;
+
+    private float nextCamDebugLogTime;
+    private float lastCamEulerY;
+    private bool camDebugPrimed;
+
+    // ponytail: 0.2초(기본) 간격 throttle — PlayerEnergyReceiver.LogAimDebug와 같은 패턴.
+    private void LogCameraDebug(Vector3 dir)
+    {
+        if (Time.time < nextCamDebugLogTime) return;
+        nextCamDebugLogTime = Time.time + cameraDebugLogInterval;
+
+        float angleFromUp = Vector3.Angle(dir.normalized, Vector3.up);
+        float horizontalMag = new Vector2(dir.x, dir.z).magnitude;
+        float camEulerY = transform.eulerAngles.y;
+        // Mathf.DeltaAngle로 360°↔0° 랩어라운드를 실제 스핀으로 오판하지 않게 한다.
+        float yawJump = camDebugPrimed ? Mathf.DeltaAngle(lastCamEulerY, camEulerY) : 0f;
+        lastCamEulerY = camEulerY;
+        camDebugPrimed = true;
+
+        LokiTelemetry.Event("cam_view_debug",
+            $"yaw={orbitYaw:F1} pitch={orbitPitch:F1} dirY={dir.y:F3} dirXZ={horizontalMag:F3} " +
+            $"angFromUp={angleFromUp:F2} camEulerY={camEulerY:F2} yawJump={yawJump:F2} " +
+            $"targetY={target.position.y:F3} smoothY={smoothedTargetY:F3}");
+    }
+    // ═══════════ [진단 전용 끝] ═══════════
+
     void Awake()
     {
         instance = this;
@@ -202,12 +258,31 @@ public class PlayerFollowCamera : MonoBehaviour
             if (Input.GetKeyDown(KeyCode.Escape))
                 SetCursorLocked(false);
             else if (lockCursorOnPlay && Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0))
+            {
                 SetCursorLocked(true);
+                // 잠금 해제 동안 멈춰 있던 필터 상태를 지운다 — 안 지우면 재잠금 첫 프레임에 그
+                // 사이 쌓인 델타/속도가 갑자기 반영돼 시점이 한 번 튄다.
+                smoothedMouseX = smoothedMouseY = mouseXVelocity = mouseYVelocity = 0f;
+            }
 
             if (Cursor.lockState == CursorLockMode.Locked)
             {
-                orbitYaw += Input.GetAxis("Mouse X") * mouseSensitivity;
-                orbitPitch += Input.GetAxis("Mouse Y") * mouseSensitivity * (invertY ? 1f : -1f);
+                float rawX = Input.GetAxis("Mouse X") * mouseSensitivity;
+                float rawY = Input.GetAxis("Mouse Y") * mouseSensitivity * (invertY ? 1f : -1f);
+                // 델타 자체를 SmoothDamp로 걸러 미세 떨림만 죽인다(방향 자체를 지연시키는 게
+                // 아니라 신호를 다듬는 것이라 위 회전 즉시-대입 수정과 충돌하지 않는다).
+                if (mouseDeltaSmoothingTime > 0f)
+                {
+                    smoothedMouseX = Mathf.SmoothDamp(smoothedMouseX, rawX, ref mouseXVelocity, mouseDeltaSmoothingTime);
+                    smoothedMouseY = Mathf.SmoothDamp(smoothedMouseY, rawY, ref mouseYVelocity, mouseDeltaSmoothingTime);
+                }
+                else
+                {
+                    smoothedMouseX = rawX;
+                    smoothedMouseY = rawY;
+                }
+                orbitYaw += smoothedMouseX;
+                orbitPitch += smoothedMouseY;
                 orbitPitch = Mathf.Clamp(orbitPitch, minPitch, maxPitch);
             }
         }
@@ -250,19 +325,41 @@ public class PlayerFollowCamera : MonoBehaviour
         aimBlend = Mathf.MoveTowards(aimBlend, aiming ? 1f : 0f, blendStep);
         Vector3 effectiveOffset = aimBlend > 0f ? Vector3.Lerp(offset, aimOffset, aimBlend) : offset;
 
-        Vector3 rotatedOffset = Quaternion.Euler(orbitPitch, orbitYaw, 0f) * effectiveOffset;
+        Quaternion orbitRotation = Quaternion.Euler(orbitPitch, orbitYaw, 0f);
+        Vector3 rotatedOffset = orbitRotation * effectiveOffset;
         smoothedFollowPoint = Vector3.SmoothDamp(smoothedFollowPoint, smoothedTargetPos, ref followVelocity, followSmoothness);
         transform.position = smoothedFollowPoint + rotatedOffset;
 
-        // 회전: 실제 카메라 위치에서 타깃 위치(살짝 위)를 바라보되, 위치처럼 Slerp로 부드럽게
-        // 따라붙는다(예전엔 즉시 스냅 — 부드러운 위치와 즉각 회전의 불일치가 출렁임을 더했다).
-        Vector3 lookPoint = smoothedTargetPos + Vector3.up * lookHeightOffset;
-        Vector3 dir = lookPoint - transform.position;
-        if (dir.sqrMagnitude > 0.0001f)
+        // 회전: dir을 "카메라 실제 위치 → 타깃 실제 위치" 벡터로 매 프레임 재구성하지 않는다.
+        // [2026-09-15, 3차 수정] 그 방식(smoothedTargetPos - transform.position)은 두 항이 서로
+        // 다른 지연을 갖는다 — 위치는 smoothedFollowPoint(XYZ 전부 followSmoothness), 시선점은
+        // smoothedTargetPos(X/Z는 raw, Y만 verticalDampingMultiplier로 3배 더 감쇠) — 그 차이(지연
+        // 오차)가 곧 dir의 수평 성분이라, 플레이어가 그냥 걷기만 해도(방향 전환·비탈·접지 튐) 매
+        // 프레임 달라지며 화면이 미세하게 울렁였다(카메라를 전혀 안 돌려도 재현 — 제보 그대로).
+        // 피치가 커질 때는 이 잡음이 지오메트리상 작아지는 분모(위 offset/maxPitch 조정 참고)와
+        // 겹쳐 수십~백도급으로 증폭됐던 것뿐, 원인은 같다.
+        // 대신 위치 계산에 이미 쓴 rotatedOffset을 그대로 재사용해 "궤도·오프셋·lookHeightOffset만의
+        // 함수"인 결정론적 방향을 쓴다 — 타깃의 실시간 위치·지연 잡음을 아예 안 읽으므로 그 무엇도
+        // 화면을 흔들 수 없다. up*lookHeightOffset은 회전시키지 않는다(코드 리뷰가 잡은 이전 실수:
+        // 그걸 orbitRotation과 함께 통째로 돌리면 피치가 커질수록 최대 5.9°까지 타깃 중심이
+        // 어긋났다 — 여기서는 오프셋만 돌리고 up 항은 월드 고정으로 남겨 그 결함이 없다).
+        // 대가: 카메라 위치 자체가 갖는 정상적인 추격 지연(smoothedFollowPoint가 실제 타깃보다
+        // 항상 조금 뒤처지는 것)만큼 화면 중앙이 살짝 밀릴 수 있다 — 어떤 3인칭 추격 카메라에나
+        // 있는 통상적인 지연이고, 피치에 따라 커지지 않는다(리뷰가 지적한 결함과는 성격이 다르다).
+        Vector3 dir = Vector3.up * lookHeightOffset - rotatedOffset;
+        const float minHorizontal = 0.05f; // 극점 근방(위 offset/maxPitch 조정 이후 이론상 도달 불가) 안전망.
+        Vector2 horizontal = new Vector2(dir.x, dir.z);
+        if (horizontal.sqrMagnitude < minHorizontal * minHorizontal)
         {
-            Quaternion desiredRotation = Quaternion.LookRotation(dir, Vector3.up);
-            transform.rotation = Quaternion.Slerp(transform.rotation, desiredRotation, Time.deltaTime * lookSmoothness);
+            Vector3 fallback = Quaternion.Euler(0f, orbitYaw, 0f) * Vector3.forward * minHorizontal;
+            dir = new Vector3(fallback.x, dir.y, fallback.z);
         }
+        if (dir.sqrMagnitude > 0.0001f)
+            transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
+
+        // [진단 전용] 일반 이동 상태(rollBlend≈0)에서만 — 굴리기 모드는 조사 범위 밖.
+        if (logCameraDebug && rollBlend < 0.01f)
+            LogCameraDebug(dir);
     }
 
     /// <summary>카메라를 지금 즉시 타깃 위치로 스냅한다(보간 없음). 타깃이 <b>순간이동</b>했을 때
@@ -290,9 +387,20 @@ public class PlayerFollowCamera : MonoBehaviour
         // 여기서 식이 갈라지면 스냅 직후 한 프레임 튄다.
         // [mnppi 수정] 기존: t.position + Quaternion.AngleAxis(instance.cameraYawOffset, Vector3.up) * instance.offset;
         //   → LateUpdate와 동일하게 궤도 회전(yaw/pitch) 식으로 교체.
-        instance.transform.position =
-            t.position + Quaternion.Euler(instance.orbitPitch, instance.orbitYaw, 0f) * instance.offset;
-        Vector3 dir = t.position + Vector3.up * instance.lookHeightOffset - instance.transform.position;
+        // [2026-09-15, 3차 수정] LateUpdate와 같은 결정론적 회전식(위 LateUpdate 주석 참고) — 여기는
+        // 지연되는 추적점이 없는 순간 스냅이라 "t.position + up*h - transform.position"이 애초에
+        // up*h - rotatedOffset과 대수적으로 같다(t.position이 상쇄된다). 그 사실을 식으로도 드러낸다.
+        Quaternion orbitRotation = Quaternion.Euler(instance.orbitPitch, instance.orbitYaw, 0f);
+        Vector3 rotatedOffset = orbitRotation * instance.offset;
+        instance.transform.position = t.position + rotatedOffset;
+        Vector3 dir = Vector3.up * instance.lookHeightOffset - rotatedOffset;
+        const float minHorizontal = 0.05f;
+        Vector2 horizontal = new Vector2(dir.x, dir.z);
+        if (horizontal.sqrMagnitude < minHorizontal * minHorizontal)
+        {
+            Vector3 fallback = Quaternion.Euler(0f, instance.orbitYaw, 0f) * Vector3.forward * minHorizontal;
+            dir = new Vector3(fallback.x, dir.y, fallback.z);
+        }
         if (dir.sqrMagnitude > 0.0001f)
             instance.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
     }

@@ -148,13 +148,9 @@ public class PlayerStickerCarrier : MonoBehaviour
             return;
         }
 
-        // 다른 종류가 붙어 있으면 → 떼고 이번 종류로 교체(환불 후 재부착).
-        if (current != null)
-        {
-            AddToInventory(current.Retract(), 1);
-            current = null;
-        }
-
+        // 다른 종류로 교체하는 경우 — 검증(허용 여부/재고)을 기존 스티커 환불보다 먼저 한다.
+        // 순서가 바뀌면(환불 먼저) 교체가 검증 실패로 취소돼도 이미 떼어낸 스티커는 돌아오지
+        // 않아 표면이 빈 채로 남는다(2026-09-15 감사에서 발견).
         if (!aimedSurface.Accepts(selectedKind))
         {
             Debug.Log($"[FrictionSticker] '{aimedSurface.name}'은(는) {selectedKind} 스티커를 허용하지 않습니다.");
@@ -165,6 +161,10 @@ public class PlayerStickerCarrier : MonoBehaviour
             Debug.Log($"[FrictionSticker] {selectedKind} 스티커가 없습니다.");
             return;
         }
+
+        // 검증을 통과했으니 이제 기존 스티커(있다면)를 떼고 교체한다.
+        if (current != null)
+            AddToInventory(current.Retract(), 1);
 
         FrictionSticker placed = FrictionSticker.Attach(aimedSurface, selectedKind, settings, aimPoint, aimNormal);
         if (placed != null)
