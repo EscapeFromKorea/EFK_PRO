@@ -66,6 +66,11 @@ public class PlayerCubeDock : MonoBehaviour
     public float jointBreakForce = Mathf.Infinity;
     [Tooltip("도킹 조인트 파괴 토크(N·m).")]
     public float jointBreakTorque = Mathf.Infinity;
+    [Tooltip("결합된 구조물(HasConnections)에 도킹할 때 허용하는 각도 한계(도, 대칭). 0에 가까울수록 " +
+             "FreezeRotation과의 하드 락 경합(TryDock 주석 참고)이 재발할 위험이 커지고, 너무 크면 " +
+             "구조물이 이 도킹점을 축으로 눈에 띄게 처지거나 흔들린다 — 몇 도 안팎이 절충점이다 " +
+             "(PR #92 코드검토 지적, 2026-09-15).")]
+    public float dockedStructureAngularLimitDeg = 5f;
 
     private PlayerMover mover;
     private Rigidbody body;
@@ -327,23 +332,37 @@ public class PlayerCubeDock : MonoBehaviour
         joint.connectedBody = blockBody;
         joint.autoConfigureConnectedAnchor = true;
         joint.xMotion = joint.yMotion = joint.zMotion = ConfigurableJointMotion.Locked;
-        // 각축 Free/Locked는 대상 블록이 다른 블록과 결합돼 있는지에 따라 갈린다.
+        // 각축 Locked/Limited는 대상 블록이 다른 블록과 결합돼 있는지에 따라 갈린다.
         //  · 결합된 구조물(HasConnections)이면 그 구조물의 자체 Weld 조인트가 이미 상대 회전을
         //    고정한다. 여기서 또 Locked를 걸면 "블록 기준 상대 회전 고정"(이 조인트)과 "월드 기준
         //    회전 고정"(정육면체의 FreezeRotation)이라는 서로 다른 두 구속이 동시에 걸려 못 풀리는
         //    각 오차를 솔버가 매 스텝 떠안는다 — 그 미해결 오차가 선형 쪽으로 새어나와 조작도 안
-        //    했는데 위치가 끌려다니는 것처럼 보였다(플레이테스트로 재현, 이중 구속이 원인). → Free.
+        //    했는데 위치가 끌려다니는 것처럼 보였다(플레이테스트로 재현, 이중 구속이 원인).
+        //    → 완전히 Free로 풀면 이 경합은 사라지지만, 그 대신 구조물 전체가 이 도킹점 하나만
+        //    빼고는 아무 회전 구속이 없어져 볼-소켓 조인트처럼 처지거나 흔들린다(다리 앵커로
+        //    쓰는 핵심 시나리오가 깨짐 — PR #92 코드검토에서 지적, 2026-09-15). 그래서 Free 대신
+        //    작은 각도 한계(`dockedStructureAngularLimitDeg`)를 둔 Limited를 쓴다 — 하드 락끼리의
+        //    경합은 여전히 피하면서(한계 안에서는 자유로우니 무한 반발이 없다), 한계를 넘는 처짐/
+        //    흔들림은 조인트가 다시 막는다.
         //  · 반대로 대상이 아무 결합도 없는 "허공에 뜬 블록 하나"면, 그 블록의 회전을 잡아주는 게
-        //    이 조인트 말고는 아예 없다(SnapBlock엔 RigidbodyConstraints가 없음) — Free로 두면
-        //    "블록 1개로 다리 놓기" 시나리오에서 축 없는 블록이 그대로 처지거나 돈다. 이땐 경쟁하는
-        //    두 번째 구속이 없으므로 Locked를 걸어도 위 문제가 재발하지 않고, 블록 자세가 안정된다
-        //    (PR #92 리뷰에서 지적, 실제로 검증되지 않았던 시나리오 — 후속 수정).
-        ConfigurableJointMotion angularMotion = aimed.HasConnections
-            ? ConfigurableJointMotion.Free
-            : ConfigurableJointMotion.Locked;
-        joint.angularXMotion = joint.angularYMotion = joint.angularZMotion = angularMotion;
+        //    이 조인트 말고는 아예 없다(SnapBlock엔 RigidbodyConstraints가 없음) — Free/Limited로
+        //    두면 "블록 1개로 다리 놓기" 시나리오에서 축 없는 블록이 그대로 처지거나 돈다. 이땐
+        //    경쟁하는 두 번째 구속이 없으므로 Locked를 걸어도 위 문제가 재발하지 않고, 블록 자세가
+        //    안정된다(PR #92 리뷰에서 지적, 실제로 검증되지 않았던 시나리오 — 후속 수정).
+        if (aimed.HasConnections)
+        {
+            joint.angularXMotion = joint.angularYMotion = joint.angularZMotion = ConfigurableJointMotion.Limited;
+            var angularLimit = new SoftJointLimit { limit = dockedStructureAngularLimitDeg };
+            joint.lowAngularXLimit = angularLimit;
+            joint.highAngularXLimit = angularLimit;
+            joint.angularYLimit = angularLimit;
+            joint.angularZLimit = angularLimit;
+        }
+        else
+        {
+            joint.angularXMotion = joint.angularYMotion = joint.angularZMotion = ConfigurableJointMotion.Locked;
+        }
         // JointProjectionMode엔 Position 단독 값이 없다(None / PositionAndRotation 둘뿐 — Unity API).
-        // 각 구속은 Free라 투영에서 "회전" 쪽은 사실상 손댈 게 없고, 선형 드리프트만 정리된다.
         joint.projectionMode = JointProjectionMode.PositionAndRotation;
         joint.projectionDistance = 0.01f;
         joint.enablePreprocessing = false;
