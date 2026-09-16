@@ -26,15 +26,24 @@ public static class V3Build
     const float RidgeTop = 22.2f;                        // 상부장 능선 [실좌표=검증 일치]
     const float DuctPad = 24f;                           // 덕트 바닥 상면 [실좌표=검증 일치]
 
-    public static void Clear()
+    /// <summary>[K01, 2026-09-12] 전용 씬 가드(씬 조건만 — 지우는 대상은 우리 루트뿐). false면 무변경.</summary>
+    public static bool Clear()
     {
-        GameObject root = GameObject.Find(V3.RootName);
+        if (!V3.EnsureOwnedScene("Clear Blockout", checkForeign: false)) return false;
+        // [H05·R3 — 사본 전용] 단일·표식 있는 루트만 삭제(비활성·복수·표식 없음은 가드가 거부, 방어적 재확인).
+        if (!V3.RootStateOk("Clear", out GameObject root)) return false;
         if (root != null) Object.DestroyImmediate(root);
         V3.Log("블록아웃 삭제 완료.");
+        return true;
     }
 
-    public static void BuildAll()
+    /// <summary>[K01·K04, 2026-09-12 — Codex 검수 지시] 첫 줄 가드(팀 씬·additive·표식 없는 동명
+    /// 오브젝트면 무변경 중단). 필수 단계(체크포인트 배치·기믹 배선)가 실패하면 false — 예전엔 void라
+    /// 무인 검증(V3_Batch)이 조용한 실패를 성공으로 기록할 수 있었다. 마커 숨김(진단·표시)은 실패와
+    /// 무관하게 실행한다.</summary>
+    public static bool BuildAll()
     {
+        if (!V3.EnsureOwnedScene("Build All")) return false;
         Clear();
         Shell();
         S1_Dining();
@@ -51,10 +60,16 @@ public static class V3Build
         // 질감 + 자연화 + 깃발 체크포인트 자동 체인 — 콜라이더·측정 수치에는 영향 없음.
         V3Materials.Apply();
         V3Dress.Apply();
-        V3Checkpoints.Place();
-        V3Gimmicks.Wire();          // R2 기믹 배선(DoorSystem+DreamThread 사본) — 상세는 V3_Gimmicks.cs
+        bool checkpointsOk = V3Checkpoints.PlaceChecked();
+        bool gimmicksOk = V3Gimmicks.WireChecked();   // R2 기믹 배선(DoorSystem+DreamThread 사본) — 상세는 V3_Gimmicks.cs
         V3Dress.SetMarkers(false);   // 측정 마커는 기본 숨김 — 메뉴 9로 토글
+        if (!checkpointsOk || !gimmicksOk)
+        {
+            Debug.LogError($"[KitchenMapV3] Build All: 필수 단계 실패 — 체크포인트 배치 {(checkpointsOk ? "OK" : "실패")} · 기믹 배선 {(gimmicksOk ? "OK" : "실패")}. 위 오류 참조 — 이 결과를 성공으로 보고하지 마라.");
+            return false;
+        }
         V3.Log("Build All(실좌표판+질감+자연화+체크포인트) 완료 — 다음: 3. Setup Play → ▶ / 4. Audit & T0 Measure.");
+        return true;
     }
 
     // ── 헬퍼: 콜라이더 없는 시각용 박스 ──────────────────────────
@@ -154,13 +169,12 @@ public static class V3Build
         V3.Marker(g, "U3b_배수구마개_무게판2.75", 18.5f, 79.5f, 7.4f, 20.1f, 81.1f, 7.6f);
     }
 
-    // ── S2 수납상자 계단 10단 (V1 복귀·조리대行) [실좌표 — N-16 검산 축] ──
+    // ── S2 수납상자 계단 12단 (로컬 안정화) (V1 복귀·조리대行) [실좌표 — N-16 검산 축] ──
     static void S2_BoxSteps()
     {
         GameObject g = V3.Group("S2_BoxSteps");
-        // Box_Step 1~10: x10.4~34.4 · y70.5~74.4 · 단높이 0.96 (단차 ≤1.0 — 필수 경로 기준 통과)
-        for (int i = 0; i < 10; i++)
-            V3.Box(g, $"Box_Step_{i + 1}", 10.4f + 2.4f * i, 70.5f, 0, 12.8f + 2.4f * i, 74.4f, 0.96f * (i + 1), "Grain");
+        // 로컬 시험: x10.4~39.2, 깊이2.4, 폭3.9, 단차0.8. 도착높이9.6 유지.
+        V3StableStairs.Counter(g);
     }
 
     // ── WK 아일랜드 + P1 관문 [실좌표 + 릴레이 D-a 몰딩] ──────────
@@ -184,9 +198,8 @@ public static class V3Build
         // 하-19 도구 [실좌표]: 아일랜드 도마 — P1 제2 수단(지렛대) 후보. 출발 측 실재 ✅
         GameObject board = V3.RigidBox(g, "IS_Board_도마(하-19·질량TBD)", 36, 60, CounterTop, 43, 66.6f, 10.1f, 1f);
         board.GetComponent<Rigidbody>().isKinematic = true;   // T0에서는 정적 — 기믹 배선 시 해제
-        // 아일랜드行 수납상자 계단 10단 [실좌표: x38~46 · y48~58 · 단높이 0.96] — 바닥→아일랜드 직접 재등반
-        for (int i = 0; i < 10; i++)
-            V3.Box(g, $"Crate_Step_{i + 1}", 38, 48 + i, 0, 46, 49 + i, 0.96f * (i + 1), "Grain");
+        // 로컬 시험: 아일랜드行 12단, 3구간 왕복 계단과 계단참. V3StableStairs 참조.
+        V3StableStairs.Island(g);
         // 주변 실재물 [실좌표] — N-16 서측 회랑(x13.5~34)은 비워 둔다(검산 확정)
         V3.Box(g, "Stool_1", 50, 52.6f, 0, 54, 56.6f, 6f, "Gray");
         V3.Box(g, "Stool_2", 56, 52.6f, 0, 60, 56.6f, 6f, "Gray");
@@ -270,6 +283,9 @@ public static class V3Build
     static void S6_UpperRidge()
     {
         GameObject g = V3.Group("S6_Ridge_P4");
+        // Keep the team default 10m respawn drop clear of the duct above the ridge.
+        // Same ridge height; the 5x4.2m landing joins the existing ridge at z79.
+        V3.Box(g, "Ridge_CP07_Landing", 53, 75, 21.9f, 58, 79.2f, RidgeTop, "GrayHi");
         V3.Box(g, "Cab_Upper_A_22.2", 0.05f, 74.8f, 16f, 9f, 84.95f, RidgeTop, "Gray");
         V3.Box(g, "Cab_Upper_B_22.2", 31f, 79f, 16f, 58f, 84.95f, RidgeTop, "Gray");   // 동쪽 끝 x58 = 스윙 시작
         V3.Box(g, "CurtainBox_21.2", 9.5f, 84f, 20.2f, 30.5f, 84.95f, 21.2f, "Gray");  // A 22.2 ↓ 21.2 ↑ B 22.2
