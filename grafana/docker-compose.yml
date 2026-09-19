@@ -1,0 +1,22 @@
+services:
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: efk-pro-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      # 프로젝트 루트 .env 재사용 — Unity의 LokiConfigSync.cs가 읽는 것과 같은 파일,
+      # 같은 키(LOKI_URL/LOKI_USER/LOKI_TOKEN)를 그대로 쓴다.
+      - ../.env
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - grafana-storage:/var/lib/grafana
+
+volumes:
+  grafana-storage:
