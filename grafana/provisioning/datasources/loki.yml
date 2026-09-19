@@ -1,20 +1,12 @@
 apiVersion: 1
 
 datasources:
-  - name: Loki (EFK-PRO)
+  - name: Loki (EFK-PRO, local)
     uid: loki_efk_pro
     type: loki
     access: proxy
-    # $LOKI_URL/$LOKI_USER/$LOKI_TOKEN는 docker-compose.yml의 env_file(../.env)에서 주입된다.
-    # Grafana가 프로비저닝 파일을 읽을 때 $VAR 형태를 환경변수로 치환한다 — 이미지에 시크릿을
-    # 절대 굽지 않기 위한 핵심 지점이니 여기서 값을 하드코딩하지 않는다.
-    url: $LOKI_URL
-    basicAuth: true
-    basicAuthUser: $LOKI_USER
-    jsonData:
-      timeout: 60
-      maxLines: 5000
-    secureJsonData:
-      basicAuthPassword: $LOKI_TOKEN
+    # 같은 docker-compose 네트워크 안의 loki 서비스를 서비스명으로 바로 가리킨다.
+    # 로컬 자체 완결형이라 외부 URL/계정/토큰이 전혀 필요 없다.
+    url: http://loki:3100
     isDefault: true
     editable: false

@@ -1,14 +1,25 @@
 services:
+  # 로그 저장소. 외부(Grafana Cloud 등) 의존 없이 완전히 로컬에서 자체 완결.
+  # 공식 이미지에 내장된 기본 설정(local-config.yaml)을 그대로 쓴다 — 단일 바이너리 모드,
+  # 파일시스템 저장, 인증 없음(로컬 전용이라 문제없음).
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: efk-pro-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki-storage:/loki
+
   grafana:
     image: grafana/grafana:11.4.0
     container_name: efk-pro-grafana
     restart: unless-stopped
+    depends_on:
+      - loki
     ports:
       - "3000:3000"
-    env_file:
-      # 프로젝트 루트 .env 재사용 — Unity의 LokiConfigSync.cs가 읽는 것과 같은 파일,
-      # 같은 키(LOKI_URL/LOKI_USER/LOKI_TOKEN)를 그대로 쓴다.
-      - ../.env
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -20,3 +31,4 @@ services:
 
 volumes:
   grafana-storage:
+  loki-storage:
