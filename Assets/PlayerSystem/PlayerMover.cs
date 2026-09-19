@@ -201,6 +201,10 @@ public class PlayerMover : MonoBehaviour
     private PlayerShapeController shapeController;
     private PlayerGroundContact groundContact;
 
+    // DeflectAirMoveFromWall 전용 재사용 버퍼 — PlayerGroundContact.hitBuffer와 같은 이유로
+    // NonAlloc을 쓴다(RaycastAll은 매 호출 새 배열을 할당한다, 2026-09-15 감사에서 발견).
+    private readonly RaycastHit[] airWallRaycastBuffer = new RaycastHit[8];
+
     // 경사에서 누적된 속력 가감분(m/s). 평지에 서거나(slopeAffected == false) 소유권이 다른
     // 시스템/다른 플레이어에게 넘어갈 때만 0으로 되돌린다. **점프나 입력 뗌으로는 지우지 않는다** —
     // 지우면 그때마다 오르막 페널티가 초기화돼, 한계각을 넘는 비탈도 점프나 입력 연타로 전속력
@@ -586,11 +590,12 @@ public class PlayerMover : MonoBehaviour
         if (airWallCheckDistance <= 0f || horizontalMove.sqrMagnitude < 1e-4f) return horizontalMove;
 
         Vector3 dir = horizontalMove.normalized;
-        RaycastHit[] hits = Physics.RaycastAll(rb.position, dir, airWallCheckDistance, ~0, QueryTriggerInteraction.Ignore);
+        int count = Physics.RaycastNonAlloc(rb.position, dir, airWallRaycastBuffer, airWallCheckDistance, ~0, QueryTriggerInteraction.Ignore);
         float bestDist = float.PositiveInfinity;
         Vector3 wallNormal = Vector3.zero;
-        foreach (RaycastHit h in hits)
+        for (int i = 0; i < count; i++)
         {
+            RaycastHit h = airWallRaycastBuffer[i];
             if (h.collider.GetComponentInParent<PlayerMover>() != null) continue; // 자신·타 플레이어 제외
             if (Mathf.Abs(h.normal.y) >= 0.5f) continue;                          // 바닥/천장 제외 — '벽(수직면)'만
             if (h.distance < bestDist) { bestDist = h.distance; wallNormal = h.normal; }

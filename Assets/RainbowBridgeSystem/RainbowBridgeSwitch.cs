@@ -7,8 +7,8 @@ using UnityEngine;
 ///
 /// 왜 이렇게 만들었는가:
 /// - 협동은 Tab 단일조작 전제다. 한 도형을 발판 위에 세워두고 Tab으로 다른 도형이 건너간다.
-///   판정은 CompareTag("Player")뿐이라, 추후 네트워크 동시조작(각 플레이어도 Player 태그)으로
-///   확장돼도 규칙이 그대로 유지된다 — 네트워크 코드는 지금 넣지 않는다.
+///   판정은 CompareTag("Player") 또는 "InteractionItem"(딱딱 블록 등)이라, 추후 네트워크 동시조작
+///   (각 플레이어도 Player 태그)으로 확장돼도 규칙이 그대로 유지된다 — 네트워크 코드는 지금 넣지 않는다.
 /// - 플레이어는 트리거 콜라이더(Player_Mesh)와 솔리드 콜라이더(Player_Collider)를 함께 가져
 ///   OnTriggerEnter/Exit가 한 플레이어당 여러 번 불릴 수 있다. 그래서 overlapCount 카운터로
 ///   실제 겹침 수를 세어, 콜라이더 하나가 먼저 빠져도 눌림이 풀리지 않게 한다
@@ -103,7 +103,7 @@ public class RainbowBridgeSwitch : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
 
         overlapCount++;
         if (!activatorRequiresHold)
@@ -114,7 +114,7 @@ public class RainbowBridgeSwitch : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
 
         overlapCount = Mathf.Max(0, overlapCount - 1);
 

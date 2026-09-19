@@ -44,8 +44,10 @@ public class ScalePad : MonoBehaviour
     // 현재 이 패드를 밟고 있는 PlayerShapeController (null이면 아무도 없음)
     private PlayerShapeController currentPlayer = null;
 
-    // ③ Player_Root + Player_Mesh 둘 다 Tag: Player이므로 Enter/Exit가 두 번씩 호출됨
-    // 카운터로 실제로 몇 개의 Collider가 겹쳐있는지 추적하여 중복 해제 방지
+    // ③ [정정 — 2026-09-15] Player_Root는 콜라이더가 없다. 실제로 두 번씩 겹쳐 들어오는 건
+    // Player_Mesh(트리거)·Player_Collider(솔리드) 둘 다 Tag: Player라서다(DoorSystem/PadTrigger·
+    // ExitWeightPlate와 같은 원인). 카운터로 실제로 몇 개의 Collider가 겹쳐있는지 추적하여
+    // 중복 해제 방지
     private int overlapCount = 0;
 
     void Start()
@@ -94,8 +96,8 @@ public class ScalePad : MonoBehaviour
 
         overlapCount++;
 
-        // ③ Player_Root + Player_Mesh가 둘 다 Player 태그라 Enter가 여러 번 호출되므로,
-        // 실제로 밟기 시작한 첫 번째 Enter일 때만 처리한다(중복 토글 방지).
+        // ③ Player_Mesh(트리거)·Player_Collider(솔리드)가 둘 다 Player 태그라 Enter가 여러 번
+        // 호출되므로, 실제로 밟기 시작한 첫 번째 Enter일 때만 처리한다(중복 토글 방지).
         if (overlapCount == 1)
         {
             currentPlayer = shapeController;

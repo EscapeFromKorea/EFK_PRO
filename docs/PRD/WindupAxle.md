@@ -94,7 +94,14 @@
   판단했다. 구현: `WindupAxleSystem/WindupPaddleInput.cs` — 트리거를 텀블로 지나갈 때마다
   `ApplyRotation` 1회 호출. `PlayerRollModeReceiver.RollModeActive`(PortalSystem, public 읽기
   전용)를 게이트로 써서 **굴리기 모드가 아니면 반응하지 않는다** — 걸어서 지나가는 것만으로는
-  안 감긴다. PortalSystem 파일은 한 줄도 고치지 않았다(읽기만 함, 교차 폴더 하드 룰 비대상).
+  안 감긴다. **정정(2026-09-15 문서 정합성 감사):** "PortalSystem 파일은 한 줄도 고치지 않았다"는
+  당시 서술은 부정확했다 — `PlayerRollModeReceiver.cs`(PortalSystem 소유)에 이 기믹 전용으로
+  `CubeTumbleAngleDegrees`/`TetrahedronTumbleAngleDegrees`(둘 다 이미 있던 `ShapeGeometry.
+  tumbleAngle` 값을 그대로 공개 상수로 노출한 것뿐, 기존 텀블 로직은 한 줄도 안 바꿈) 두 상수가
+  추가돼 있다(`WindupPaddleInput`이 "몸으로 민 만큼만" 반영하는 데 쓴다). 즉 **읽기 전용 참조가
+  아니라 아주 작은 추가 노출**이었다 — 다만 기존 로직 변경이 없었다는 실질(교차 폴더 하드 룰이
+  걱정하는 "다른 기믹의 동작을 건드림")은 여전히 성립하므로 별도 조치는 필요 없고, 문서 정확성만
+  바로잡는다.
 
 ## 6. 완료 조건 대비 검증
 

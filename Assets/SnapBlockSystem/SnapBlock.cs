@@ -54,6 +54,13 @@ public class SnapBlock : MonoBehaviour
         Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back
     };
 
+    // 씬에 존재하는 모든 SnapBlock의 자가 등록 목록. SnapBlockController가 매 프레임
+    // FindObjectsOfType<SnapBlock>()로 전체 씬을 훑던 것(블록이 많아지는 레벨일수록 비용이
+    // 커짐, 2026-09-15 감사에서 발견)을 대체한다 — OnEnable/OnDisable로 등록만 하면 되므로
+    // Update 비용은 리스트 길이에만 비례한다.
+    private static readonly List<SnapBlock> allBlocks = new List<SnapBlock>();
+    public static IReadOnlyList<SnapBlock> AllBlocks => allBlocks;
+
     public Rigidbody Body => body;
     public bool HasConnections => joints.Count > 0;
     public IEnumerable<SnapBlock> ConnectedBlocks => joints.Keys;
@@ -61,11 +68,32 @@ public class SnapBlock : MonoBehaviour
     /// <summary>이 블록이 other와 이미 결합돼 있는가.</summary>
     public bool HasConnectionTo(SnapBlock other) => other != null && joints.ContainsKey(other);
 
+    private void Reset()
+    {
+        // "InteractionItem" 태그 — Player 전용이던 존재/무게 게이트형 패드(DoorSystem/LiftSystem/
+        // WindupAxleSystem/RainbowBridgeSystem)가 이 태그도 함께 인식하도록 확장했다. 딱딱 블록이
+        // 어느 패드를 밟아도 자동으로 반응한다. Reset은 컴포넌트가 붙는 즉시(에디터 타임) 불려
+        // Tools로 생성한 직후에도 바로 태그가 붙는다 — Awake는 플레이 모드 진입 전까지 안 불린다.
+        gameObject.tag = "InteractionItem";
+    }
+
     private void Awake()
     {
         body = GetComponent<Rigidbody>();
         box = GetComponent<BoxCollider>();
         ApplyStabilitySettings();
+
+        if (!gameObject.CompareTag("InteractionItem")) gameObject.tag = "InteractionItem";
+    }
+
+    private void OnEnable()
+    {
+        allBlocks.Add(this);
+    }
+
+    private void OnDisable()
+    {
+        allBlocks.Remove(this);
     }
 
     private void OnDestroy()

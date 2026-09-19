@@ -59,7 +59,7 @@ public class PadTrigger : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
 
         overlapCount++;
         isPressed = true;
@@ -67,7 +67,7 @@ public class PadTrigger : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
 
         overlapCount = Mathf.Max(0, overlapCount - 1);
         if (overlapCount == 0)
