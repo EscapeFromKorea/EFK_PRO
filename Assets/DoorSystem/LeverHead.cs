@@ -19,12 +19,24 @@ public class LeverHead : MonoBehaviour
     private Vector3 smoothedNormal = Vector3.zero;
     private float returnTimer = 0f;
     private bool isReturning = false;
+    private float restAngle = -45f;
 
     private float exitGraceTimer = 0f;
     private bool pendingExit = false;
 
+    public bool IsActivated { get; private set; }
+    private bool UsesP04TimedBehavior => gameObject.name == "P04_LeverHead";
+
     void Start()
     {
+        if (leverPivot != null && UsesP04TimedBehavior)
+        {
+            restAngle = GetCurrentAngle();
+            targetAngle = restAngle;
+        }
+
+        IsActivated = false;
+
         if (leverPivot == null)
             Debug.LogWarning($"[LeverHead] '{gameObject.name}'의 leverPivot이 연결되지 않았습니다. 레버가 동작하지 않습니다.");
     }
@@ -79,7 +91,7 @@ public class LeverHead : MonoBehaviour
                 float currentY = leverPivot.localEulerAngles.y;
                 if (currentY > 180f) currentY -= 360f;
 
-                float newY = Mathf.MoveTowardsAngle(currentY, -45f, returnSpeed * 20f * Time.fixedDeltaTime);
+                float newY = Mathf.MoveTowardsAngle(currentY, restAngle, returnSpeed * 20f * Time.fixedDeltaTime);
 
                 leverPivot.localRotation = Quaternion.Euler(
                     leverPivot.localEulerAngles.x,
@@ -87,17 +99,19 @@ public class LeverHead : MonoBehaviour
                     leverPivot.localEulerAngles.z
                 );
 
-                if (Mathf.Abs(newY - (-45f)) < 0.5f)
+                if (Mathf.Abs(Mathf.DeltaAngle(newY, restAngle)) < 0.5f)
                 {
                     isReturning = false;
                     leverPivot.localRotation = Quaternion.Euler(
                         leverPivot.localEulerAngles.x,
-                        -45f,
+                        restAngle,
                         leverPivot.localEulerAngles.z
                     );
                 }
             }
         }
+
+        IsActivated = Mathf.Abs(Mathf.DeltaAngle(restAngle, GetCurrentAngle())) >= maxAngle * 0.75f;
     }
 
     void OnCollisionEnter(Collision collision)
@@ -116,6 +130,14 @@ public class LeverHead : MonoBehaviour
     void OnCollisionStay(Collision collision)
     {
         if (!collision.gameObject.CompareTag("Player")) return;
+
+        if (UsesP04TimedBehavior)
+        {
+            pendingExit = false;
+            isBeingPushed = true;
+            isReturning = false;
+            returnTimer = 0f;
+        }
 
         smoothedNormal = Vector3.Lerp(
             smoothedNormal,
@@ -150,12 +172,23 @@ public class LeverHead : MonoBehaviour
     {
         if (leverPivot == null) return;
 
-        Vector3 localDir = leverPivot.InverseTransformDirection(worldNormal);
+        Vector3 localDir;
+        if (UsesP04TimedBehavior)
+        {
+            Transform referenceFrame = leverPivot.parent != null ? leverPivot.parent : leverPivot;
+            localDir = referenceFrame.InverseTransformDirection(-worldNormal);
+        }
+        else
+        {
+            localDir = leverPivot.InverseTransformDirection(worldNormal);
+        }
 
         if (Mathf.Abs(localDir.x) > Mathf.Abs(localDir.z))
             return;
 
         float pushDirection = localDir.z > 0 ? 1f : -1f;
-        targetAngle = Mathf.Clamp(pushDirection * maxAngle, -maxAngle, maxAngle);
+        targetAngle = UsesP04TimedBehavior
+            ? restAngle + pushDirection * maxAngle
+            : Mathf.Clamp(pushDirection * maxAngle, -maxAngle, maxAngle);
     }
 }

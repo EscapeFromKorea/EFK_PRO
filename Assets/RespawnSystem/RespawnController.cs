@@ -93,6 +93,9 @@ public class RespawnController : MonoBehaviour
     /// 세션 간 저장도 하지 않는다(그건 세이브 시스템의 일이다).</summary>
     public int RespawnCount { get; private set; }
 
+    [Tooltip("Shows the temporary IMGUI respawn counter. Disable in finished scenes that provide no debug HUD.")]
+    public bool showDebugGui = true;
+
     private static RespawnController instance;
 
     // 체크포인트는 도형별이 아니라 마지막에 갱신된 하나만 공유한다. 좌표로 들고 있어서 구역이
@@ -642,6 +645,7 @@ public class RespawnController : MonoBehaviour
     // 메서드만 지우고 RespawnCount를 읽어 가면 된다. 내장 GUI 폰트에 한글 글리프가 없어 영문이다.
     private void OnGUI()
     {
+        if (!showDebugGui) return;
         GUI.Label(new Rect(12f, 12f, 220f, 22f), $"Respawns: {RespawnCount}");
     }
 
