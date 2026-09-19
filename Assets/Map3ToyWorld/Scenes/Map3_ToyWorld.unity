@@ -3414,15 +3414,15 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 111250285}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: 7, y: 1.6, z: -40.21}
+  m_LocalRotation: {x: -0.10856955, y: 0.6987221, z: -0.10856955, w: 0.6987221}
+  m_LocalPosition: {x: 7, y: 1.5938092, z: -42.339832}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 425345089}
   - {fileID: 2000091829}
   m_Father: {fileID: 1524502142}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 90, z: -17.664}
 --- !u!114 &111250287
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3453,8 +3453,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -30
   maxAngle: 30
-  angularResistance: 1.2
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 1
   driveTorqueScale: 1
 --- !u!59 &111250289
@@ -3504,9 +3504,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 111250285}
   serializedVersion: 4
-  m_Mass: 4
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 1.2
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -10845,7 +10845,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 386679170}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!4 &386679173
 Transform:
   m_ObjectHideFlags: 0
@@ -10855,8 +10855,8 @@ Transform:
   m_GameObject: {fileID: 386679170}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 2.2, y: 0.6, z: 2.2}
+  m_LocalPosition: {x: 0.00000023842, y: 0, z: 0}
+  m_LocalScale: {x: 2.122208, y: 0.06995184, z: 2.122208}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1810068797}
@@ -12798,7 +12798,7 @@ LineRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 1364403399}
+  - {fileID: 773639902}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -12919,7 +12919,7 @@ LineRenderer:
   - {x: 67.61943, y: 0.35, z: 29.504227}
   m_Parameters:
     serializedVersion: 3
-    widthMultiplier: 0.06
+    widthMultiplier: 0.15
     widthCurve:
       serializedVersion: 2
       m_Curve:
@@ -14198,8 +14198,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &510090826
@@ -14249,9 +14249,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 510090821}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -21421,7 +21421,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 722362897}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!4 &722362900
 Transform:
   m_ObjectHideFlags: 0
@@ -21432,7 +21432,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 2.2, y: 0.6, z: 2.2}
+  m_LocalScale: {x: 1.9472201, y: 0.06418391, z: 1.9472201}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1052267887}
@@ -22662,6 +22662,87 @@ Transform:
   - {fileID: 1148335743}
   m_Father: {fileID: 281692348}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!21 &773639902
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Standard
+  m_Shader: {fileID: 46, guid: 0000000000000000f000000000000000, type: 0}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _BumpMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailAlbedoMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailMask:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailNormalMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _EmissionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MetallicGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _OcclusionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _ParallaxMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _BumpScale: 1
+    - _Cutoff: 0.5
+    - _DetailNormalMapScale: 1
+    - _DstBlend: 0
+    - _GlossMapScale: 1
+    - _Glossiness: 0.5
+    - _GlossyReflections: 1
+    - _Metallic: 0
+    - _Mode: 0
+    - _OcclusionStrength: 1
+    - _Parallax: 0.02
+    - _SmoothnessTextureChannel: 0
+    - _SpecularHighlights: 1
+    - _SrcBlend: 1
+    - _UVSec: 0
+    - _ZWrite: 1
+    m_Colors:
+    - _Color: {r: 0.35, g: 0.35, b: 0.4, a: 1}
+    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+  m_BuildTextureStacks: []
 --- !u!1001 &777548341
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -30870,8 +30951,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &1077617422
@@ -30921,9 +31002,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1077617417}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -31460,8 +31541,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &1097189436
@@ -31511,9 +31592,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1097189431}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -40444,7 +40525,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1358062754}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!4 &1358062757
 Transform:
   m_ObjectHideFlags: 0
@@ -40454,8 +40535,8 @@ Transform:
   m_GameObject: {fileID: 1358062754}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 2.2, y: 0.6, z: 2.2}
+  m_LocalPosition: {x: 0.0000000042147, y: 0, z: 0}
+  m_LocalScale: {x: 2.122208, y: 0.06995184, z: 2.122208}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1330293907}
@@ -40662,8 +40743,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &1363038838
@@ -40713,9 +40794,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1363038833}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -40753,87 +40834,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 4, y: 0.4, z: 14.313979}
   m_Center: {x: 0, y: 0, z: 0}
---- !u!21 &1364403399
-Material:
-  serializedVersion: 8
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: Standard
-  m_Shader: {fileID: 46, guid: 0000000000000000f000000000000000, type: 0}
-  m_Parent: {fileID: 0}
-  m_ModifiedSerializedProperties: 0
-  m_ValidKeywords: []
-  m_InvalidKeywords: []
-  m_LightmapFlags: 4
-  m_EnableInstancingVariants: 0
-  m_DoubleSidedGI: 0
-  m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
-  m_LockedProperties: 
-  m_SavedProperties:
-    serializedVersion: 3
-    m_TexEnvs:
-    - _BumpMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _DetailAlbedoMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _DetailMask:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _DetailNormalMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _EmissionMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _MainTex:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _MetallicGlossMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _OcclusionMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _ParallaxMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    m_Ints: []
-    m_Floats:
-    - _BumpScale: 1
-    - _Cutoff: 0.5
-    - _DetailNormalMapScale: 1
-    - _DstBlend: 0
-    - _GlossMapScale: 1
-    - _Glossiness: 0.5
-    - _GlossyReflections: 1
-    - _Metallic: 0
-    - _Mode: 0
-    - _OcclusionStrength: 1
-    - _Parallax: 0.02
-    - _SmoothnessTextureChannel: 0
-    - _SpecularHighlights: 1
-    - _SrcBlend: 1
-    - _UVSec: 0
-    - _ZWrite: 1
-    m_Colors:
-    - _Color: {r: 0.35, g: 0.35, b: 0.4, a: 1}
-    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-  m_BuildTextureStacks: []
 --- !u!1 &1367194354
 GameObject:
   m_ObjectHideFlags: 0
@@ -44588,8 +44588,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -30
   maxAngle: 30
-  angularResistance: 1.2
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 1
   driveTorqueScale: 1
 --- !u!59 &1495984429
@@ -44639,9 +44639,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1495984425}
   serializedVersion: 4
-  m_Mass: 4
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 1.2
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -45255,7 +45255,7 @@ LineRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 1364403399}
+  - {fileID: 773639902}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -45376,7 +45376,7 @@ LineRenderer:
   - {x: 68.38057, y: 0.35, z: 30.495773}
   m_Parameters:
     serializedVersion: 3
-    widthMultiplier: 0.06
+    widthMultiplier: 0.15
     widthCurve:
       serializedVersion: 2
       m_Curve:
@@ -45739,8 +45739,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -30
   maxAngle: 30
-  angularResistance: 1.2
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 1
   driveTorqueScale: 1
 --- !u!59 &1514765230
@@ -45790,9 +45790,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1514765226}
   serializedVersion: 4
-  m_Mass: 4
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 1.2
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -51096,7 +51096,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1687570855}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: -0, y: 0.8746425, z: -0, w: 0.4847685}
   m_LocalPosition: {x: 37, y: 0.35, z: 8}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0

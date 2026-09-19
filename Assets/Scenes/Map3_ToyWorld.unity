@@ -3453,8 +3453,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -30
   maxAngle: 30
-  angularResistance: 1.2
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 1
   driveTorqueScale: 1
 --- !u!59 &111250289
@@ -3504,9 +3504,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 111250285}
   serializedVersion: 4
-  m_Mass: 4
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 1.2
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -14198,8 +14198,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &510090826
@@ -14249,9 +14249,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 510090821}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -30878,8 +30878,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &1077617422
@@ -30929,9 +30929,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1077617417}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -31468,8 +31468,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &1097189436
@@ -31519,9 +31519,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1097189431}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -40670,8 +40670,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -55
   maxAngle: 55
-  angularResistance: 3
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 0
   driveTorqueScale: 1
 --- !u!59 &1363038838
@@ -40721,9 +40721,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1363038833}
   serializedVersion: 4
-  m_Mass: 18
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 3
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -44596,8 +44596,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -30
   maxAngle: 30
-  angularResistance: 1.2
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 1
   driveTorqueScale: 1
 --- !u!59 &1495984429
@@ -44647,9 +44647,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1495984425}
   serializedVersion: 4
-  m_Mass: 4
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 1.2
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -45747,8 +45747,8 @@ MonoBehaviour:
   useLimits: 1
   minAngle: -30
   maxAngle: 30
-  angularResistance: 1.2
-  maxAngularSpeedDeg: 360
+  angularResistance: 0.05
+  maxAngularSpeedDeg: 720
   plateUseGravity: 1
   driveTorqueScale: 1
 --- !u!59 &1514765230
@@ -45798,9 +45798,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1514765226}
   serializedVersion: 4
-  m_Mass: 4
+  m_Mass: 0.5
   m_Drag: 0
-  m_AngularDrag: 1.2
+  m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}

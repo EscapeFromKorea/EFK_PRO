@@ -761,13 +761,15 @@ public static class ToyWorldPrototypeBuilder
         GameObject root = Box(name, parent, position, new Vector3(8f, 0.4f, 3f), Mat("Dynamic"));
         root.transform.rotation = rotation;
         Rigidbody body = root.AddComponent<Rigidbody>();
-        body.mass = 4f;
+        body.mass = 0.5f;
         RotatingPlate plate = root.AddComponent<RotatingPlate>();
         plate.rotationAxis = Vector3.forward;
         plate.useLimits = true;
         plate.minAngle = -30f;
         plate.maxAngle = 30f;
-        plate.angularResistance = 1.2f;
+        // 하중에 즉시 반응하고 반대편 탑승자를 발사하는 우회 풀이도 가능하도록 저항은 낮추고 상한은 높인다.
+        plate.angularResistance = 0.05f;
+        plate.maxAngularSpeedDeg = 720f;
         plate.plateUseGravity = true;
         root.AddComponent<PuzzleResettable>().autoResetBelowY = -7f;
 
@@ -791,13 +793,14 @@ public static class ToyWorldPrototypeBuilder
         GameObject root = Box(name, parent, (start + end) * 0.5f, new Vector3(width, 0.4f, delta.magnitude), Mat("Dynamic"));
         root.transform.rotation = Quaternion.LookRotation(delta.normalized, Vector3.up);
         Rigidbody body = root.AddComponent<Rigidbody>();
-        body.mass = 18f;
+        body.mass = 0.5f;
         RotatingPlate board = root.AddComponent<RotatingPlate>();
         board.rotationAxis = Vector3.right;
         board.useLimits = true;
         board.minAngle = -55f;
         board.maxAngle = 55f;
-        board.angularResistance = 3f;
+        board.angularResistance = 0.05f;
+        board.maxAngularSpeedDeg = 720f;
         board.plateUseGravity = false;
         root.AddComponent<PuzzleResettable>().autoResetBelowY = -7f;
         root.AddComponent<StickerSurface>();
