@@ -139,15 +139,19 @@ public class PlayerShapeController : MonoBehaviour
         // 예전의 useAverageColliderScale X/Y 평균 보정 분기는 더 이상 필요 없다.
         // (해당 public 필드는 PlayerSystem/Editor의 생성기가 참조하고 있어 남겨두지만
         //  런타임 동작에는 관여하지 않는다.)
+        // [2026-09-19] 값이 이미 맞아도 매 프레임 무조건 대입하던 것을 가드로 막는다. 이 콜라이더는
+        // 바닥과 실제로 부딪히는 솔리드 콜라이더이고, Rigidbody 밑의 콜라이더 Transform을 건드리면
+        // 같은 값을 넣어도 dirty로 잡혀 PhysX가 접촉을 다시 잡는다 — 그게 렌더 프레임(가변)마다
+        // 반복되면 물리 스텝(50Hz)과 위상이 어긋나 수직 접촉이 흔들린다. 바로 아래 meshTransform
+        // 처리에는 원래부터 같은 가드가 있었는데 이쪽만 빠져 있었다.
         if (colliderTransform != null)
         {
-            colliderTransform.localScale = Vector3.one;
+            if (colliderTransform.localScale != Vector3.one)
+                colliderTransform.localScale = Vector3.one;
 
-            colliderTransform.localPosition = new Vector3(
-                colliderTransform.localPosition.x,
-                0.5f,
-                colliderTransform.localPosition.z
-            );
+            Vector3 colliderLocal = colliderTransform.localPosition;
+            if (Mathf.Abs(colliderLocal.y - 0.5f) > 0.001f)
+                colliderTransform.localPosition = new Vector3(colliderLocal.x, 0.5f, colliderLocal.z);
         }
     }
 
