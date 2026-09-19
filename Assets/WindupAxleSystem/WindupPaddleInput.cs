@@ -36,10 +36,6 @@ public class WindupPaddleInput : MonoBehaviour
     [Tooltip("신호를 보낼 태엽 축.")]
     public WindupAxle axle;
 
-    [Tooltip("한 번 지나갈 때 가할 signedDelta의 크기(부호 제외). 부호(회전 방향)는 접촉 시점에 " +
-             "동적으로 계산한다.")]
-    public float deltaPerHit = 1f;
-
     // Portal.cs의 "같은 통과 안 재발화 무시"와 동일한 패턴 — 상세 근거는 위 클래스 주석 참고.
     private readonly Dictionary<Rigidbody, float> lastOverlapTime = new Dictionary<Rigidbody, float>();
     private readonly List<Rigidbody> staleBuffer = new List<Rigidbody>(); // 정리 스윕용 재사용 버퍼
@@ -102,6 +98,12 @@ public class WindupPaddleInput : MonoBehaviour
         radial.y = 0f;
         float turnSign = Mathf.Sign(Vector3.Cross(radial, push).y);
 
-        axle.ApplyRotation(turnSign * deltaPerHit);
+        // "몸으로 민 만큼만" — 도형이 실제로 돈 텀블각을 정육면체(90°) 기준 1.0으로 정규화한
+        // 값을 signedDelta로 쓴다. 정사면체(109.47°)는 그만큼 더 큰 값이 들어가 축도, 손잡이
+        // 시각 스윙도 비례해서 더 크게 움직인다(고정폭 스윙이었던 기존 동작 대체, 2026-09-14).
+        float pushMagnitude = identity.Kind == PlayerShapeStats.ShapeKind.Tetrahedron
+            ? PlayerRollModeReceiver.TetrahedronTumbleAngleDegrees / PlayerRollModeReceiver.CubeTumbleAngleDegrees
+            : 1f;
+        axle.ApplyRotation(turnSign * pushMagnitude);
     }
 }

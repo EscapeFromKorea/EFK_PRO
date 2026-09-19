@@ -68,7 +68,7 @@ public class LiftPad : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag(playerTag)) return;
+        if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
 
@@ -78,7 +78,7 @@ public class LiftPad : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag(playerTag)) return;
+        if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || !overlaps.TryGetValue(rb, out int n)) return;
 

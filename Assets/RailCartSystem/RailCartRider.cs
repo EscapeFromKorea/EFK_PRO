@@ -49,7 +49,12 @@ public class RailCartRider : MonoBehaviour
 
         if (occupantBody != null)
         {
-            Unboard();
+            // occupantMover가 지금 조작 대상이 아니면(Tab으로 다른 도형으로 넘어갔거나, 다른
+            // 플레이어가 무관한 목적으로 C를 눌렀거나) 무시한다 — CatapultSteerHandle이 같은
+            // 문제를 dockedMover.IsControlled로 막은 것과 동일한 게이트. 이게 없으면 Board()의
+            // 거리+최근접 게이트와 달리 Unboard()엔 아무 방어가 없어, 씬 어디서든 C를 누르면
+            // 카트에 탄 다른 플레이어가 강제로 내려진다(2026-09-15 감사에서 발견).
+            if (occupantMover.IsControlled) Unboard();
             return;
         }
 

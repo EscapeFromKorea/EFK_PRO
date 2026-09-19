@@ -39,6 +39,10 @@ using UnityEngine;
 /// 순수 장식(회전이 눈에 보이게)이고, 회전 부호는 `WindupPaddleInput`이 접촉 지점·속도로 매번 계산한다.
 /// 회전각도 180 → `WindupAxle.crankSwingDegrees`(기본 90)로 노브화했다. 막대 높이도 기둥 꼭대기에
 /// 바로 얹히도록 낮췄다(1.0 → 0.5, 플레이어 콜라이더 중심 높이에 맞춤).
+///
+/// [2026-09-14 — HoldPad 발판 생성 메뉴 추가] `WindupActivationMode.HoldPad`용 `WindupActivationPad`
+/// 배치를 위해 `Create Activation Pad`를 추가했다. DoorSystem/ExitWeightPlate와 같은 얇은 판
+/// 규격(2 x 0.15 x 2, 트리거)을 그대로 따랐다 — 저장소의 발판류가 공유하는 형태.
 /// </summary>
 public static class WindupAxleMenuItem
 {
@@ -87,7 +91,6 @@ public static class WindupAxleMenuItem
 
         WindupPaddleInput input = stick.GetComponent<WindupPaddleInput>();
         input.axle = axle;
-        input.deltaPerHit = 1f;
 
         // 좌우 절반을 색으로 갈라 순수 장식(회전이 눈에 보이게) — 방향 판정과는 무관하다.
         CreateStickHalf(stick.transform, "Stick_Half_A", StickHalfLength * 0.5f, new Color(0.2f, 0.8f, 0.3f));
@@ -168,6 +171,25 @@ public static class WindupAxleMenuItem
         spoke.transform.localScale = localScale;
         spoke.GetComponent<Renderer>().sharedMaterial =
             new Material(Shader.Find("Standard")) { color = new Color(0.9f, 0.15f, 0.1f) };
+    }
+
+    [MenuItem("Tools/WindupAxleSystem/Create Activation Pad")]
+    private static void CreateActivationPad()
+    {
+        Vector3 spawnPos = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.pivot : Vector3.zero;
+
+        // DoorSystem/ExitWeightPlate와 같은 얇은 판 규격 — 밟는 발판류의 저장소 관례.
+        GameObject pad = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        pad.name = "WindupActivationPad";
+        pad.transform.position = spawnPos;
+        pad.transform.localScale = new Vector3(2f, 0.15f, 2f);
+        pad.GetComponent<Collider>().isTrigger = true;
+        pad.GetComponent<Renderer>().sharedMaterial =
+            new Material(Shader.Find("Standard")) { color = new Color(0.9f, 0.6f, 0.2f) };
+        pad.AddComponent<WindupActivationPad>();
+
+        Undo.RegisterCreatedObjectUndo(pad, "Create Windup Activation Pad");
+        Selection.activeGameObject = pad;
     }
 
     [MenuItem("Tools/WindupAxleSystem/Self-Check")]

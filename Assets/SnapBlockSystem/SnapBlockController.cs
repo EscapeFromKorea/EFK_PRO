@@ -234,7 +234,7 @@ public class SnapBlockController : MonoBehaviour
     private void CollectSceneBlocks()
     {
         sceneBlocks.Clear();
-        sceneBlocks.AddRange(Object.FindObjectsOfType<SnapBlock>());
+        sceneBlocks.AddRange(SnapBlock.AllBlocks);
     }
 
     // --- 하이라이트 구 2개 ---
