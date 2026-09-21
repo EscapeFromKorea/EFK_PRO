@@ -230,6 +230,26 @@ public class PlayerMover : MonoBehaviour
 
         if (shapeController == null)
             groundLayer &= ~(1 << gameObject.layer);
+
+        // [2026-09-20, 구 카메라 꿀렁거림 조사로 확정] PlayerObjectMenuItem이 에디터에서
+        // rb.maxAngularVelocity=30을 대입하는데도 런타임에는 프로젝트 기본값(7)으로 되돌아가 있는
+        // 게 실측(진단 로그)으로 확인됐다(원인 미상 — Rigidbody가 아직 콜라이더를 갖기 전 시점에
+        // 설정해서 씹혔을 가능성). 구(자유 회전)는 moveSpeed/rollRadius로 나온 각속도(기본값 기준
+        // 14 rad/s)가 7로 잘리면 대입한 선속도와 각속도가 안 맞아 매 스텝 마찰이 그 어긋남을
+        // 보정하려 들고, 그게 "구 카메라 위아래 꿀렁거림"의 주원인이었다. 원인이 무엇이든 런타임엔
+        // 항상 30 이상이 보장되게 여기서 다시 못박는다.
+        if (rb.maxAngularVelocity < 30f)
+            rb.maxAngularVelocity = 30f;
+
+        // [2026-09-20] PlayerObjectMenuItem이 "구는 접촉점 1개뿐이라 괜찮다"는 가정으로
+        // solverIterations 보강(정육면체/정사면체 12/4)을 구만 제외해뒀었는데, 위 maxAngularVelocity
+        // 수정 이후에도 남아있던 작고 빠른 잔여 떨림이 이 보강으로 줄어드는 게 실측으로 확인돼
+        // 구도 동일하게 올린다.
+        if (rb.solverVelocityIterations < 4)
+        {
+            rb.solverIterations = Mathf.Max(rb.solverIterations, 12);
+            rb.solverVelocityIterations = 4;
+        }
     }
 
     void OnEnable()
