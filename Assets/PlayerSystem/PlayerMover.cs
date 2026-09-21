@@ -80,6 +80,29 @@ public class PlayerMover : MonoBehaviour
              "구/정육면체/정사면체 모두 이 공식 하나를 공유한다(자세한 이유는 클래스 상단 주석 참고).")]
     public float rollRadius = 0.5f;
 
+    [Tooltip("[진단 실험, 2026-09-21] 목표 각속도로 매 프레임 순간 스냅하는 대신 초당 이만큼(rad/s²)까지만 " +
+             "바뀌게 제한한다. Loki 실측으로 구가 정지 중엔 카메라 target Y가 완전히 안정적이고 구를 " +
+             "때만 요동친다는 게 확인돼, 이 순간 대입 자체(그리고 그로 인한 접촉 솔버/마찰과의 경합)를 " +
+             "원인으로 의심해 시도한다. 수평 velocity는 여전히 즉시 대입이라 moveSpeed 도달 규격에는 " +
+             "영향 없다 — 오직 회전 연출의 반응 속도만 늦어진다. 0이면 기존처럼 순간 스냅(회귀 없음). " +
+             "FreezeRotation인 정육면체/정사면체는 각속도 대입 자체가 물리엔진에 의해 무시되므로 무관하다.")]
+    public float maxAngularAccel = 100f;
+
+    [Header("[진단 전용] 구르기 물리 로그 (Grafana/Loki)")]
+    [Tooltip("[진단 실험, 2026-09-21] 매 FixedUpdate(50Hz) rb.velocity/angularVelocity/position.y를 " +
+             "Loki로 보낸다. 각속도 MoveTowards 완화가 카메라 요동을 못 없앤 뒤, 원인을 더 정확히 " +
+             "보려고 추가한다. 로그량이 많으니(초당 50줄) 재현 구간에서만 짧게 켜고 끌 것.")]
+    public bool logRollDebug = false;
+
+    private void LogRollDebug()
+    {
+        if (!logRollDebug) return;
+        LokiTelemetry.Event("sphere_roll_debug",
+            $"velY={rb.velocity.y:F4} velXZ={new Vector2(rb.velocity.x, rb.velocity.z).magnitude:F3} " +
+            $"angVel={rb.angularVelocity.magnitude:F3} angVelVec=({rb.angularVelocity.x:F2},{rb.angularVelocity.y:F2},{rb.angularVelocity.z:F2}) " +
+            $"posY={rb.position.y:F4} grounded={IsGrounded()}");
+    }
+
     [Header("토크+마찰 구르기 (정육면체/정사면체)")]
     [Tooltip("켜면 접지 중 velocity/angularVelocity 하드 대입 대신 AddTorque + 고마찰 그립으로 " +
              "물리적으로 굴린다. false면 기존 각속도 대입 방식을 그대로 유지한다(구 무변화). " +
@@ -264,6 +287,9 @@ public class PlayerMover : MonoBehaviour
 
     void FixedUpdate()
     {
+        // [진단 전용] 이번 스텝에서 아무것도 건드리기 전, 지난 스텝 물리 결과를 그대로 찍는다.
+        LogRollDebug();
+
         // 외부 시스템이 몸을 굴리는 동안은 이동도 감쇠도 하지 않는다(둘 다 그 물리를 짓밟는다).
         if (ExternallyDriven)
         {
@@ -410,7 +436,12 @@ public class PlayerMover : MonoBehaviour
             lastTravelVelocity += groundVelXZ; // 다음 스텝 drift 계산이 이 몫까지 "물리 몫"으로 오인하지 않도록 같이 반영
             rb.velocity = new Vector3(target.x, rb.velocity.y, target.z);
             if (rollRadius > 0.0001f)
-                rb.angularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
+            {
+                Vector3 desiredAngularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
+                rb.angularVelocity = maxAngularAccel > 0f
+                    ? Vector3.MoveTowards(rb.angularVelocity, desiredAngularVelocity, maxAngularAccel * Time.fixedDeltaTime)
+                    : desiredAngularVelocity;
+            }
         }
         else
         {

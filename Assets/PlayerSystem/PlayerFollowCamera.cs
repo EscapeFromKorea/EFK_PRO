@@ -60,12 +60,13 @@ public class PlayerFollowCamera : MonoBehaviour
     public float cameraYawOffset = 90f;
 
     [Tooltip("위치 추적 부드러움(SmoothDamp 시간, 초). 작을수록 즉각적이고, 클수록 부드럽지만 느리다. " +
-             "[2026-09-15] 0.2→0.12→0.07로 낮췄었으나, [2026-09-20] 구 플레이어가 매 프레임 " +
-             "velocity/angularVelocity를 강제 대입하는 구조상 남기는 잔여 떨림을 0.07(즉각 반응)로는 " +
-             "그대로 화면에 전달해 오히려 더 거슬렸다 — 0.5로 올려 그 잔여 떨림을 감쇠로 걸러내는 " +
-             "쪽이 실측(플레이테스트)상 더 자연스러웠다. 구의 구르기 방식을 정육면체/정사면체처럼 " +
-             "시각 전용 회전으로 바꾸면(추후 과제) 이 값을 다시 낮출 여지가 있다.")]
-    public float followSmoothness = 0.5f;
+             "[2026-09-15] 0.2→0.12→0.07로 낮췄다. [2026-09-20] 구 플레이어에서 카메라가 꿀렁이는 " +
+             "증상이 나와 한때 0.5까지 올려 감쇠로 가렸었으나, [2026-09-21] 진짜 원인이 " +
+             "PlayerShapeController가 Player_Collider를 Root 원점에서 반지름만큼 띄워두던 것(자유 " +
+             "회전하는 구에서 그 오프셋이 궤도를 돌며 Root 위치 자체를 흔듦)으로 확정돼 " +
+             "ScalingSystem/Playershapecontroller.cs에서 고쳤다 — 구 Root의 실제 위치가 더 이상 안 " +
+             "흔들리므로 값을 0.07로 되돌린다.")]
+    public float followSmoothness = 0.07f;
 
     [Tooltip("타깃의 Y(상하) 위치만 추가로 감쇠하는 배수(1 = X/Z와 동일). 정육면체/정사면체가 " +
              "모서리를 넘을 때마다 Root가 실제로 위아래로 튀는데, 이 값을 키우면 카메라가 그 상하 " +
