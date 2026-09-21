@@ -35,14 +35,15 @@ namespace TelemetrySystem.Editor
                 return;
             }
 
-            string url = null, user = null, token = null;
+            string localUrl = null, url = null, user = null, token = null;
             foreach (var line in File.ReadAllLines(envPath))
             {
                 var eq = line.IndexOf('=');
                 if (eq < 0) continue;
                 var key = line.Substring(0, eq).Trim();
                 var value = CleanEnvValue(line.Substring(eq + 1).Trim());
-                if (key == "LOKI_URL") url = value;
+                if (key == "LOKI_LOCAL_URL") localUrl = value;
+                else if (key == "LOKI_URL") url = value;
                 else if (key == "LOKI_USER") user = value;
                 else if (key == "LOKI_TOKEN") token = value;
             }
@@ -51,6 +52,12 @@ namespace TelemetrySystem.Editor
             {
                 Debug.LogWarning("[LokiConfigSync] LOKI_URL/LOKI_USER/LOKI_TOKEN missing from .env — skipped.");
                 return;
+            }
+
+            if (localUrl == null)
+            {
+                localUrl = "http://localhost:3100";
+                Debug.LogWarning("[LokiConfigSync] LOKI_LOCAL_URL missing from .env — defaulting to http://localhost:3100.");
             }
 
             if (!AssetDatabase.IsValidFolder(AssetDir))
@@ -66,6 +73,7 @@ namespace TelemetrySystem.Editor
                 AssetDatabase.CreateAsset(config, AssetPath);
             }
 
+            config.localUrl = localUrl;
             config.url = url;
             config.user = user;
             config.token = token;

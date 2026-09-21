@@ -167,12 +167,22 @@ public class LokiClient : MonoBehaviour
         return sb.ToString();
     }
 
+    // 로컬 docker Loki(인증 없음)를 1순위로 찌르고, 연결 자체가 안 되면(꺼져있음) 그 자리에서
+    // 클라우드로 우회한다 — 별도 헬스체크/상태 캐시 없이 매 배치마다 로컬을 먼저 시도하는 것으로
+    // 충분하다(로컬이 켜져있으면 실패할 이유가 없어 매번 재시도해도 비용이 없다).
     IEnumerator PostAsync(string body)
     {
-        using var req = BuildRequest(body);
-        yield return req.SendWebRequest();
-        if (req.result != UnityWebRequest.Result.Success)
-            Debug.LogWarning($"[LokiClient] push failed: {req.error}");
+        using (var req = BuildRequest(_config.localUrl, body, useAuth: false))
+        {
+            yield return req.SendWebRequest();
+            if (req.result == UnityWebRequest.Result.Success) yield break;
+        }
+        using (var req = BuildRequest(_config.url, body, useAuth: true))
+        {
+            yield return req.SendWebRequest();
+            if (req.result != UnityWebRequest.Result.Success)
+                Debug.LogWarning($"[LokiClient] push failed (local + cloud): {req.error}");
+        }
     }
 
     /// <summary>종료 경로 전용 동기 전송. 코루틴 대신 SendWebRequest의 비동기 오퍼레이션을 직접
@@ -180,22 +190,33 @@ public class LokiClient : MonoBehaviour
     /// 코루틴 없이도 완료까지 기다릴 수 있다.</summary>
     void PostSync(string body)
     {
-        using var req = BuildRequest(body);
-        var op = req.SendWebRequest();
-        while (!op.isDone) { }
-        if (req.result != UnityWebRequest.Result.Success)
-            Debug.LogWarning($"[LokiClient] quit-flush failed: {req.error}");
+        using (var req = BuildRequest(_config.localUrl, body, useAuth: false))
+        {
+            var op = req.SendWebRequest();
+            while (!op.isDone) { }
+            if (req.result == UnityWebRequest.Result.Success) return;
+        }
+        using (var req = BuildRequest(_config.url, body, useAuth: true))
+        {
+            var op = req.SendWebRequest();
+            while (!op.isDone) { }
+            if (req.result != UnityWebRequest.Result.Success)
+                Debug.LogWarning($"[LokiClient] quit-flush failed (local + cloud): {req.error}");
+        }
     }
 
-    UnityWebRequest BuildRequest(string body)
+    UnityWebRequest BuildRequest(string baseUrl, string body, bool useAuth)
     {
-        var url = _config.url.TrimEnd('/') + "/loki/api/v1/push";
+        var url = baseUrl.TrimEnd('/') + "/loki/api/v1/push";
         var req = new UnityWebRequest(url, "POST");
         req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
-        var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_config.user}:{_config.token}"));
-        req.SetRequestHeader("Authorization", $"Basic {auth}");
+        if (useAuth)
+        {
+            var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_config.user}:{_config.token}"));
+            req.SetRequestHeader("Authorization", $"Basic {auth}");
+        }
         return req;
     }
 }
