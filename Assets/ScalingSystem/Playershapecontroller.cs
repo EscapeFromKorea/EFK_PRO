@@ -149,11 +149,28 @@ public class PlayerShapeController : MonoBehaviour
             if (colliderTransform.localScale != Vector3.one)
                 colliderTransform.localScale = Vector3.one;
 
+            float targetY = BottomPivotOffsetY;
             Vector3 colliderLocal = colliderTransform.localPosition;
-            if (Mathf.Abs(colliderLocal.y - 0.5f) > 0.001f)
-                colliderTransform.localPosition = new Vector3(colliderLocal.x, 0.5f, colliderLocal.z);
+            if (Mathf.Abs(colliderLocal.y - targetY) > 0.001f)
+                colliderTransform.localPosition = new Vector3(colliderLocal.x, targetY, colliderLocal.z);
         }
     }
+
+    // [2026-09-21, 구 카메라 꿀렁임 조사로 확정] Root 원점을 "바닥 접촉점"으로 보고 콜라이더/메시를
+    // 반높이(0.5)만큼 자식 로컬 Y로 띄우는 이 관행은 Root 회전이 고정된 정육면체/정사면체에서만
+    // 안전하다. 구는 Root가 실제 물리로 자유 회전하는데(RigidbodyConstraints.None), 자식 Transform은
+    // 부모 회전을 그대로 물려받으므로 이 오프셋이 회전할 때마다 Root 원점을 중심으로 궤도를 돈다 —
+    // PhysX가 그 궤도 도는 콜라이더를 계속 바닥에 붙이려고 Root 자체를 회전 주기(≈0.45s)·반지름
+    // 진폭(≈0.5U)으로 위아래로 흔든 것이 targetY/카메라 꿀렁임의 정체였다(Loki 실측으로 확인 —
+    // velY는 거의 0인데 posY만 회전 주기로 진동). 구만 오프셋을 0으로 둬 콜라이더 중심이 곧 Root
+    // 원점(=회전 중심)이 되게 한다 — 물리적으로 구는 애초에 회전축이 중심을 지나야 하므로 이게 맞는
+    // 배치다. 대신 구의 Root는 더 이상 "바닥"이 아니라 "구 중심"을 의미하게 되므로, 씬 배치 Y는
+    // 그만큼(반지름) 올려줘야 한다.
+    private float BottomPivotOffsetY =>
+        (shapeIdentity != null && shapeIdentity.stats != null
+            && shapeIdentity.stats.kind == PlayerShapeStats.ShapeKind.Sphere)
+            ? 0f
+            : 0.5f;
 
     void FixedUpdate()
     {
@@ -208,7 +225,7 @@ public class PlayerShapeController : MonoBehaviour
         // Player_Root Y는 Rigidbody Physics에 완전히 위임하여 누적 상승 루프 방지
         if (meshTransform != null)
         {
-            float targetLocalY = 0.5f;
+            float targetLocalY = BottomPivotOffsetY;
             Vector3 localPos = meshTransform.localPosition;
 
             if (Mathf.Abs(localPos.y - targetLocalY) > 0.001f)

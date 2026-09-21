@@ -18564,8 +18564,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8c67ecb7a603dab47a797d041a985940, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   moveSpeed: 5
   airControlMultiplier: 0.6
   airWallCheckDistance: 0.7
@@ -18579,6 +18579,7 @@ MonoBehaviour:
   inputYawOffset: 90
   cameraRelativeInput: 1
   scaleTorqueCompensation: 1.5
+  logRollDebug: 0
   groundCheckDistance: 0.15
   groundLayer:
     serializedVersion: 2
@@ -21421,7 +21422,7 @@ MonoBehaviour:
   target: {fileID: 0}
   offset: {x: 0, y: 4, z: -10}
   cameraYawOffset: 90
-  followSmoothness: 0.5
+  followSmoothness: 0.07
   verticalDampingMultiplier: 3
   lookHeightOffset: 1
   enableMouseOrbit: 1
