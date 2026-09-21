@@ -41,7 +41,7 @@ using UnityEngine.Events;
 [RequireComponent(typeof(Rigidbody))]
 public class StepRotatingBridge : MonoBehaviour
 {
-    private enum BridgeState { Idle, Telegraph, Rotating, Returning, RearmWait }
+    private enum BridgeState { Idle, Telegraph, Rotating, HoldAtTarget, Returning, RearmWait }
 
     [Header("회전축 (PRD 확정 — 다리 길이 방향으로 고정)")]
     [Tooltip("다리 길이 방향 로컬 축. 기본 Z(forward) — 배치 시 다리 메쉬의 실제 길이 방향에 맞춰라. " +
@@ -58,6 +58,10 @@ public class StepRotatingBridge : MonoBehaviour
 
     [Tooltip("목표 자세 → 최초 자세로 되돌아오는 속도(도/초).")]
     public float returnSpeed = 90f;
+
+    [Tooltip("목표 자세(회전 끝)에 도달한 뒤 복귀를 시작하기 전 그 자세를 유지하는 시간(초). " +
+             "0으로 두면 도달 즉시 복귀한다.")]
+    public float holdDuration = 0.5f;
 
     [Tooltip("상면 지지가 처음 감지된 뒤 실제 회전이 시작되기까지 예고 시간(초). 예고 중 상면에서 " +
              "모두 내려가도 이미 예약된 회전 주기는 취소되지 않고 계속 진행된다(PRD 확정).")]
@@ -94,13 +98,27 @@ public class StepRotatingBridge : MonoBehaviour
              "완성 전 임시 방식, FallingRockSpawner.OnHitThresholdExceeded와 같은 패턴).")]
     public PlayerFellEvent OnPlayerFell;
 
+    [Header("예고 진동 (시각 전용 — 콜라이더/판정에는 전혀 관여하지 않는다)")]
+    [Tooltip("예고 중 다리가 떨리는 시각 효과의 진폭(로컬 좌표, U). visualRoot의 로컬 위치만 흔들고 " +
+             "지지/센서 콜라이더가 붙은 이 오브젝트 자체는 움직이지 않으므로 상면 판정에 영향이 없다.")]
+    public float telegraphShakeAmplitude = 0.03f;
+
+    [Tooltip("떨림 주파수(Hz). 값이 클수록 더 빠르게 떤다.")]
+    public float telegraphShakeFrequency = 25f;
+
+    [Tooltip("떨림을 적용할 시각 전용 자식 Transform. 비워두면 Awake가 첫 번째 MeshRenderer를 가진 " +
+             "자식을 자동으로 찾는다(Create 메뉴가 만드는 *_Visual 오브젝트).")]
+    public Transform visualRoot;
+
     private Rigidbody body;
     private BridgeState state = BridgeState.Idle;
     private float telegraphTimer;
+    private float holdTimer;
     private Quaternion restRotation;
     private Quaternion targetRotation;
     private Vector3 worldAxis;   // 회전축의 월드 방향 — 자기 축 회전이라 Start 이후 불변이다
     private Vector3 pivotWorld;
+    private Vector3 visualRestLocalPos;
 
     // 동일 도형의 다중 콜라이더, 동시 두 도형 진입 모두 하나의 주기로 취급한다(PRD 확정) — 바디별
     // 겹침 콜라이더 수를 세어 카운트가 0이 될 때만 완전히 내려간 것으로 본다(LiftPlatform과 같은 이유).
@@ -158,6 +176,12 @@ public class StepRotatingBridge : MonoBehaviour
             foreach (Collider c in GetComponents<Collider>())
                 if (!c.isTrigger) { supportCollider = c; break; }
 
+        if (visualRoot == null)
+        {
+            MeshRenderer mr = GetComponentInChildren<MeshRenderer>();
+            if (mr != null) visualRoot = mr.transform;
+        }
+
         if (riderSensor == null)
             Debug.LogWarning($"[StepRotatingBridge] {name}: 라이더 감지용 트리거 콜라이더가 없다. " +
                              "Reset()으로 기본 콜라이더를 만들거나 직접 붙여라.", this);
@@ -180,12 +204,15 @@ public class StepRotatingBridge : MonoBehaviour
         worldAxis = (restRotation * localRotationAxis).normalized;
         pivotWorld = body.position;
         targetRotation = restRotation * Quaternion.AngleAxis(rotationAngle, localRotationAxis.normalized);
+
+        if (visualRoot != null) visualRestLocalPos = visualRoot.localPosition;
     }
 
     private void FixedUpdate()
     {
         CleanupDeadRiders();
         UpdateFallWatch();
+        UpdateTelegraphShake();
 
         switch (state)
         {
@@ -207,6 +234,15 @@ public class StepRotatingBridge : MonoBehaviour
             case BridgeState.Rotating:
                 StepRotation(targetRotation, rotationSpeed, Mathf.Sign(rotationAngle));
                 if (RotationReached(targetRotation))
+                {
+                    state = BridgeState.HoldAtTarget;
+                    holdTimer = 0f;
+                }
+                break;
+
+            case BridgeState.HoldAtTarget:
+                holdTimer += Time.fixedDeltaTime;
+                if (holdTimer >= holdDuration)
                     state = BridgeState.Returning;
                 break;
 
@@ -345,6 +381,28 @@ public class StepRotatingBridge : MonoBehaviour
             }
         }
         foreach (Rigidbody r in cleanupBuffer) fallWatch.Remove(r);
+    }
+
+    /// <summary>예고 중에만 visualRoot의 로컬 위치를 흔들어 회전 직전임을 미리 알린다(PRD가 명시하지
+    /// 않은 추가 연출 — 사용자 요청, 2026-09-21). 두 개의 사인파를 다른 위상/배수로 섞어 결정론적
+    /// 떨림을 만든다(무작위값이 아니라 항상 같은 떨림이 재현된다). 예고가 아니면 즉시 원위치로
+    /// 되돌린다 — 회전/복귀 단계는 실제 `body.rotation`이 시각까지 그대로 반영해야 하므로 흔들림이
+    /// 남아 있으면 안 된다.</summary>
+    private void UpdateTelegraphShake()
+    {
+        if (visualRoot == null) return;
+
+        if (state != BridgeState.Telegraph)
+        {
+            if (visualRoot.localPosition != visualRestLocalPos)
+                visualRoot.localPosition = visualRestLocalPos;
+            return;
+        }
+
+        float t = Time.time * telegraphShakeFrequency;
+        float x = Mathf.Sin(t) * telegraphShakeAmplitude;
+        float y = Mathf.Sin(t * 1.3f + 1.7f) * telegraphShakeAmplitude * 0.5f;
+        visualRoot.localPosition = visualRestLocalPos + new Vector3(x, y, 0f);
     }
 
     // RespawnController.WaitForLanding과 같은 창구 — Root의 PlayerShapeController.IsGrounded()가

@@ -227,7 +227,7 @@ public class ThreadPinPlacer : MonoBehaviour
             Destroy(pins[0]);
             pins.RemoveAt(0);
         }
-        pins.Add(CreatePin(wall.point + wall.normal * pinSurfaceOffset));
+        pins.Add(CreatePin(wall.point + wall.normal * pinSurfaceOffset, wall.collider.transform));
         lastWallNormal = wall.normal; // 재부착 폴백 방향 갱신(같은 벽을 climb할 때 씀)
         Debug.Log("[DreamThread] 벽에 핀을 박았습니다(최대 2개). 세모/구가 F로 매달릴 수 있습니다.");
 
@@ -307,13 +307,28 @@ public class ThreadPinPlacer : MonoBehaviour
         return fwd.sqrMagnitude > 1e-4f ? fwd.normalized : Vector3.forward;
     }
 
-    private GameObject CreatePin(Vector3 position)
+    // wallTransform 아래 자식으로 붙인다(월드 위치는 position으로 그대로 지정) — 맞은 표면이 정적이면
+    // 동작 변화가 없고, StepRotatingBridge처럼 스스로 움직이는 표면이면 핀이 자동으로 따라간다. 2026-09-21
+    // 실측: 다리가 회전한 자세에서 핀을 박으면 부모 없이는 그 순간 월드 좌표에 박제돼, 다리가 원래
+    // 자세로 돌아온 뒤 핀만 공중에 남았다(DreamThreadController는 이미 매 프레임 anchor.transform의
+    // 실시간 위치를 읽으므로 — "동적 앵커" 절 참고 — 부모만 붙이면 별도 로직 없이 해결된다).
+    private GameObject CreatePin(Vector3 position, Transform wallTransform)
     {
         GameObject pin = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         pin.name = "DreamThread_Pin";
         Destroy(pin.GetComponent<Collider>()); // 앵커는 순수 마커 — 물리 접촉 없음(ThreadAnchor 주석 참고).
+        if (wallTransform != null) pin.transform.SetParent(wallTransform, worldPositionStays: false);
         pin.transform.position = position;
-        pin.transform.localScale = Vector3.one * pinMarkerSize;
+
+        // 부모의 비균일 스케일이 마커 모양을 찌그러뜨리지 않도록 로컬 스케일을 부모 lossyScale로
+        // 나눠 보정한다(CatapultBucket/RailCart가 겪은 비균일 스케일 부모화 전단 왜곡과 같은 함정 —
+        // 벽이 늘려 만든 Cube라면 흔하다). 회전으로 인한 전단까지 완전히 상쇄하진 않지만, 순수 시각
+        // 마커라 그 정도 근사로 충분하다.
+        Vector3 parentScale = wallTransform != null ? wallTransform.lossyScale : Vector3.one;
+        pin.transform.localScale = new Vector3(
+            pinMarkerSize / Mathf.Max(parentScale.x, 1e-4f),
+            pinMarkerSize / Mathf.Max(parentScale.y, 1e-4f),
+            pinMarkerSize / Mathf.Max(parentScale.z, 1e-4f));
 
         Renderer r = pin.GetComponent<Renderer>();
         r.sharedMaterial = GetPinMaterial();
