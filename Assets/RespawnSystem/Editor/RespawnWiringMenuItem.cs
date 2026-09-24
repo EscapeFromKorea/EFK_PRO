@@ -85,6 +85,64 @@ public static class RespawnWiringMenuItem
                   "돌아간다 = '리스폰 이후 다시 N번').", controller);
     }
 
+    /// <summary>SectionHitCounter → RespawnController.RespawnPlayer(GameObject, SectionSafePoint)
+    /// 배선. 위 WireFallingRockHits와 같은 방식(멱등, 재실행 가능)이며, 구간 목적지(destination)가
+    /// 아직 배정되지 않은 카운터는 건너뛴다(docs/PRD/SectionRespawn.md §3).</summary>
+    [MenuItem("Tools/Respawn/Wire Section Hits")]
+    public static void WireSectionHits()
+    {
+        RespawnController controller = Object.FindObjectOfType<RespawnController>();
+        if (controller == null)
+        {
+            Debug.LogWarning("[Respawn] 씬에 RespawnController가 없어 배선할 수 없다. " +
+                             "Tools > Respawn > Create Respawn Controller를 먼저 실행해라.");
+            return;
+        }
+
+        SectionHitCounter[] counters = Object.FindObjectsOfType<SectionHitCounter>();
+        if (counters.Length == 0)
+        {
+            Debug.LogWarning("[Respawn] 씬에 SectionHitCounter가 없다. 구간 위험 장치(낙석·레이저·함정 " +
+                             "등)에 붙여 먼저 배치해라.");
+            return;
+        }
+
+        int wired = 0, already = 0, skippedNoDestination = 0;
+        foreach (SectionHitCounter counter in counters)
+        {
+            if (counter.destination == null)
+            {
+                skippedNoDestination++;
+                continue;
+            }
+
+            Undo.RecordObject(counter, "Wire Section Hits");
+
+            if (counter.OnThresholdReached == null)
+                counter.OnThresholdReached = new SectionHitCounter.SectionRespawnEvent();
+
+            if (AlreadyWired(counter.OnThresholdReached, controller))
+            {
+                already++;
+            }
+            else
+            {
+                // 두 인자(맞은 플레이어 Root, 목적지) 모두 동적 배선이다 — 카운터가 Invoke 시점에
+                // 넘기는 값이 그대로 들어간다. 이름·인자를 바꾸면 배선이 조용히 끊긴다.
+                UnityEventTools.AddPersistentListener<GameObject, SectionSafePoint>(
+                    counter.OnThresholdReached, controller.RespawnPlayer);
+                wired++;
+            }
+
+            EditorUtility.SetDirty(counter);
+        }
+
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        Debug.Log($"[Respawn] 구간 피격 배선 완료 — 새로 꽂음 {wired}개 / 이미 꽂혀 있음 {already}개 / " +
+                  $"목적지 미배정으로 건너뜀 {skippedNoDestination}개(SectionHitCounter.destination을 " +
+                  "먼저 지정해라).", controller);
+    }
+
     private static bool AlreadyWired(UnityEventBase evt, RespawnController controller)
     {
         for (int i = 0; i < evt.GetPersistentEventCount(); i++)

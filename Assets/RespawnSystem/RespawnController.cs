@@ -38,6 +38,11 @@ using UnityEngine.Rendering;
 /// mover.enabled를 끄면 PlayerControlSwitcher 로스터에서 빠져 Tab 순환이 깨진다(실타래 Phase 1에서
 /// 이미 치른 부채). 점프는 따로 막지 않는다 — 낙하 중엔 비접지, 페이드 중엔 isKinematic이라
 /// 구조적으로 성립하지 않는다. 유일하게 뚫리던 경로는 부스트라 순간이동 시 CancelBoost()를 부른다.
+///
+/// [SectionRespawn 확장 — 구간별 개인 복귀 (docs/PRD/SectionRespawn.md)]
+/// RespawnPlayer(GameObject, SectionSafePoint) 오버로드가 지정된 구간 목적지로 보낸다. 공용
+/// 체크포인트(위 문단)로 보내는 기존 경로와 연출·안전 로직을 100% 공유하고, 목적지 조회와 점유
+/// 검사만 다르다 — SectionHitCounter가 임계 피격에서 이 오버로드를 발화한다.
 /// </summary>
 public class RespawnController : MonoBehaviour
 {
@@ -208,6 +213,26 @@ public class RespawnController : MonoBehaviour
         TryRespawn(mover, useFade: true, reason: "외부 호출");
     }
 
+    /// <summary>구간 지정 복귀 — SectionHitCounter/위험 장치(낙석·레이저·함정 등)가 직접 호출한다.
+    /// 목적지 조회만 다르고 연출·안전 로직(조작 차단, 로프 해제, 페이드, 착지 대기)은
+    /// RespawnPlayer(GameObject)와 100% 동일하다(docs/PRD/SectionRespawn.md §3 — 복제하지 않는다).
+    ///
+    /// destination이 null이면 공용 체크포인트로 보내는 기존 동작으로 폴백한다(오배선 시 안전망).</summary>
+    public void RespawnPlayer(GameObject playerRoot, SectionSafePoint destination)
+    {
+        if (destination == null) { RespawnPlayer(playerRoot); return; }
+        if (playerRoot == null) return;
+
+        PlayerMover mover = playerRoot.GetComponentInParent<PlayerMover>();
+        if (mover == null)
+        {
+            Debug.LogWarning($"[Respawn] '{playerRoot.name}'에서 PlayerMover를 못 찾아 구간 복귀를 건너뛴다 " +
+                             "(인자는 플레이어 Root여야 한다).", playerRoot);
+            return;
+        }
+        TryRespawn(mover, useFade: true, reason: $"구간 복귀({destination.sectionId})", destination: destination);
+    }
+
     private void Update()
     {
         RefreshRoster();
@@ -314,12 +339,14 @@ public class RespawnController : MonoBehaviour
     /// 예전엔 일회성 게이트가 이쪽까지 삼켜, 낙석에 맞아도 리스폰이 안 되는데 콘솔이 완전히 무음이었다
     /// (2026-07-31 실제 사고 — 원인 추적을 로그가 아니라 스택 트레이스에 의존해야 했다). 아래 IsHeld
     /// 거절이 이미 매번 찍히는 것과도 일관되지 않았다.</summary>
-    private bool TryRespawn(PlayerMover mover, bool useFade, string reason, bool automatic = false)
+    private bool TryRespawn(PlayerMover mover, bool useFade, string reason, bool automatic = false,
+                            SectionSafePoint destination = null)
     {
         if (mover == null) return false;
         if (busy.Contains(mover)) return false; // 연출 중 재입력 무시
 
-        if (!hasCheckpoint)
+        // 구간 목적지가 있으면 독립 좌표라 공용 체크포인트 유무와 무관하게 진행한다.
+        if (destination == null && !hasCheckpoint)
         {
             if (!automatic || !warnedNoCheckpoint)
             {
@@ -340,7 +367,22 @@ public class RespawnController : MonoBehaviour
             return false;
         }
 
-        StartCoroutine(RespawnRoutine(mover, useFade, reason));
+        // 구간 목적지의 점유 검사 — 벽/도형 겹침 없이, 전부 막히면 강제로 밀어 넣지 않고 이번 호출을
+        // 포기한다(docs/PRD/SectionRespawn.md §4 "안전점 다중화").
+        Vector3? sectionPoint = null;
+        if (destination != null)
+        {
+            if (!destination.TryGetAvailablePoint(mover, out Vector3 point))
+            {
+                Debug.LogWarning($"[Respawn] '{destination.sectionId}' 안전점(및 보조 지점)이 전부 다른 " +
+                                 $"참가자로 막혀 있어 '{ShapeLabel(mover)}' 구간 복귀를 건너뛴다 " +
+                                 "(다음 피격/재시도에서 다시 시도된다).", destination);
+                return false;
+            }
+            sectionPoint = point;
+        }
+
+        StartCoroutine(RespawnRoutine(mover, useFade, reason, sectionPoint));
         return true;
     }
 
@@ -355,7 +397,8 @@ public class RespawnController : MonoBehaviour
         return rb != null && rb.isKinematic;
     }
 
-    private IEnumerator RespawnRoutine(PlayerMover mover, bool useFade, string reason)
+    private IEnumerator RespawnRoutine(PlayerMover mover, bool useFade, string reason,
+                                       Vector3? sectionFadePoint = null)
     {
         Rigidbody rb = mover.GetComponent<Rigidbody>();
         busy.Add(mover);
@@ -391,7 +434,8 @@ public class RespawnController : MonoBehaviour
         // (반투명한 채 아래로 쏘아지면 연출이 깨진다).
         float carriedFall = useFade ? 0f : Mathf.Min(Mathf.Max(0f, -rb.velocity.y), maxCarriedFallSpeed);
 
-        yield return TeleportRoutine(mover, rb, useFade ? FadeSpawnPosition(mover) : DropPosition, carriedFall);
+        yield return TeleportRoutine(mover, rb,
+            useFade ? FadeSpawnPosition(mover, sectionFadePoint ?? groundPoint) : DropPosition, carriedFall);
 
         if (mover == null || rb == null)
         {
@@ -478,16 +522,21 @@ public class RespawnController : MonoBehaviour
     /// 다시 밟게 만들지 않는다). 기즈모도 같은 값을 쓴다.</summary>
     private Vector3 DropPosition => dropPoint + Vector3.up * dropExtraHeight;
 
-    /// <summary>페이드 스폰 좌표 — 체크포인트 바닥 위로 "콜라이더 밑면이 groundClearance만큼 뜨는" 높이.
+    /// <summary>페이드 스폰 좌표 — 지정한 바닥 지점 위로 "콜라이더 밑면이 groundClearance만큼 뜨는" 높이.
     /// 요구사항의 "바닥 + 5cm"는 스케일 1 전제라, ScalingSystem으로 커진 도형은 5cm가 몸 절반보다
-    /// 낮아 바닥에 파묻힌다. 현재 콜라이더 바운즈로 피벗~발바닥 거리를 재서 스케일과 무관하게 세운다.</summary>
-    private Vector3 FadeSpawnPosition(PlayerMover mover)
+    /// 낮아 바닥에 파묻힌다. 현재 콜라이더 바운즈로 피벗~발바닥 거리를 재서 스케일과 무관하게 세운다.
+    ///
+    /// groundPointToUse를 인자로 받는 이유(SectionRespawn 확장) — 공용 체크포인트(groundPoint)로
+    /// 보낼 때와 SectionSafePoint가 지정한 구간별 목적지로 보낼 때가 이 계산 자체는 똑같고 바닥
+    /// 좌표만 다르다. 이 오프셋 계산을 SectionSafePoint 쪽에 복제하지 않기 위해 여기서 인자화한다.</summary>
+    private Vector3 FadeSpawnPosition(PlayerMover mover, Vector3 groundPointToUse)
     {
         float pivotToBottom = 0f;
         if (TryGetSolidBounds(mover.transform, out Bounds body))
             pivotToBottom = Mathf.Max(0f, mover.transform.position.y - body.min.y);
 
-        return new Vector3(groundPoint.x, groundPoint.y + pivotToBottom + groundClearance, groundPoint.z);
+        return new Vector3(groundPointToUse.x, groundPointToUse.y + pivotToBottom + groundClearance,
+                           groundPointToUse.z);
     }
 
     // 트리거 콜라이더(Player_Mesh)는 시각 메쉬 크기라 실제로 바닥에 닿는 면이 아니다 — 솔리드
