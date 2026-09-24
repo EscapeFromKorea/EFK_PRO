@@ -101,6 +101,11 @@ public class RoleAssignmentManager : MonoBehaviour
     {
         if (subscribedRespawn != null) subscribedRespawn.PlayerRespawned -= NotifyPlayerRespawned;
         subscribedRespawn = null;
+
+        // 매니저가 꺼지면 화면을 열어 둔 참가자들의 이동 잠금을 풀어 준다 — 매니저 없이 잠금만 남으면
+        // 그 도형은 영영 움직이지 못한다.
+        foreach (RoleSlot s in slots)
+            if (s != null && s.PanelUser != null) s.PanelUser.InputLocked = false;
     }
 
     private void SubscribeRespawn()
@@ -117,12 +122,45 @@ public class RoleAssignmentManager : MonoBehaviour
 
     public void RegisterSlot(RoleSlot slot)
     {
-        if (slot != null && !slots.Contains(slot)) slots.Add(slot);
+        if (slot == null || slots.Contains(slot)) return;
+        slots.Add(slot);
+        slot.PanelOpened += RefreshInputLock;
+        slot.PanelClosed += RefreshInputLock;
     }
 
     public void UnregisterSlot(RoleSlot slot)
     {
-        slots.Remove(slot);
+        if (slot == null || !slots.Remove(slot)) return;
+        slot.PanelOpened -= RefreshInputLock;
+        slot.PanelClosed -= RefreshInputLock;
+        RefreshInputLock(slot.PanelUser); // 화면이 열린 채 슬롯이 빠지면 그 참가자의 잠금도 풀어 준다.
+    }
+
+    /// <summary>
+    /// 패널 열림/닫힘에 맞춰 그 참가자의 이동·점프 입력을 잠그거나 푼다(PlayerMover.InputLocked).
+    /// 저장된 상태를 들지 않고 매번 "지금 이 참가자가 단독 사물의 화면을 열어 두고 있는가"를 슬롯에서
+    /// 다시 계산한다 — 그래서 화면이 닫히는 어떤 경로(Esc, Tab, 개인 복귀, 거리 이탈, 이탈, 챕터 재시작)든
+    /// 같은 곳으로 모이고 잠금이 남는 일이 없다.
+    ///
+    /// 여러 명이 함께 쓰는 슬롯(allowMultipleUsers, 서버실 배선)은 잠그지 않는다: 배선은 포트 사이를
+    /// 이동하며 조작해야 하고, 그 슬롯의 화면 사용자는 마지막 한 명뿐이라 앞선 사람의 잠금이 풀리지 않을
+    /// 수 있다.
+    /// </summary>
+    private void RefreshInputLock(PlayerMover p)
+    {
+        if (p == null) return;
+
+        bool locked = false;
+        foreach (RoleSlot s in slots)
+        {
+            if (s != null && !s.allowMultipleUsers && s.PanelUser == p)
+            {
+                locked = true;
+                break;
+            }
+        }
+
+        p.InputLocked = locked;
     }
 
     public void Subscribe(IParticipantPauseReceiver receiver)

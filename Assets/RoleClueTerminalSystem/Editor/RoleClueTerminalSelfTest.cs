@@ -536,6 +536,68 @@ public static class RoleClueTerminalSelfTest
             Dispose(r);
         }
 
+        // ── 입력 잠금: 패널이 열려 있는 동안 그 참가자의 이동·점프 입력만 잠근다 ────────────
+        {
+            Rig r = NewRig();
+            Check("잠금: 처음엔 아무도 잠겨 있지 않음", !r.a.InputLocked && !r.b.InputLocked);
+            r.book.HandleInteract(r.a);
+            Check("잠금: 패널을 열면 그 참가자만 잠김", r.a.InputLocked && !r.b.InputLocked);
+            r.computer.HandleInteract(r.b);
+            Check("잠금: 다른 참가자의 잠금과 서로 독립", r.a.InputLocked && r.b.InputLocked);
+            r.manager.ReleaseByPlayer(r.a);
+            Check("잠금: Esc 사용 종료 시 해제(다른 참가자는 유지)", !r.a.InputLocked && r.b.InputLocked);
+            Dispose(r);
+        }
+        {
+            Rig r = NewRig();
+            r.book.HandleInteract(r.a);
+            r.manager.ClosePanelsOf(r.a); // Tab 전환·거리 이탈과 같은 경로
+            Check("잠금: 화면만 닫혀도(점유 유지) 해제", r.book.CurrentOwner == r.a && !r.a.InputLocked);
+            r.book.HandleInteract(r.a);
+            Check("잠금: 다시 화면을 열면 다시 잠김", r.a.InputLocked);
+            r.manager.NotifyPlayerRespawned(r.a.gameObject);
+            Check("잠금: 개인 복귀로 화면이 닫히면 해제", !r.a.InputLocked && r.book.CurrentOwner == r.a);
+            Dispose(r);
+        }
+        {
+            Rig r = NewRig();
+            r.computer.HandleInteract(r.a);
+            r.manager.NotifyParticipantLeft(r.a);
+            Check("잠금: 이탈로 점유가 풀리면 해제", !r.a.InputLocked);
+            Dispose(r);
+        }
+        {
+            Rig r = NewRig();
+            r.book.HandleInteract(r.a);
+            r.computer.HandleInteract(r.b);
+            r.manager.ResetChapter();
+            Check("잠금: 챕터 전체 재시작 시 모두 해제", !r.a.InputLocked && !r.b.InputLocked);
+            Dispose(r);
+        }
+        {
+            Rig r = NewRig();
+            r.power.HandleInteract(r.a);
+            r.power.HandleInteract(r.b);
+            Check("잠금: 여러 명이 쓰는 슬롯(배선)은 잠그지 않음", !r.a.InputLocked && !r.b.InputLocked);
+            Dispose(r);
+        }
+        {
+            Rig r = NewRig();
+            r.book.HandleInteract(r.a);
+            r.book.HandleInteract(r.b); // 사용 중이라 거부
+            Check("잠금: 거부된 요청은 잠그지 않음", !r.b.InputLocked && r.a.InputLocked);
+            r.computer.HandleInteract(r.a); // 1인 1사물로 거부
+            Check("잠금: 1인 1사물로 거부돼도 기존 패널의 잠금은 그대로", r.a.InputLocked);
+            Dispose(r);
+        }
+        {
+            Rig r = NewRig();
+            r.book.HandleInteract(r.a);
+            r.manager.UnregisterSlot(r.book);
+            Check("잠금: 화면이 열린 채 슬롯이 빠지면 해제", !r.a.InputLocked);
+            Dispose(r);
+        }
+
         Debug.Log($"[RoleSelfTest] 결과: PASS {passed} / FAIL {failed}");
         return failed == 0;
     }
