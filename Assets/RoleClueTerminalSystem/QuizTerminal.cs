@@ -112,7 +112,11 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         if (slot != null)
         {
             slot.PanelClosed += OnPanelClosed;
-            if (slot.manager != null) slot.manager.Subscribe(this);
+            if (slot.manager != null)
+            {
+                slot.manager.Subscribe(this);
+                slot.manager.ChapterReset += ResetProgress; // 챕터 전체 재시작 시 첫 문항으로(§2.7).
+            }
         }
     }
 
@@ -123,7 +127,11 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         if (slot != null)
         {
             slot.PanelClosed -= OnPanelClosed;
-            if (slot.manager != null) slot.manager.Unsubscribe(this);
+            if (slot.manager != null)
+            {
+                slot.manager.Unsubscribe(this);
+                slot.manager.ChapterReset -= ResetProgress;
+            }
         }
     }
 

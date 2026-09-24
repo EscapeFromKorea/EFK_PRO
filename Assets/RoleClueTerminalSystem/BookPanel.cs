@@ -58,6 +58,34 @@ public class BookPanel : MonoBehaviour
         PageIndex = 0;
     }
 
+    private bool bound;
+
+    private void OnEnable()
+    {
+        Bind();
+    }
+
+    private void OnDisable()
+    {
+        Unbind();
+    }
+
+    /// <summary>매니저의 챕터 재시작 신호를 구독한다. OnEnable에서 자동으로 부르며 여러 번 불러도 한
+    /// 번만 걸린다(Editor 자가검증이 OnEnable 없이 직접 부르기도 한다).</summary>
+    public void Bind()
+    {
+        if (bound || slot == null || slot.manager == null) return;
+        bound = true;
+        slot.manager.ChapterReset += ResetToFirstPage;
+    }
+
+    public void Unbind()
+    {
+        if (!bound) return;
+        bound = false;
+        if (slot != null && slot.manager != null) slot.manager.ChapterReset -= ResetToFirstPage;
+    }
+
     private void Start()
     {
         if (slot == null)

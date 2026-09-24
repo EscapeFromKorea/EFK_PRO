@@ -105,6 +105,7 @@ public static class RoleClueTerminalSelfTest
         r.bookPanel = r.root.AddComponent<BookPanel>();
         r.bookPanel.slot = r.book;
         r.bookPanel.pages = new[] { "p1", "p2", "p3" };
+        r.bookPanel.Bind();
         return r;
     }
 
@@ -470,6 +471,68 @@ public static class RoleClueTerminalSelfTest
             r.quiz.Submit(r.a);
             r.quiz.ResetProgress();
             Check("초기화: 첫 문항·미선택·미완료로 복귀", r.quiz.CurrentIndex == 0 && r.quiz.SelectedIndex == -1 && !r.quiz.AllCleared);
+            Dispose(r);
+        }
+
+        // ── 개인 복귀(추락 등): 그 참가자의 화면만 닫고 점유·진행은 유지(§2.5) ─────────────
+        {
+            Rig r = NewRig();
+            r.computer.HandleInteract(r.a);
+            r.book.HandleInteract(r.b);
+            r.quiz.Select(1, r.a);
+            r.quiz.Submit(r.a);      // Q1 정답
+            r.quiz.Select(0, r.a);   // Q2 미제출 선택
+            r.manager.NotifyPlayerRespawned(r.a.gameObject);
+            Check("복귀: 복귀한 참가자의 화면이 닫힘", !r.computer.IsPanelOpen);
+            Check("복귀: 역할 점유는 유지", r.computer.CurrentOwner == r.a);
+            Check("복귀: 미제출 선택은 취소", r.quiz.SelectedIndex == -1);
+            Check("복귀: 이미 맞힌 문항 진행은 유지", r.quiz.CurrentIndex == 1);
+            Check("복귀: 다른 참가자의 화면은 그대로", r.book.IsPanelOpen && r.book.PanelUser == r.b);
+            Check("복귀: 챕터는 멈추지 않음", r.manager.State == RoleAssignmentManager.SessionState.Running);
+            r.manager.NotifyPlayerRespawned(null);
+            Check("복귀: null 대상은 무시(예외 없음)", r.book.IsPanelOpen);
+            r.computer.HandleInteract(r.a);
+            Check("복귀: 돌아온 뒤 상호작용하면 화면이 다시 열림", r.computer.IsPanelOpen);
+            Dispose(r);
+        }
+
+        // ── 챕터 종료/전체 재시작: 역할 전부 해제 + 책 첫 페이지 + 문항 첫 문제(§2.7) ─────
+        {
+            Rig r = NewRig();
+            r.book.HandleInteract(r.a);
+            r.computer.HandleInteract(r.b);
+            r.power.HandleInteract(r.c);
+            r.bookPanel.NextPage();
+            r.bookPanel.NextPage();
+            r.quiz.Select(1, r.b);
+            r.quiz.Submit(r.b);      // Q1 정답
+            r.quiz.Select(0, r.b);   // Q2 미제출
+            r.manager.ResetChapter();
+            Check("재시작: 모든 사물의 점유 해제",
+                r.book.Users.Count == 0 && r.computer.Users.Count == 0 && r.power.Users.Count == 0);
+            Check("재시작: 모든 화면 닫힘", !r.book.IsPanelOpen && !r.computer.IsPanelOpen);
+            Check("재시작: 책은 첫 페이지", r.bookPanel.PageIndex == 0);
+            Check("재시작: 문답은 첫 문항·미선택·미완료", r.quiz.CurrentIndex == 0 && r.quiz.SelectedIndex == -1 && !r.quiz.AllCleared);
+            r.book.HandleInteract(r.b);
+            Check("재시작: 해제된 사물을 다른 참가자가 새로 점유할 수 있음", r.book.CurrentOwner == r.b);
+            Dispose(r);
+        }
+        {
+            // 세션 정지 상태(이탈 대기)는 역할 재시작이 건드리지 않는다.
+            Rig r = NewRig();
+            r.manager.NotifyParticipantLeft(r.d);
+            r.manager.ResetChapter();
+            Check("재시작: 이탈 대기(세션 정지) 상태는 유지",
+                r.manager.State == RoleAssignmentManager.SessionState.WaitingReconnect && r.manager.IsPaused);
+            Dispose(r);
+        }
+        {
+            Rig r = NewRig();
+            int resets = 0;
+            r.manager.ChapterReset += () => resets++;
+            r.manager.ResetChapter();
+            r.manager.ResetChapter();
+            Check("재시작: ChapterReset 이벤트가 호출 횟수만큼 발신", resets == 2);
             Dispose(r);
         }
 

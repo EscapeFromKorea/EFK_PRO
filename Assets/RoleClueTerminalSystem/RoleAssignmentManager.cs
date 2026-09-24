@@ -46,6 +46,11 @@ public class RoleAssignmentManager : MonoBehaviour
     [Tooltip("재개 대기 상태에서 \"이어서 시작\"을 누르는 키.")]
     public KeyCode resumeKey = KeyCode.Return;
 
+    [Header("개인 복귀 연동")]
+    [Tooltip("개인 복귀(추락 등) 시 그 참가자의 화면을 닫기 위해 구독할 컨트롤러. 비워 두면 씬에서 " +
+             "찾는다(씬에 하나뿐인 컴포넌트). 없으면 연동 없이 동작한다.")]
+    public RespawnController respawnController;
+
     [Header("임시 표시")]
     [Tooltip("재접속 대기·재개 안내와 사용 중 메시지를 화면에 그린다. UI 시스템이 생기면 그쪽으로 " +
              "옮긴다(RespawnController.OnGUI와 같은 임시 표시 관례).")]
@@ -54,6 +59,11 @@ public class RoleAssignmentManager : MonoBehaviour
     /// <summary>조작 중인 참가자 조회를 교체하는 지점(자가검증·멀티플레이 확장용). null이면 기본 조회
     /// (PlayerControlSwitcher.ActiveTarget 우선, 없으면 단일 플레이어 폴백).</summary>
     public System.Func<PlayerMover> ControlledPlayerResolver;
+
+    /// <summary>챕터 종료/전체 재시작(ResetChapter) 시 발신. 책 첫 페이지·문항 첫 문제 초기화처럼 각
+    /// 패널이 스스로 되돌릴 일을 구독한다(BookPanel, QuizTerminal). 같은 시스템 내부 신호라 C# 이벤트로
+    /// 둔다(RoleSlot 이벤트와 같은 이유).</summary>
+    public event System.Action ChapterReset;
 
     public SessionState State { get; private set; } = SessionState.Running;
 
@@ -73,6 +83,35 @@ public class RoleAssignmentManager : MonoBehaviour
     private PlayerMover lastControlled;
     private float messageUntil;
     private float nextRosterRefresh;
+    private RespawnController subscribedRespawn;
+
+    private void OnEnable()
+    {
+        SubscribeRespawn();
+    }
+
+    private void Start()
+    {
+        // 씬에 하나뿐인 컨트롤러라 인스펙터에 안 꽂혀 있으면 여기서 찾는다(OnEnable 시점엔 다른
+        // 오브젝트가 아직 준비되지 않았을 수 있다).
+        SubscribeRespawn();
+    }
+
+    private void OnDisable()
+    {
+        if (subscribedRespawn != null) subscribedRespawn.PlayerRespawned -= NotifyPlayerRespawned;
+        subscribedRespawn = null;
+    }
+
+    private void SubscribeRespawn()
+    {
+        if (subscribedRespawn != null) return;
+        if (respawnController == null) respawnController = Object.FindObjectOfType<RespawnController>();
+        if (respawnController == null) return;
+
+        subscribedRespawn = respawnController;
+        subscribedRespawn.PlayerRespawned += NotifyPlayerRespawned;
+    }
 
     // ── 슬롯 / 수신자 등록 ───────────────────────────────────────────
 
@@ -171,6 +210,38 @@ public class RoleAssignmentManager : MonoBehaviour
         if (p == null) return;
         foreach (RoleSlot s in slots)
             if (s != null && s.PanelUser == p) s.ClosePanel();
+    }
+
+    /// <summary>개인 복귀(추락 등)가 시작됐다. 그 참가자의 화면만 닫는다 — 역할 점유와 맞힌 문항 같은
+    /// 진행 상태는 그대로 두고, 미제출 선택은 화면 닫힘 신호로 취소된다(§2.5). RespawnController의
+    /// PlayerRespawned에 자동으로 구독되고, 다른 경로에서 직접 불러도 된다.</summary>
+    public void NotifyPlayerRespawned(GameObject playerRoot)
+    {
+        if (playerRoot == null) return;
+        ClosePanelsOf(playerRoot.GetComponentInParent<PlayerMover>());
+    }
+
+    /// <summary>모든 사물의 점유를 푼다(화면 닫기 포함). 챕터 종료/전체 재시작 시 역할은 전부 해제된다
+    /// (§2.7). 세션 정지 상태(이탈·재접속 대기)는 건드리지 않는다 — 그건 참가자 연결 상태이지 역할이
+    /// 아니고, 재시작이 이탈자를 되돌려 주지도 않기 때문이다.</summary>
+    public void ReleaseAllRoles()
+    {
+        foreach (RoleSlot s in new List<RoleSlot>(slots))
+        {
+            if (s == null) continue;
+            foreach (PlayerMover u in new List<PlayerMover>(s.Users))
+                s.Release(u);
+        }
+
+        Say("모든 역할 사용이 해제되었다.", this);
+    }
+
+    /// <summary>챕터 종료/전체 재시작(§2.7): 역할을 전부 해제하고 ChapterReset을 발신해 책은 첫 페이지,
+    /// 문답은 첫 문항·미선택으로 되돌린다. 세션 정지 상태는 유지한다(ReleaseAllRoles 주석 참고).</summary>
+    public void ResetChapter()
+    {
+        ReleaseAllRoles();
+        ChapterReset?.Invoke();
     }
 
     private RoleSlot HeldSlot(PlayerMover p)
