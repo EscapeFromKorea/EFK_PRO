@@ -64,6 +64,17 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
     [Header("입력 키")]
     public KeyCode submitKey = KeyCode.Return;
 
+    [Header("패널 액션(선택) — 다른 시스템이 채우는 추가 동작")]
+    [Tooltip("패널 아래쪽에 \"[키] 라벨\"로 표시할 추가 동작의 이름. 비어 있으면 그리지도 받지도 않는다. " +
+             "서버실 전력 유지 장치의 \"실험 시작\"처럼 이 시스템이 모르는 동작을 패널에 얹는 연결점이다.")]
+    public string actionLabel;
+
+    [Tooltip("패널 액션 키. 패널이 열려 있는 동안 이동·점프가 잠겨 Space가 비어 있다.")]
+    public KeyCode actionKey = KeyCode.Space;
+
+    [Tooltip("패널 액션을 요청했을 때(패널을 연 참가자만). 인자 = 요청한 참가자.")]
+    public UnityEvent<PlayerMover> onActionRequested = new UnityEvent<PlayerMover>();
+
     [Header("이벤트 — 레벨/연출 배선용")]
     [Tooltip("문항 하나를 맞혔을 때. 인자 = 맞힌 문항 인덱스. 문 열림·게이지 보상 등에 건다.")]
     public UnityEvent<int> onQuestionCleared = new UnityEvent<int>();
@@ -226,6 +237,24 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         return SubmitResult.Correct;
     }
 
+    /// <summary>패널 액션을 요청한다. 이 화면을 연 참가자가 라벨이 있을 때만 받아들여 이벤트를 낸다.
+    /// 문답을 이미 다 풀었어도(AllCleared) 받는다 — 시작 전에 문답을 먼저 풀어 버려도 "실험 시작" 같은
+    /// 액션이 패널에서 사라지면 시작할 방법이 없어지기 때문이다. 참가자 이탈 정지 중에는 받지 않는다.
+    /// 키 입력과 분리해 둔 이유는 Editor 자가검증이 입력 없이 재현하기 위해서다.</summary>
+    public bool RequestAction(PlayerMover actor)
+    {
+        if (string.IsNullOrEmpty(actionLabel) || actor == null || ParticipantPaused) return false;
+        if (slot == null || !slot.IsPanelOpen || slot.PanelUser != actor) return false;
+        onActionRequested.Invoke(actor);
+        return true;
+    }
+
+    /// <summary>패널 아래 피드백 줄에 안내 문구를 띄운다(패널 액션이 거부된 사유 등을 다른 시스템이 알릴 때).</summary>
+    public void SetFeedback(string message)
+    {
+        LastFeedback = message;
+    }
+
     private bool CanAct(PlayerMover actor)
     {
         if (actor == null || AllCleared || ParticipantPaused) return false;
@@ -256,6 +285,14 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         }
 
         if (Input.GetKeyDown(submitKey)) Submit(local);
+        else if (!string.IsNullOrEmpty(actionLabel) && Input.GetKeyDown(actionKey)) RequestAction(local);
+    }
+
+    // 패널 액션 안내("[Space] 라벨"). 문항이 남았든 다 풀었든 라벨이 있으면 항상 그린다.
+    private void DrawActionHint(Rect box)
+    {
+        if (string.IsNullOrEmpty(actionLabel)) return;
+        GUI.Label(new Rect(box.x + 12f, box.yMax - 74f, box.width - 24f, 22f), $"[{actionKey}] {actionLabel}");
     }
 
     private void OnGUI()
@@ -279,6 +316,8 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         {
             GUI.Label(new Rect(box.x + 12f, y, box.width - 24f, 24f),
                 AllCleared ? "모든 문항을 완료했습니다." : "(문항 없음 — 콘텐츠 미확정)");
+            DrawActionHint(box);
+            GUI.Label(new Rect(box.x + 12f, box.yMax - 50f, box.width - 24f, 22f), $"{LastFeedback}");
             return;
         }
 
@@ -293,6 +332,7 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         }
 
         string submitHint = SubmitGateOpen ? "Enter: 제출" : "전력 부족 — 제출 불가";
+        DrawActionHint(box);
         GUI.Label(new Rect(box.x + 12f, box.yMax - 50f, box.width - 24f, 22f), $"{LastFeedback}");
         GUI.Label(new Rect(box.x + 12f, box.yMax - 28f, box.width - 24f, 22f), $"1~9: 선택    {submitHint}    Esc: 사용 종료");
     }
