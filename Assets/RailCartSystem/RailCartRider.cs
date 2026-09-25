@@ -36,6 +36,16 @@ public class RailCartRider : MonoBehaviour
         if (cart == null) cart = GetComponent<RailCart>();
     }
 
+    // 탑승자가 복귀 대상이 되면(추격자·레이저 피격, 장외, R) 먼저 내려놓는다 — 붙잡힌 채로는
+    // RespawnController가 복귀를 거절해 영영 돌아가지 못한다.
+    void OnEnable() => RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    void OnDisable() => RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (occupantMover != null && occupantMover == mover) Unboard();
+    }
+
     void Update()
     {
         // 탑승 중엔 다른 기믹(DreamThreadSystem 등)이 같은 프레임에 ExternallyDriven을 꺼도
@@ -97,6 +107,12 @@ public class RailCartRider : MonoBehaviour
 
     private void Board(PlayerMover mover, Rigidbody body)
     {
+        // 포탈 굴리기 모드인 채로 타면, 텀블 도중(붙잡힘 상태)이라 모드가 스스로 꺼지지 않고 카트 안에서
+        // 계속 굴다가 Release로 isKinematic을 풀어 버린다 — 카트 자식인 dynamic 몸이 카트와 부딪혀 뜬다.
+        // 아래에서 키네마틱을 걸기 전에 먼저 끈다(끄는 쪽이 isKinematic/ExternallyDriven을 되돌리므로 순서 중요).
+        PlayerRollModeReceiver rollMode = mover.GetComponent<PlayerRollModeReceiver>();
+        if (rollMode != null) rollMode.SetRollMode(false);
+
         occupantBody = body;
         occupantMover = mover;
         occupantOriginalParent = body.transform.parent;
