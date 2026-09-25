@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -321,15 +321,16 @@ public static class ServerRoomPowerSelfTest
             Rig r = NewRig();
             Occupy(r);
             r.ctrl.StartExperiment();
-            r.ctrl.Tick(10f);
+            r.ctrl.Tick(40f);
             r.ctrl.SetParticipantPaused(true);
             r.ctrl.Tick(20f);
-            Check("정지: 참가자 이탈 중에는 전력이 줄지 않는다", Near(r.ctrl.Power, 90f));
+            Check("정지: 참가자 이탈 중에는 전력이 줄지 않는다", Near(r.ctrl.Power, 60f));
             Complete(r);
-            Check("정지: 정지 중 완료 신호는 무시", Near(r.ctrl.Power, 90f));
+            Check("정지: 정지 중 완료 신호는 즉시 반영하지 않고 보류", Near(r.ctrl.Power, 60f) && !r.ctrl.IsResting);
             r.ctrl.SetParticipantPaused(false);
-            r.ctrl.Tick(10f);
-            Check("재개: 정지가 풀리면 다시 감소", Near(r.ctrl.Power, 80f));
+            Check("재개: 보류했던 완료 신호를 이어서 시작 때 반영(E=90), 휴식 시작", Near(r.ctrl.Power, 90f) && r.ctrl.IsResting);
+            r.ctrl.Tick(1f);
+            Check("재개: 정지가 풀리면 다시 감소", Near(r.ctrl.Power, 89f));
             Dispose(r);
         }
 
@@ -340,6 +341,105 @@ public static class ServerRoomPowerSelfTest
             Check("연결: 매니저 정지 신호가 컨트롤러에 전달됨(Subscribe)", r.ctrl.Paused);
             Check("시작: 이탈 정지 중에는 시작 거부", !r.ctrl.StartExperiment());
             Dispose(r);
+        }
+
+        // ── 9/25 원석 회신: 기본 수치 ──────────────────────────────────
+        {
+            GameObject go = new GameObject("PowerDefaults");
+            PowerMaintenanceController c = go.AddComponent<PowerMaintenanceController>();
+            Check("회신 수치: M=100, E0=100, K=20, U=40, d=1, G=30, H=3",
+                Near(c.maxPower, 100f) && Near(c.startPower, 100f) && Near(c.lockBelow, 20f) && Near(c.unlockAt, 40f)
+                && Near(c.drainPerSecond, 1f) && Near(c.gainPerCircuit, 30f) && Near(c.restSeconds, 3f));
+            Check("회신 수치: 기본값이 PRD 파라미터 관계를 만족", c.ValidateSettings(out _));
+            Object.DestroyImmediate(go);
+        }
+
+        // ── 9/25 원석 회신: 입구 배선 + 컴퓨터 사용자가 시작 ─────────────
+        {
+            Rig r = NewRig();
+            WiringPanel entrance = new GameObject("Entrance").AddComponent<WiringPanel>();
+            FieldInfo locked = typeof(WiringPanel).GetField("locked", BindingFlags.Instance | BindingFlags.NonPublic);
+            r.ctrl.entranceWiring = entrance;
+            Occupy(r);
+            Check("시작: 입구 배선이 안 끝났으면 거부", !r.ctrl.StartExperiment() && r.ctrl.Current == PowerMaintenanceController.State.Ready);
+            Check("시작: 입구 배선이 안 끝났으면 자동 유지에서도 거부", r.ctrl.SetAutoMaintain(true) && !r.ctrl.StartExperiment());
+            r.ctrl.SetAutoMaintain(false);
+            locked.SetValue(entrance, true); // 입구 배선 완료 = 패널 잠김.
+            Check("시작: 책 담당은 시작 요청 불가", !r.ctrl.RequestStart(r.a));
+            Check("시작: 전력 담당은 시작 요청 불가", !r.ctrl.RequestStart(r.c));
+            Check("시작: 컴퓨터 사용자가 요청하면 시작", r.ctrl.RequestStart(r.b) && r.ctrl.Current == PowerMaintenanceController.State.Running);
+            Object.DestroyImmediate(entrance.gameObject);
+            Dispose(r);
+        }
+
+        {
+            Rig r = NewRig();
+            PlayerMover extra = new GameObject("Extra").AddComponent<PlayerMover>();
+            Occupy(r);
+            r.power.HandleInteract(extra);
+            Check("공동 사용: 서버실 배선은 두 참가자가 함께 점유", r.power.HasUser(r.c) && r.power.HasUser(extra));
+            Check("공동 사용: 전력 담당이 준비돼 있으면 시작(독점권 불필요)", r.ctrl.StartExperiment());
+            Object.DestroyImmediate(extra.gameObject);
+            Dispose(r);
+        }
+
+        // ── 9/25 원석 회신: 이탈 시 이탈 순간 그대로 보존 ─────────────────
+        {
+            Rig r = NewRig(d: 1f, g: 30f, h: 3f);
+            Occupy(r);
+            r.manager.SetStartOwner(r.a);
+            r.ctrl.StartExperiment();
+            r.ctrl.Tick(50f);                              // E = 50
+            Complete(r);                                   // E = 80, 휴식 3초 시작
+            r.ctrl.Tick(1f);                               // E = 79, 휴식 2초 남음
+            r.quiz.Select(1, r.b);
+            r.quiz.Submit(r.b);                            // Q1 정답 → 완료 문항 1개
+            r.quiz.Select(2, r.b);                         // Q2 미제출 답
+            float powerAtLeave = r.ctrl.Power;
+            float restAtLeave = r.ctrl.RestRemaining;
+
+            r.manager.NotifyParticipantLeft(r.b);          // 컴퓨터 담당 이탈
+            Check("이탈: 컨트롤러가 정지됨", r.ctrl.Paused);
+            Check("이탈: 완료한 문제는 보존, 풀던 문제의 미제출 답만 초기화", r.quiz.CurrentIndex == 1 && r.quiz.SelectedIndex == -1);
+            r.ctrl.Tick(100f);
+            Check("이탈: 전력은 이탈 순간 값 그대로", Near(r.ctrl.Power, powerAtLeave));
+            Check("이탈: 회로 사이 휴식 남은 시간도 그대로(진행 정지)", Near(r.ctrl.RestRemaining, restAtLeave) && r.ctrl.AssignmentNumber == 1);
+            Check("이탈: 진행 중이던 회로와 배정번호 보존", r.panel.CurrentCircuit.circuitId == "POWER_1");
+
+            r.manager.NotifyParticipantRejoined(r.b);
+            r.ctrl.Tick(100f);
+            Check("재접속: 이어서 시작 전에는 계속 정지", r.ctrl.Paused && Near(r.ctrl.Power, powerAtLeave));
+            r.manager.RequestResume(r.a);
+            Check("재개: 이어서 시작하면 정지 해제", !r.ctrl.Paused);
+            r.ctrl.Tick(1f);
+            Check("재개: 남은 휴식이 이어서 줄고 전력도 이어서 감소", Near(r.ctrl.RestRemaining, restAtLeave - 1f) && Near(r.ctrl.Power, powerAtLeave - 1f));
+            r.ctrl.Tick(1.5f);
+            Check("재개: 휴식이 끝나면 다음 회로(POWER_2) 배정", r.ctrl.AssignmentNumber == 2 && r.panel.CurrentCircuit.circuitId == "POWER_2");
+            Dispose(r);
+        }
+
+        // ── 9/25 원석 회신: 시험용 회로 데이터(POWER_1~3) ─────────────────
+        {
+            ServerRoomPowerTestData.EnsureAssets();
+            string[] ids = { "ENTRY", "POWER_1", "POWER_2", "POWER_3" };
+            string[][] expected =
+            {
+                new[] { "A-2", "B-3", "C-1" },
+                new[] { "A-1", "B-2", "C-3" },
+                new[] { "A-3", "B-1", "C-2" },
+                new[] { "A-2", "B-3", "C-1" }
+            };
+            for (int i = 0; i < ids.Length; i++)
+            {
+                WiringCircuitData data = AssetDatabase.LoadAssetAtPath<WiringCircuitData>(ServerRoomPowerTestData.PathOf(ids[i]));
+                bool exists = data != null;
+                bool valid = exists && data.Validate(out _);
+                bool pairsMatch = valid && data.pairs.Length == expected[i].Length;
+                if (pairsMatch)
+                    foreach (string pair in expected[i])
+                        pairsMatch &= data.IsCorrectPair(pair.Split('-')[0], pair.Split('-')[1]);
+                Check($"시험 데이터: {ids[i]} 에셋 존재·검증 통과·정답 쌍이 명세와 일치", exists && valid && pairsMatch);
+            }
         }
 
         // ── E-06 종료 ────────────────────────────────────────────────

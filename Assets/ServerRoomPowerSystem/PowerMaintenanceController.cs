@@ -14,9 +14,9 @@ using UnityEngine.Events;
 ///  - RoleAssignmentManager.Subscribe       : 참가자 이탈 시 전력 감소·휴식 타이머를 함께 멈춘다.
 ///  - RoleAssignmentManager.ChapterReset    : 챕터 전체 재시작 시 전력·배정을 초기화한다.
 ///
-/// [수치는 전부 인스펙터 값 — 미확정 임시값]
-/// M/E0/K/U/d/G/H는 PRD가 "수치 미정"으로 남겼다(팀 회신 대기). 기본값은 시험이 가능하도록 넣은 임시값이며
-/// 확정되면 값만 바꾸면 된다. 어떤 값도 코드에 박아 두지 않았다.
+/// [수치는 전부 인스펙터 값 — 9/25 송원석 회신 반영]
+/// M=100, E0=100, K=20, U=40, d=1/s, G=30, H=3s. 플레이테스트 후 조정할 수 있으므로 어떤 값도 코드에 박지
+/// 않고 인스펙터 기본값으로만 둔다.
 ///
 /// [상태 규칙 요약 — PRD §4]
 ///  - 준비: 시간이 흘러도 전력이 변하지 않는다. 역할 3개(자동 유지면 2개) 점유 + StartExperiment() 후 시작.
@@ -28,10 +28,14 @@ using UnityEngine.Events;
 ///  - 자동 유지: 시작 전에만 선택. E = M 고정, 회로·정전 로직을 끈다. 전력 역할만 시작 요건에서 뺀다.
 ///
 /// [이 파일이 정하지 않은 것 — 연결점만 열어 둠]
-///  - "실험 시작" 입력: PRD에 입력 방식이 없다. 공개 메서드 StartExperiment()만 두고 어떤 입력이 부를지는
-///    UI/상호작용 담당이 정한다.
-///  - 이탈 시 전력을 "문항 시작 시점 값"으로 되돌릴지: 재접속으로 전력을 회복하는 악용 여부가 팀 확인 대기라
-///    구현하지 않았다. 지금은 정지만 하고 값은 그대로 둔다.
+///  - "실험 시작" 입력: 컴퓨터 패널 안 버튼이 RequestStart(참가자)를 부르는 방식으로 정해졌다(9/25 회신).
+///    이 컨트롤러는 그 호출을 받는 쪽만 구현한다. 패널에 버튼을 그리는 쪽은 QuizTerminal(#102)이다.
+///
+/// [이탈 정책 — 9/25 회신으로 확정]
+///  전력·진행 중인 회로·이미 연결한 선·회로 사이 휴식 남은 시간을 이탈 순간 그대로 보존한다(문항 시작 시점
+///  값으로 되돌리지 않는다 — 나갔다 들어와서 전력을 회복하는 악용은 의도가 아니다). 이탈 대기 중에는 전력
+///  감소와 회로 진행을 모두 멈추고 "이어서 시작" 때 재개한다. 완료한 문제는 보존하고 풀던 문제의 미제출 답만
+///  지운다(QuizTerminal이 처리). 정지 중에 완성된 회로의 완료 신호는 버리지 않고 재개 때 반영한다.
 ///  - 챕터 재시작 시 배선 패널 화면 초기화: WiringPanel에 리셋 API가 없고(#103 소유) 다음 시작 때
 ///    AssignCircuit이 리셋하므로 건드리지 않는다.
 /// </summary>
@@ -52,13 +56,17 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     [Tooltip("순환 배정할 회로(POWER_1 → 2 → 3). 콘텐츠는 미확정이라 에셋으로 채운다.")]
     public WiringCircuitData[] circuits = new WiringCircuitData[0];
 
-    [Header("시작 요건 — 점유돼 있어야 하는 사물")]
+    [Header("시작 요건")]
+    [Tooltip("입구 배선(W_ENTRY). 완료(잠김)돼야 시작할 수 있다. 자동 유지 모드에서도 필수. 비우면 검사하지 않는다.")]
+    public WiringPanel entranceWiring;
+    [Tooltip("점유돼 있어야 하는 사물 — 책/컴퓨터/전력. 서버실 배선은 공동 사용이라 전력 담당이 준비돼 있어야 할 뿐 " +
+             "패널을 독점하지는 않는다.")]
     public RoleSlot bookSlot;
     public RoleSlot computerSlot;
     [Tooltip("전력 담당(배선). 자동 유지 모드에서는 시작 요건에서 빠진다.")]
     public RoleSlot powerSlot;
 
-    [Header("전력 수치 (미확정 임시값 — 확정되면 값만 교체)")]
+    [Header("전력 수치 (9/25 원석 회신값 — 플레이테스트 후 조정 가능)")]
     [Tooltip("M: 최대 전력.")]
     public float maxPower = 100f;
     [Tooltip("E0: 시작 전력. U 이상이어야 한다.")]
@@ -66,7 +74,7 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     [Tooltip("K: 이 값 미만이 되면 제출이 잠긴다(양수).")]
     public float lockBelow = 20f;
     [Tooltip("U: 잠긴 뒤 이 값 이상이 되어야 풀린다(K < U ≤ M).")]
-    public float unlockAt = 50f;
+    public float unlockAt = 40f;
     [Tooltip("d: 초당 전력 감소.")]
     public float drainPerSecond = 1f;
     [Tooltip("G: 회로 하나를 완성할 때 회복량.")]
@@ -96,6 +104,7 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
 
     private int circuitIndex = -1;
     private int recoveredAssignment;   // 이미 회복을 준 배정번호(같은 배정 중복 회복 방지).
+    private int pendingAssignment;     // 이탈 정지 중에 들어온 완료 신호의 배정번호(재개 때 반영).
     private float restRemaining;
     private bool bound;
 
@@ -186,7 +195,21 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
 
     // ── 시작 / 종료 / 초기화 ───────────────────────────────────────────
 
-    /// <summary>"실험 시작". 준비 상태이고 설정이 유효하며 필요한 사물이 모두 점유돼 있을 때만 시작한다.
+    /// <summary>컴퓨터 사용자가 시작을 요청한다(패널의 "실험 시작" 버튼이 부른다). 컴퓨터를 점유한 참가자의
+    /// 요청만 받는다 — 다른 도형이나 시스템이 임의로 시작할 수 없게 한다.</summary>
+    public bool RequestStart(PlayerMover requester)
+    {
+        if (requester == null || computerSlot == null || !computerSlot.HasUser(requester))
+        {
+            Debug.Log("[Power] 컴퓨터를 사용 중인 참가자만 실험을 시작할 수 있다.", this);
+            return false;
+        }
+
+        return StartExperiment();
+    }
+
+    /// <summary>"실험 시작". 준비 상태이고 설정이 유효하며 입구 배선이 완료됐고 필요한 사물이 모두 점유돼
+    /// 있을 때만 시작한다.
     /// 성공하면 자동 유지가 아닐 때 첫 회로(POWER_1)를 배정한다.</summary>
     public bool StartExperiment()
     {
@@ -200,6 +223,12 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
         if (!ValidateSettings(out string error))
         {
             Debug.LogError($"[Power] 수치 설정 오류 — {error} 시작을 거부한다.", this);
+            return false;
+        }
+
+        if (entranceWiring != null && !entranceWiring.IsLocked)
+        {
+            Debug.Log("[Power] 시작 요건 미충족 — 입구 배선이 아직 완료되지 않았다.", this);
             return false;
         }
 
@@ -244,6 +273,7 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
         SubmitLocked = false;
         AssignmentNumber = 0;
         recoveredAssignment = 0;
+        pendingAssignment = 0;
         circuitIndex = -1;
         restRemaining = 0f;
         if (quiz != null) quiz.SetSubmitGate(true);
@@ -284,10 +314,22 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     public void HandleCircuitCompleted(WiringPanel panel, int attempt, int assignmentNumber, string circuitId)
     {
         if (panel != wiringPanel) return;
-        if (Current != State.Running || autoMaintain || Paused) return;
+        if (Current != State.Running || autoMaintain) return;
         if (assignmentNumber != AssignmentNumber) return;            // 옛 배정의 지연 신호.
         if (recoveredAssignment == assignmentNumber) return;         // 같은 배정은 1번만 회복.
+        if (Paused)
+        {
+            // 이탈 대기 중에는 회로 진행이 멈춘다. 이미 완성돼 패널이 잠긴 회로가 회복 없이 버려지지 않도록
+            // 신호를 보류했다가 이어서 시작할 때 반영한다(패널 자체에는 정지 신호가 없다).
+            pendingAssignment = assignmentNumber;
+            return;
+        }
 
+        ApplyRecovery(assignmentNumber, circuitId);
+    }
+
+    private void ApplyRecovery(int assignmentNumber, string circuitId)
+    {
         recoveredAssignment = assignmentNumber;
         Power = Mathf.Min(maxPower, Power + gainPerCircuit);         // 최대치 초과분은 저장하지 않고 버린다.
         UpdateGate();                                                // 회복 처리 → 제출 허용 검사 순서.
@@ -308,7 +350,21 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
 
     public void SetParticipantPaused(bool paused)
     {
+        bool wasPaused = Paused;
         Paused = paused;
+
+        if (wasPaused && !paused && pendingAssignment != 0)
+        {
+            int pending = pendingAssignment;
+            pendingAssignment = 0;
+            if (Current == State.Running && pending == AssignmentNumber && recoveredAssignment != pending)
+                ApplyRecovery(pending, panelCircuitId());
+        }
+    }
+
+    private string panelCircuitId()
+    {
+        return wiringPanel != null && wiringPanel.CurrentCircuit != null ? wiringPanel.CurrentCircuit.circuitId : "?";
     }
 
     // ── 내부 ─────────────────────────────────────────────────────────
