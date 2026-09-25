@@ -28,8 +28,9 @@ using UnityEngine.Events;
 ///  - 자동 유지: 시작 전에만 선택. E = M 고정, 회로·정전 로직을 끈다. 전력 역할만 시작 요건에서 뺀다.
 ///
 /// [이 파일이 정하지 않은 것 — 연결점만 열어 둠]
-///  - "실험 시작" 입력: 컴퓨터 패널 안 버튼이 RequestStart(참가자)를 부르는 방식으로 정해졌다(9/25 회신).
-///    이 컨트롤러는 그 호출을 받는 쪽만 구현한다. 패널에 버튼을 그리는 쪽은 QuizTerminal(#102)이다.
+///  - "실험 시작" 입력: 컴퓨터 패널 안에서 시작한다(9/25 회신). 카메라가 커서를 잠가 마우스 버튼은 못 누르므로
+///    QuizTerminal의 패널 액션 훅(actionLabel/onActionRequested, 기본 키 Space)에 "[Space] 실험 시작"으로 얹는다.
+///    준비 상태에서만 라벨이 보이고, 거부되면 사유(입구 배선 미완료·담당 부재 등)를 패널 피드백 줄에 띄운다.
 ///
 /// [이탈 정책 — 9/25 회신으로 확정]
 ///  전력·진행 중인 회로·이미 연결한 선·회로 사이 휴식 남은 시간을 이탈 순간 그대로 보존한다(문항 시작 시점
@@ -99,6 +100,12 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     public bool AutoMaintain => autoMaintain;
     public bool Paused { get; private set; }
     public int AssignmentNumber { get; private set; }
+    /// <summary>패널에 표시할 시작 액션의 이름(준비 상태에서만 QuizTerminal.actionLabel로 내보낸다).</summary>
+    public string startActionLabel = "실험 시작";
+
+    /// <summary>마지막 시작 요청이 거부된 사유(성공하면 null). 패널 피드백 줄과 로그에 쓴다.</summary>
+    public string LastStartFailure { get; private set; }
+
     public bool IsResting => restRemaining > 0f;
     public float RestRemaining => restRemaining;
 
@@ -139,12 +146,17 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
             if (wiringPanel.OnCircuitCompleted == null) wiringPanel.OnCircuitCompleted = new WiringPanel.CompletionEvent();
             wiringPanel.OnCircuitCompleted.AddListener(HandleCircuitCompleted);
         }
-        if (quiz != null) quiz.onAllCleared.AddListener(HandleAllCleared);
+        if (quiz != null)
+        {
+            quiz.onAllCleared.AddListener(HandleAllCleared);
+            quiz.onActionRequested.AddListener(HandlePanelAction);
+        }
         if (manager != null)
         {
             manager.ChapterReset += ResetAll;
             manager.Subscribe(this); // 구독 즉시 현재 정지 상태로 한 번 호출된다.
         }
+        RefreshPanelAction();
     }
 
     public void Unbind()
@@ -153,7 +165,12 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
         bound = false;
         if (wiringPanel != null && wiringPanel.OnCircuitCompleted != null)
             wiringPanel.OnCircuitCompleted.RemoveListener(HandleCircuitCompleted);
-        if (quiz != null) quiz.onAllCleared.RemoveListener(HandleAllCleared);
+        if (quiz != null)
+        {
+            quiz.onAllCleared.RemoveListener(HandleAllCleared);
+            quiz.onActionRequested.RemoveListener(HandlePanelAction);
+            quiz.actionLabel = null;
+        }
         if (manager != null)
         {
             manager.ChapterReset -= ResetAll;
@@ -200,10 +217,7 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     public bool RequestStart(PlayerMover requester)
     {
         if (requester == null || computerSlot == null || !computerSlot.HasUser(requester))
-        {
-            Debug.Log("[Power] 컴퓨터를 사용 중인 참가자만 실험을 시작할 수 있다.", this);
-            return false;
-        }
+            return Refuse("컴퓨터를 사용 중인 참가자만 실험을 시작할 수 있다.");
 
         return StartExperiment();
     }
@@ -213,37 +227,26 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     /// 성공하면 자동 유지가 아닐 때 첫 회로(POWER_1)를 배정한다.</summary>
     public bool StartExperiment()
     {
-        if (Current != State.Ready) return false;
-        if (Paused)
-        {
-            Debug.Log("[Power] 참가자 이탈로 정지 중이라 시작할 수 없다.", this);
-            return false;
-        }
+        if (Current != State.Ready) return Refuse("이미 시작했다.");
+        if (Paused) return Refuse("참가자 재접속 대기 중이라 시작할 수 없다.");
 
         if (!ValidateSettings(out string error))
         {
             Debug.LogError($"[Power] 수치 설정 오류 — {error} 시작을 거부한다.", this);
-            return false;
+            return Refuse($"수치 설정 오류 — {error}");
         }
 
-        if (entranceWiring != null && !entranceWiring.IsLocked)
-        {
-            Debug.Log("[Power] 시작 요건 미충족 — 입구 배선이 아직 완료되지 않았다.", this);
-            return false;
-        }
+        if (entranceWiring != null && !entranceWiring.IsLocked) return Refuse("입구 배선이 아직 완료되지 않았다.");
 
-        if (!RequiredSlotsOccupied(out string missing))
-        {
-            Debug.Log($"[Power] 시작 요건 미충족 — {missing}", this);
-            return false;
-        }
+        if (!RequiredSlotsOccupied(out string missing)) return Refuse(missing);
 
         if (!autoMaintain && (circuits == null || circuits.Length == 0))
         {
             Debug.LogError("[Power] 배정할 회로(circuits)가 비어 있다. 시작을 거부한다.", this);
-            return false;
+            return Refuse("배정할 회로가 없다.");
         }
 
+        LastStartFailure = null;
         Current = State.Running;
         Power = autoMaintain ? maxPower : startPower;
         restRemaining = 0f;
@@ -256,9 +259,10 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
         {
             // 콘텐츠 오류로 첫 회로를 못 주면 시작 상태를 되돌린다(잘못된 콘텐츠로 시작하지 않는다).
             ResetAll();
-            return false;
+            return Refuse("첫 회로를 배정하지 못했다(회로 콘텐츠 오류).");
         }
 
+        RefreshPanelAction();
         Debug.Log($"[Power] 실험 시작 — E={Power:0.##}/{maxPower:0.##}, 자동 유지={autoMaintain}", this);
         onStarted.Invoke();
         return true;
@@ -276,7 +280,9 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
         pendingAssignment = 0;
         circuitIndex = -1;
         restRemaining = 0f;
+        LastStartFailure = null;
         if (quiz != null) quiz.SetSubmitGate(true);
+        RefreshPanelAction();
     }
 
     // ── 시간 진행 ────────────────────────────────────────────────────
@@ -344,6 +350,7 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
         if (Current != State.Running) return;
         Current = State.Completed;
         restRemaining = 0f;
+        RefreshPanelAction();
         Debug.Log("[Power] 마지막 문항 성공 — 전력 감소·회로 배정을 멈춘다.", this);
         onCompleted.Invoke();
     }
@@ -368,6 +375,28 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     }
 
     // ── 내부 ─────────────────────────────────────────────────────────
+
+    /// <summary>패널 액션 라벨을 상태에 맞춘다: 준비 상태에서만 "실험 시작"을 보인다.</summary>
+    private void RefreshPanelAction()
+    {
+        if (quiz == null) return;
+        quiz.actionLabel = Current == State.Ready ? startActionLabel : null;
+    }
+
+    /// <summary>QuizTerminal 패널에서 액션 키가 눌렸다. 시작하고, 거부되면 사유를 패널 피드백에 띄운다.</summary>
+    private void HandlePanelAction(PlayerMover actor)
+    {
+        if (Current != State.Ready) return;
+        if (RequestStart(actor)) quiz.SetFeedback("실험을 시작합니다.");
+        else quiz.SetFeedback(LastStartFailure ?? "시작할 수 없다.");
+    }
+
+    private bool Refuse(string reason)
+    {
+        LastStartFailure = reason;
+        Debug.Log($"[Power] 시작 거부 — {reason}", this);
+        return false;
+    }
 
     private bool AssignNextCircuit()
     {

@@ -442,6 +442,40 @@ public static class ServerRoomPowerSelfTest
             }
         }
 
+        // ── 패널 안 "실험 시작"(QuizTerminal 패널 액션) ─────────────────────
+        {
+            Rig r = NewRig();
+            Check("패널 액션: 준비 상태에서는 \"실험 시작\" 라벨이 표시됨", r.quiz.actionLabel == "실험 시작");
+            Occupy(r, includePower: false);
+            Check("패널 액션: 컴퓨터 사용자가 누르면 요청이 전달됨", r.quiz.RequestAction(r.b));
+            Check("패널 액션: 전력 담당이 없으면 시작 거부, 준비 상태 유지", r.ctrl.Current == PowerMaintenanceController.State.Ready);
+            Check("패널 액션: 거부 사유를 패널 피드백에 띄움", r.quiz.LastFeedback != null && r.quiz.LastFeedback.Contains("전력"));
+            r.power.HandleInteract(r.c);
+            Check("패널 액션: 책 담당이 누르면 시작되지 않음(패널을 연 참가자만)", !r.quiz.RequestAction(r.a) && r.ctrl.Current == PowerMaintenanceController.State.Ready);
+            r.quiz.RequestAction(r.b);
+            Check("패널 액션: 요건이 갖춰지면 시작", r.ctrl.Current == PowerMaintenanceController.State.Running && r.quiz.LastFeedback == "실험을 시작합니다.");
+            Check("패널 액션: 시작 뒤에는 라벨이 사라짐", string.IsNullOrEmpty(r.quiz.actionLabel));
+            r.manager.ResetChapter();
+            Check("패널 액션: 챕터 재시작 후 라벨이 다시 표시됨", r.quiz.actionLabel == "실험 시작");
+            r.ctrl.startActionLabel = "Go";
+            r.ctrl.ResetAll();
+            Check("패널 액션: 라벨 문구는 인스펙터 값", r.quiz.actionLabel == "Go");
+            r.ctrl.Unbind();
+            Check("패널 액션: 연결을 끊으면 라벨을 치운다", string.IsNullOrEmpty(r.quiz.actionLabel));
+            Dispose(r);
+        }
+
+        {
+            Rig r = NewRig(d: 1f, g: 30f, h: 0f);
+            Occupy(r);
+            r.ctrl.StartExperiment();
+            r.quiz.Select(1, r.b); r.quiz.Submit(r.b);
+            r.quiz.Select(0, r.b); r.quiz.Submit(r.b);
+            r.quiz.Select(2, r.b); r.quiz.Submit(r.b);
+            Check("패널 액션: 전체 성공 후에는 라벨이 없다", r.ctrl.Current == PowerMaintenanceController.State.Completed && string.IsNullOrEmpty(r.quiz.actionLabel));
+            Dispose(r);
+        }
+
         // ── E-06 종료 ────────────────────────────────────────────────
         {
             Rig r = NewRig(d: 1f, g: 30f, h: 0f);
