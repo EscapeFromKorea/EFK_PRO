@@ -21,8 +21,9 @@ using UnityEngine.Events;
 ///
 /// [근접 추격 — 경로를 기준으로 한 목줄] 추격자 주변 detectRadius 안에 보이는 플레이어가 있으면
 /// 경로를 벗어난 지점(anchor)을 기억하고 그 플레이어에게 수평으로 붙는다. 플레이어가 anchor에서
-/// leashRadius 밖으로 달아나거나 시야에서 사라지면 anchor로 되돌아간 뒤에야 경로를 재개한다 —
-/// 돌아가는 도중 재추격해도 anchor는 그대로라, 추격을 반복해도 경로에서 목줄 이상 멀어지지 않는다.
+/// leashRadius 밖으로 달아나거나 시야에서 사라지면 경로 위 가장 가까운 점으로 돌아가 거기서부터 경로를
+/// 재개한다(2026-09-25 변경 — 예전엔 anchor로 돌아갔다). anchor는 목줄 중심으로만 쓰이고 재추격해도
+/// 그대로라, 추격을 반복해도 이탈 지점에서 목줄 이상 멀어지지 않는다.
 /// 시야(Linecast)가 벽에 막히면 쫓지 않는다 — 추격자는 솔리드 콜라이더가 없어 벽을 통과하므로, 이
 /// 검사가 "벽 파괴 전 벽 너머로 못 간다"를 지키는 장치다. 판단은 여기(CH1)서만 하고 에이전트에는
 /// 목표 지점만 넘긴다 — 에이전트를 재사용하는 CH8은 이 동작을 갖지 않는다.
@@ -67,11 +68,18 @@ public class PathChaserController : MonoBehaviour
              "'종료 신호' 요구사항을 위한 자리다.")]
     public UnityEvent OnChapterCleared;
 
+    [Header("챕터 리셋")]
+    [Tooltip("끄면 ResetChapter(인스펙터 메뉴 포함 모든 호출)를 무시한다. 플레이 중에도 언제든 켜고 끌 수 있다.")]
+    public bool allowReset = true;
+
     private State state = State.Waiting;
     private float waitTimer;
     private PlayerShapeIdentity[] players;
     private bool hasAnchor;
     private Vector3 anchor;
+    private bool returning;
+    private Vector3 returnPoint;
+    private int returnNextIndex;
 
     private int FinalWaypointIndex => agent.waypoints.Length - 1;
 
@@ -169,19 +177,30 @@ public class PathChaserController : MonoBehaviour
                 hasAnchor = true;
                 anchor = pos;
             }
+            returning = false;
             Vector3 c = CenterOf(target);
             agent.MoveToOverride(new Vector3(c.x, anchor.y, c.z)); // 수평 추격 — 경로 높이 유지
         }
         else if (hasAnchor)
         {
-            if (Vector3.Distance(pos, anchor) > 0.05f)
+            // 복귀는 이탈 지점(anchor)이 아니라 경로 위 가장 가까운 점으로 한다(2026-09-25 사용자 확정).
+            // 복귀를 시작하는 순간 한 번만 정한다 — 매 틱 다시 구하면 가는 도중 목표가 미끄러진다.
+            // anchor는 목줄 중심으로만 남는다.
+            if (!returning)
             {
-                agent.MoveToOverride(anchor);
+                returnPoint = agent.NearestPathPoint(pos, out returnNextIndex);
+                returning = true;
+            }
+
+            if (Vector3.Distance(pos, returnPoint) > 0.05f)
+            {
+                agent.MoveToOverride(returnPoint);
             }
             else
             {
                 hasAnchor = false;
-                agent.ClearOverride();
+                returning = false;
+                agent.RejoinPath(returnNextIndex);
             }
         }
     }
@@ -230,18 +249,33 @@ public class PathChaserController : MonoBehaviour
         target.RegisterHit(playerRoot);
     }
 
-    /// <summary>전체 재시작 처리 — 지금 저장소에 이 메서드를 호출할 챕터 재시작 시스템 자체가 없다
-    /// (PRD "전체 재시작 처리" 요구사항 충족용 스캐폴딩, 아무도 안 부르는 채로 둬도 된다). PRD
-    /// 5단계 중 이 챕터가 스스로 아는 것만 최소로 되돌린다 — 벽/카트 복구는 각자 시스템의 몫이라
-    /// 여기서 다루지 않는다.</summary>
+    /// <summary>전체 재시작 처리(PRD C1-06) — 추격 상태를 대기로, 추격자를 경로 첫 지점으로 되돌린다.
+    /// 지금 저장소에는 이 메서드를 부를 챕터 재시작 시스템이 없어 인스펙터 메뉴(Reset Chapter)로만
+    /// 부른다. 벽/카트는 되돌리지 않는다 — 컨트롤러는 둘을 매번 직접 읽기만 해서 복구되면 저절로
+    /// 맞지만, 정작 BreakableObject(파괴가 편도)와 RailCart에 복구 창구가 아직 없다. 재시작 시스템을
+    /// 만들 때 각 폴더에서 추가할 일이다(그 전엔 리셋해도 벽은 부서진 채라 추격 상한이 곧장 풀린다).
+    ///
+    /// ⚠ 물리 스텝 도중(다른 FixedUpdate 안) 호출하면 추격자가 이미 걸어 둔 MovePosition 예약이
+    /// 순간이동을 이길 수 있다(미실측). Update/인스펙터 메뉴에서 부르면 이 경합은 없다.</summary>
+    [ContextMenu("Reset Chapter")]
     public void ResetChapter()
     {
+        if (!allowReset)
+        {
+            Debug.Log("[PathChaserController] allowReset이 꺼져 있어 챕터 리셋을 무시한다.", this);
+            return;
+        }
+        if (!enabled) return; // 시작 거부된 컨트롤러는 agent/waypoints가 null일 수 있다(NotifyCaught와 같은 가드).
+
         state = State.Waiting;
         waitTimer = 0f;
+        hasAnchor = false;
+        returning = false;
+        // 켠 뒤에 옮긴다 — 한 번도 켜진 적 없으면 Awake가 돌아야 body가 채워지고, 비활성 바디에
+        // 위치를 대입하는 건 동작이 모호하다.
         agent.gameObject.SetActive(true);
         agent.enabled = false;
-        agent.ClearOverride();
-        hasAnchor = false;
+        agent.ResetToStart();
         agent.maxWaypointIndex = Mathf.Clamp(wallStopWaypointIndex, 0, FinalWaypointIndex);
     }
 }

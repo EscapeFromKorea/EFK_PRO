@@ -42,6 +42,50 @@ public class PathChaserAgent : MonoBehaviour
     /// <summary>오버라이드를 풀고 멈췄던 웨이포인트부터 경로 순회를 재개한다.</summary>
     public void ClearOverride() => hasOverride = false;
 
+    /// <summary>현재 허용된 상한(<see cref="maxWaypointIndex"/>)까지의 경로 구간 중 <paramref name="from"/>에서
+    /// 가장 가까운 점. <paramref name="nextIndex"/>는 그 점에서 경로를 이어갈 다음 웨이포인트다(그 점이 놓인
+    /// 구간의 끝). 상한까지만 보므로 벽 앞 상한일 때 벽 너머 구간으로 복귀점이 잡히지 않는다.</summary>
+    public Vector3 NearestPathPoint(Vector3 from, out int nextIndex)
+    {
+        nextIndex = 0;
+        if (waypoints == null || waypoints.Length == 0 || waypoints[0] == null) return from;
+
+        int limit = Mathf.Clamp(maxWaypointIndex, 0, waypoints.Length - 1);
+        Vector3 best = waypoints[0].position;
+        float bestSqr = (from - best).sqrMagnitude;
+        for (int i = 0; i < limit; i++)
+        {
+            if (waypoints[i] == null || waypoints[i + 1] == null) continue;
+            Vector3 a = waypoints[i].position, ab = waypoints[i + 1].position - a;
+            float t = ab.sqrMagnitude > 1e-6f ? Mathf.Clamp01(Vector3.Dot(from - a, ab) / ab.sqrMagnitude) : 0f;
+            Vector3 p = a + ab * t;
+            float d = (from - p).sqrMagnitude;
+            if (d < bestSqr) { bestSqr = d; best = p; nextIndex = i + 1; }
+        }
+        return best;
+    }
+
+    /// <summary>오버라이드를 풀고 <paramref name="nextIndex"/> 웨이포인트를 향해 경로 순회를 이어간다 —
+    /// <see cref="NearestPathPoint"/>로 구한 점에 복귀한 뒤 부른다.</summary>
+    public void RejoinPath(int nextIndex)
+    {
+        hasOverride = false;
+        if (waypoints != null && waypoints.Length > 0) currentIndex = Mathf.Clamp(nextIndex, 0, waypoints.Length - 1);
+    }
+
+    /// <summary>경로 첫 지점으로 순간이동하고 순회를 처음부터 다시 시작한다(오버라이드 해제 포함).
+    /// 챕터 재시작용 — 이동체 수준의 개념이라 CH1/CH8 어느 쪽 규칙도 모른다. 켜진 뒤(Awake 이후)에
+    /// 불러야 한다.</summary>
+    public void ResetToStart()
+    {
+        hasOverride = false;
+        currentIndex = 0;
+        if (waypoints == null || waypoints.Length == 0 || waypoints[0] == null) return;
+        Vector3 p = waypoints[0].position;
+        body.position = p;        // 물리 쪽 위치
+        transform.position = p;   // 렌더/즉시 조회 쪽 위치(RespawnController와 같은 관례)
+    }
+
     /// <summary>현재 허용된 상한(<see cref="maxWaypointIndex"/>와 배열 끝 중 작은 쪽)에 도달해
     /// 멈춰 있는가. 상한이 벽 앞 지점이면 "벽 대기" 신호가 되고, 상한이 종점이면 "종점 도달"
     /// 신호가 된다 — 컨트롤러가 그 순간 상한이 무엇인지 이미 알고 있으므로 둘을 구분하는 별도
