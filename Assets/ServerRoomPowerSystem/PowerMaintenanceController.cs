@@ -25,6 +25,8 @@ using UnityEngine.Events;
 ///  - 잠금: E &lt; K이면 제출 잠금, 잠긴 뒤에는 E ≥ U가 되어야 풀린다(히스테리시스). E == K로는 새로 잠그지 않는다.
 ///  - 동시 처리: 회복은 완료 신호를 받은 즉시 게이트 판정까지 끝내므로 "회복 → 제출 허용 검사" 순서가 된다.
 ///  - 마지막 문항 성공: 감소·새 회로 배정이 함께 멈춘다. 이미 인정된 정답은 취소되지 않는다.
+///  - 시작 전 문답: 시작 전에도 제출은 열려 있어 문답을 먼저 다 풀 수 있다. 그래도 패널의 "실험 시작"은
+///    사라지지 않고, 그 상태에서 시작하면 곧바로 종료 상태가 된다(완료한 문제는 보존).
 ///  - 자동 유지: 시작 전에만 선택. E = M 고정, 회로·정전 로직을 끈다. 전력 역할만 시작 요건에서 뺀다.
 ///
 /// [이 파일이 정하지 않은 것 — 연결점만 열어 둠]
@@ -265,6 +267,15 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
         RefreshPanelAction();
         Debug.Log($"[Power] 실험 시작 — E={Power:0.##}/{maxPower:0.##}, 자동 유지={autoMaintain}", this);
         onStarted.Invoke();
+
+        // 시작 전에 문답을 이미 다 풀었다면(시작 전 제출은 막지 않는다) 시작과 동시에 종료 상태가 된다.
+        // 완료한 문제는 보존한다는 원칙이라 시작 때 문답을 되돌리지 않는다.
+        if (quiz != null && quiz.AllCleared)
+        {
+            Debug.Log("[Power] 문답을 이미 모두 완료한 상태로 시작했다 — 곧바로 종료 상태로 넘어간다.", this);
+            HandleAllCleared();
+        }
+
         return true;
     }
 

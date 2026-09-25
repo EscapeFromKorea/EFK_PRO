@@ -377,6 +377,20 @@ public static class RoleClueTerminalSelfTest
             Dispose(r);
         }
 
+        {
+            Rig r = NewRig();
+            r.computer.HandleInteract(r.a);
+            r.quiz.actionLabel = "시험 동작";
+            int requested = 0;
+            r.quiz.onActionRequested.AddListener(p => requested++);
+            r.quiz.Select(1, r.a); r.quiz.Submit(r.a);
+            r.quiz.Select(0, r.a); r.quiz.Submit(r.a);
+            r.quiz.Select(2, r.a); r.quiz.Submit(r.a);
+            Check("패널 액션: 문답을 다 풀었어도 액션을 받는다(시작 전에 풀어 버려도 시작 버튼이 안 사라짐)",
+                r.quiz.AllCleared && r.quiz.RequestAction(r.a) && requested == 1);
+            Dispose(r);
+        }
+
         // ── R-05: 오답 → 정답 → 연타 제출 ─────────────────────────────────────────
         {
             Rig r = NewRig();

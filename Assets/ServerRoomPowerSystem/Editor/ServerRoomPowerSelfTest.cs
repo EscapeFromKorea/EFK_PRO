@@ -476,6 +476,25 @@ public static class ServerRoomPowerSelfTest
             Dispose(r);
         }
 
+        // ── 시작 전에 문답을 먼저 다 푼 경우: 시작 버튼이 사라지지 않는다 ──────────
+        {
+            Rig r = NewRig();
+            Occupy(r);
+            r.quiz.Select(1, r.b); r.quiz.Submit(r.b);
+            r.quiz.Select(0, r.b); r.quiz.Submit(r.b);
+            r.quiz.Select(2, r.b);
+            var last = r.quiz.Submit(r.b);
+            Check("시작 전 풀이: 준비 상태에서 문답을 다 풀 수 있다", last == QuizTerminal.SubmitResult.AllCleared && r.quiz.AllCleared);
+            Check("시작 전 풀이: 준비 상태·전력 불변·시작 라벨 유지", r.ctrl.Current == PowerMaintenanceController.State.Ready
+                && Near(r.ctrl.Power, 100f) && r.quiz.actionLabel == "실험 시작" && r.completed == 0);
+            Check("시작 전 풀이: 문답이 끝난 패널에서도 시작 액션을 받는다", r.quiz.RequestAction(r.b));
+            Check("시작 전 풀이: 시작과 동시에 종료 상태(시작·종료 이벤트 1회씩)", r.ctrl.Current == PowerMaintenanceController.State.Completed
+                && r.started == 1 && r.completed == 1);
+            r.ctrl.Tick(100f);
+            Check("시작 전 풀이: 종료 뒤 전력은 줄지 않고 라벨은 사라짐", Near(r.ctrl.Power, 100f) && string.IsNullOrEmpty(r.quiz.actionLabel));
+            Dispose(r);
+        }
+
         // ── E-06 종료 ────────────────────────────────────────────────
         {
             Rig r = NewRig(d: 1f, g: 30f, h: 0f);

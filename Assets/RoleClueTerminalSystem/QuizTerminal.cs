@@ -238,10 +238,13 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
     }
 
     /// <summary>패널 액션을 요청한다. 이 화면을 연 참가자가 라벨이 있을 때만 받아들여 이벤트를 낸다.
+    /// 문답을 이미 다 풀었어도(AllCleared) 받는다 — 시작 전에 문답을 먼저 풀어 버려도 "실험 시작" 같은
+    /// 액션이 패널에서 사라지면 시작할 방법이 없어지기 때문이다. 참가자 이탈 정지 중에는 받지 않는다.
     /// 키 입력과 분리해 둔 이유는 Editor 자가검증이 입력 없이 재현하기 위해서다.</summary>
     public bool RequestAction(PlayerMover actor)
     {
-        if (string.IsNullOrEmpty(actionLabel) || !CanAct(actor)) return false;
+        if (string.IsNullOrEmpty(actionLabel) || actor == null || ParticipantPaused) return false;
+        if (slot == null || !slot.IsPanelOpen || slot.PanelUser != actor) return false;
         onActionRequested.Invoke(actor);
         return true;
     }
@@ -285,6 +288,13 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         else if (!string.IsNullOrEmpty(actionLabel) && Input.GetKeyDown(actionKey)) RequestAction(local);
     }
 
+    // 패널 액션 안내("[Space] 라벨"). 문항이 남았든 다 풀었든 라벨이 있으면 항상 그린다.
+    private void DrawActionHint(Rect box)
+    {
+        if (string.IsNullOrEmpty(actionLabel)) return;
+        GUI.Label(new Rect(box.x + 12f, box.yMax - 74f, box.width - 24f, 22f), $"[{actionKey}] {actionLabel}");
+    }
+
     private void OnGUI()
     {
         if (slot == null || slot.manager == null) return;
@@ -306,6 +316,8 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         {
             GUI.Label(new Rect(box.x + 12f, y, box.width - 24f, 24f),
                 AllCleared ? "모든 문항을 완료했습니다." : "(문항 없음 — 콘텐츠 미확정)");
+            DrawActionHint(box);
+            GUI.Label(new Rect(box.x + 12f, box.yMax - 50f, box.width - 24f, 22f), $"{LastFeedback}");
             return;
         }
 
@@ -320,8 +332,7 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         }
 
         string submitHint = SubmitGateOpen ? "Enter: 제출" : "전력 부족 — 제출 불가";
-        if (!string.IsNullOrEmpty(actionLabel))
-            GUI.Label(new Rect(box.x + 12f, box.yMax - 74f, box.width - 24f, 22f), $"[{actionKey}] {actionLabel}");
+        DrawActionHint(box);
         GUI.Label(new Rect(box.x + 12f, box.yMax - 50f, box.width - 24f, 22f), $"{LastFeedback}");
         GUI.Label(new Rect(box.x + 12f, box.yMax - 28f, box.width - 24f, 22f), $"1~9: 선택    {submitHint}    Esc: 사용 종료");
     }
