@@ -30,6 +30,7 @@ public class RailCartRider : MonoBehaviour
     private Rigidbody occupantBody;
     private PlayerMover occupantMover;
     private Transform occupantOriginalParent;
+    private RigidbodyInterpolation occupantOriginalInterpolation;
 
     void Awake()
     {
@@ -107,15 +108,21 @@ public class RailCartRider : MonoBehaviour
 
     private void Board(PlayerMover mover, Rigidbody body)
     {
-        // 포탈 굴리기 모드인 채로 타면, 텀블 도중(붙잡힘 상태)이라 모드가 스스로 꺼지지 않고 카트 안에서
-        // 계속 굴다가 Release로 isKinematic을 풀어 버린다 — 카트 자식인 dynamic 몸이 카트와 부딪혀 뜬다.
-        // 아래에서 키네마틱을 걸기 전에 먼저 끈다(끄는 쪽이 isKinematic/ExternallyDriven을 되돌리므로 순서 중요).
+        // 포탈 굴리기 모드인 채로 타면, 텀블 도중(붙잡힘 상태)엔 모드가 스스로 꺼지지 않아 카트 안에서
+        // 텀블·Release(isKinematic 해제)를 이어갈 수 있다. 아래에서 키네마틱을 걸기 전에 먼저 끈다(끄는 쪽이
+        // isKinematic/ExternallyDriven을 되돌리므로 순서 중요). ※ 2026-09-25 "정사면체가 떠서 카트가 못
+        // 움직인다"의 실제 원인은 이게 아니라 아래 보간이었다(Loki 실측) — 이 줄은 예방용으로 남긴다.
         PlayerRollModeReceiver rollMode = mover.GetComponent<PlayerRollModeReceiver>();
         if (rollMode != null) rollMode.SetRollMode(false);
 
         occupantBody = body;
         occupantMover = mover;
         occupantOriginalParent = body.transform.parent;
+        // 탑승 중엔 보간을 끈다 — CatapultBucket.Board와 같은 이유: 키네마틱 바디가 부모(카트) Transform에
+        // 간접적으로 끌려갈 때 Interpolate는 옛 물리 자세로 Transform을 되써 몸이 월드에 묶일 수 있다.
+        // 하차 시 원래 값으로 되돌린다.
+        occupantOriginalInterpolation = body.interpolation;
+        body.interpolation = RigidbodyInterpolation.None;
 
         body.isKinematic = true;
         mover.ExternallyDriven = true;
@@ -137,6 +144,7 @@ public class RailCartRider : MonoBehaviour
         body.transform.SetParent(occupantOriginalParent, true);
         body.transform.position = exitPos;
         body.isKinematic = false;
+        body.interpolation = occupantOriginalInterpolation;
         mover.ExternallyDriven = false;
 
         occupantBody = null;

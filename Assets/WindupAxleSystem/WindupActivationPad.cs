@@ -12,10 +12,17 @@ public class WindupActivationPad : MonoBehaviour
 {
     public string playerTag = "Player";
 
+    [Tooltip("켜면 한 번 밟는 순간부터 계속 눌린 상태로 남는다(발판에서 내려와도 유지). 끄면 밟고 있는 " +
+             "동안만 눌린다(기본). 플레이 중에 끄면 그 즉시 원래 방식으로 돌아간다.")]
+    public bool latchOnFirstPress = false;
+
+    private bool latched;
+
     private readonly Dictionary<Rigidbody, int> overlaps = new Dictionary<Rigidbody, int>();
 
-    /// <summary>지금 이 발판을 밟고 있는 몸이 하나 이상 있는가.</summary>
-    public bool IsHeld => overlaps.Count > 0;
+    /// <summary>지금 이 발판을 밟고 있는 몸이 하나 이상 있는가. <see cref="latchOnFirstPress"/>가 켜져 있으면
+    /// 한 번이라도 밟힌 뒤로는 계속 true다.</summary>
+    public bool IsHeld => overlaps.Count > 0 || (latchOnFirstPress && latched);
 
     void Reset()
     {
@@ -29,6 +36,7 @@ public class WindupActivationPad : MonoBehaviour
         if (rb == null) return;
         overlaps.TryGetValue(rb, out int n);
         overlaps[rb] = n + 1;
+        if (latchOnFirstPress) latched = true;
     }
 
     void OnTriggerExit(Collider other)
