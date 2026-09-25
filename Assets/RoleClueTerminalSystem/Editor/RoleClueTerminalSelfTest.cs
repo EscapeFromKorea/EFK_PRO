@@ -361,6 +361,19 @@ public static class RoleClueTerminalSelfTest
             Check("제출: 오답 시 선택만 초기화, 같은 문제 유지", r.quiz.SelectedIndex == -1 && r.quiz.CurrentIndex == 0);
             Check("제출: 오답 이벤트 1회·안내 문구", r.wrong == 1 && r.quiz.LastFeedback.Contains("자료를 다시"));
             Check("제출: 범위 밖 선택지 거부", !r.quiz.Select(5, r.a) && r.quiz.SelectedIndex == -1);
+
+            // 패널 액션 훅(서버실 "실험 시작" 같은 다른 시스템의 동작을 패널에 얹는 연결점)
+            int requested = 0;
+            PlayerMover requestedBy = null;
+            r.quiz.onActionRequested.AddListener(p => { requested++; requestedBy = p; });
+            Check("패널 액션: 라벨이 없으면 요청을 받지 않는다", !r.quiz.RequestAction(r.a) && requested == 0);
+            r.quiz.actionLabel = "시험 동작";
+            Check("패널 액션: 화면을 연 참가자가 요청하면 이벤트 1회·요청자 전달", r.quiz.RequestAction(r.a) && requested == 1 && requestedBy == r.a);
+            Check("패널 액션: 화면을 열지 않은 참가자의 요청은 거부", !r.quiz.RequestAction(r.b) && requested == 1);
+            r.quiz.SetFeedback("안내 문구");
+            Check("패널 액션: SetFeedback으로 피드백 줄에 문구를 띄운다", r.quiz.LastFeedback == "안내 문구");
+            ((IParticipantPauseReceiver)r.quiz).SetParticipantPaused(true);
+            Check("패널 액션: 참가자 이탈 정지 중에는 거부", !r.quiz.RequestAction(r.a) && requested == 1);
             Dispose(r);
         }
 
