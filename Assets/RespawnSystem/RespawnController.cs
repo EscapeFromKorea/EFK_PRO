@@ -98,6 +98,12 @@ public class RespawnController : MonoBehaviour
     /// 세션 간 저장도 하지 않는다(그건 세이브 시스템의 일이다).</summary>
     public int RespawnCount { get; private set; }
 
+    /// <summary>복귀가 시작될 때(자동·수동 R·구간 복귀 모두) 대상 플레이어 Root를 넘겨 발신한다. 복귀는
+    /// 개인의 이동일 뿐이라 역할·진행 상태는 그대로 두고 그 참가자의 화면(패널)만 닫으면 되는 시스템들이
+    /// 구독한다(RoleAssignmentManager — docs/PRD/RoleClueTerminal.md §2.5). 다른 시스템의 존재를 이
+    /// 컨트롤러가 알 필요가 없도록 이벤트로만 열어 둔다.</summary>
+    public event System.Action<GameObject> PlayerRespawned;
+
     private static RespawnController instance;
 
     // 체크포인트는 도형별이 아니라 마지막에 갱신된 하나만 공유한다. 좌표로 들고 있어서 구역이
@@ -412,6 +418,7 @@ public class RespawnController : MonoBehaviour
         RespawnCount++;
         Debug.Log($"[Respawn] '{ShapeLabel(mover)}' 리스폰 — {reason} / {(useFade ? "페이드" : "낙하")}, " +
                   $"팀 누적 {RespawnCount}회");
+        PlayerRespawned?.Invoke(mover.gameObject);
 
         List<FadeMaterial> fadeMats = null;
         if (useFade)

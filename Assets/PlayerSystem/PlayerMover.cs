@@ -220,6 +220,22 @@ public class PlayerMover : MonoBehaviour
     /// 오가는 것이 자연스럽게 성립한다.</summary>
     public bool ExternallyDriven { get; set; }
 
+    // ─── [mnppi 추가] 입력 잠금 ───
+    /// <summary>이 도형의 **이동·점프 입력만** 잠근다. true인 동안 조작권이 없을 때(!IsControlled)와 같은
+    /// 경로(DampWhenUncontrolled)를 타서, 입력은 읽지 않고 굴러가던 몸은 감쇠로 멈춘다. 역할 사물의
+    /// 책/문답 패널이 열려 있는 동안 켠다(docs/PRD/RoleClueTerminal.md — "패널을 닫으면 이동 조작을
+    /// 돌려준다"). RoleAssignmentManager가 패널 열림/닫힘에 맞춰 세팅한다.
+    ///
+    /// [왜 IsControlled / ExternallyDriven을 재사용하지 않고 별도 플래그인가]
+    /// - IsControlled는 "지금 이 도형이 조종 대상인가"를 뜻해 여러 시스템이 조종 대상 조회에 쓴다
+    ///   (RespawnController, 배선 패널, 캐리어 등). 패널 때문에 false로 내리면 그 조회들이 어긋난다.
+    /// - ExternallyDriven은 이동과 **감쇠까지** 멈춰서 굴러가던 몸이 계속 미끄러지고, 실타래·포탈·복귀가
+    ///   소유권 없이 같이 쓰는 스위치라 남이 켜 둔 값을 덮어쓸 수 있다.
+    /// 별도 플래그는 서로 간섭하지 않는다. 이 값은 IsControlled를 바꾸지 않으므로 Tab 전환과도 무관하다.
+    /// </summary>
+    public bool InputLocked { get; set; }
+    // ─── [mnppi 추가 끝] ───
+
     private Rigidbody rb;
     private PlayerShapeController shapeController;
     private PlayerGroundContact groundContact;
@@ -312,7 +328,7 @@ public class PlayerMover : MonoBehaviour
     // 쓰던 방식 그대로이며, useTorqueRolling이 false인 한 동작이 전혀 변하지 않는다.
     private void LegacyVelocityFixedUpdate()
     {
-        if (!IsControlled)
+        if (!IsControlled || InputLocked) // [mnppi 수정] 기존: !IsControlled — 입력 잠금 추가
         {
             DampWhenUncontrolled();
             return;
@@ -520,7 +536,7 @@ public class PlayerMover : MonoBehaviour
     // 실제 구르기(모서리 피벗)로 변환하게 둔다. 선형 전진은 회전의 결과로 자연 발생한다.
     private void TorqueRollingFixedUpdate()
     {
-        if (!IsControlled)
+        if (!IsControlled || InputLocked) // [mnppi 수정] 기존: !IsControlled — 입력 잠금 추가
         {
             DampWhenUncontrolled();
             return;

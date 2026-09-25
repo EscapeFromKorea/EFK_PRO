@@ -41,7 +41,7 @@ public class PlayerJump : MonoBehaviour
 
     void Update()
     {
-        if (mover != null && !mover.IsControlled) return;
+        if (mover != null && (!mover.IsControlled || mover.InputLocked)) return; // [mnppi 수정] 입력 잠금 추가
         if (Input.GetButtonDown("Jump"))
             jumpQueued = true;
     }
@@ -50,7 +50,7 @@ public class PlayerJump : MonoBehaviour
     {
         // 조작권이 없으면(Tab으로 다른 오브젝트 조작 중) 전환 직전에 큐된 점프가 남아 있더라도
         // 실행하지 않고 비운다 — 조작권을 잃은 플레이어가 뒤늦게 점프해버리는 것을 막는다.
-        if (mover != null && !mover.IsControlled)
+        if (mover != null && (!mover.IsControlled || mover.InputLocked)) // [mnppi 수정] 입력 잠금 추가
         {
             jumpQueued = false;
             return;
