@@ -30,8 +30,8 @@ using UnityEngine.Events;
 /// 지지 콜라이더 중심이 이번 스텝에 그리는 접선 방향을 "이동 방향" 대신 써서 같은 레이캐스트 판정을
 /// 적용한다.
 ///
-/// [낙하 판정 → 임시 배선] SectionRespawn(목적지 지정 개인 복귀)이 아직 없어 낙석
-/// (FallingRockSystem/FallingRockSpawner)과 같은 방식으로 UnityEvent&lt;GameObject&gt;만 발신한다.
+/// [낙하 판정 → 구간 복귀] UnityEvent&lt;GameObject&gt;만 발신하고, 씬에서 SectionHitCounter(CH5_시작)에
+/// 배선한다 — 목적지는 카운터가 정하므로 이 스크립트는 리스폰 시스템을 모른다.
 /// 판 접촉 자체는 피해가 아니다(PRD 확정) — 상면 트리거를 벗어난 뒤에도 계속 공중이면서
 /// <see cref="fallDropDistance"/>만큼 더 떨어져야("접촉 종료 + 공중 판정") 실제 낙하로 본다. 안전
 /// 발판으로 건너뛴 경우는 PlayerShapeController.IsGrounded()가 곧 true가 되어 감시가 취소된다.
@@ -87,15 +87,15 @@ public class StepRotatingBridge : MonoBehaviour
     [System.Serializable]
     public class PlayerFellEvent : UnityEvent<GameObject> { }
 
-    [Header("낙하 판정 → 리스폰 임시 배선 (SectionRespawn 완성 전, 낙석과 같은 방식)")]
+    [Header("낙하 판정 → 구간 복귀 (SectionHitCounter 경유)")]
     [Tooltip("상면 지지를 잃은 시점 Y에서 이 거리(U)만큼 더 공중으로 떨어지면 '실제로 떨어졌다'로 " +
              "보고 발화한다. 접촉 자체는 피해가 아니다 — 안전 발판으로 건너간 경우는 착지가 먼저 " +
              "감지돼 발화하지 않는다.")]
     public float fallDropDistance = 3f;
 
     [Tooltip("실제로 떨어진 플레이어 Root를 인자로 발화한다. 비어 있으면 아무 일도 없다 — 씬 " +
-             "인스펙터에서 RespawnController.RespawnPlayer(GameObject)에 수동 배선한다(SectionRespawn " +
-             "완성 전 임시 방식, FallingRockSpawner.OnHitThresholdExceeded와 같은 패턴).")]
+             "인스펙터에서 SectionHitCounter.RegisterHitEvent에 배선한다(구간 복귀 — 목적지는 카운터가 " +
+             "정한다).")]
     public PlayerFellEvent OnPlayerFell;
 
     [Header("예고 진동 (시각 전용 — 콜라이더/판정에는 전혀 관여하지 않는다)")]

@@ -33,7 +33,7 @@ public class LaserBeam : MonoBehaviour
     [System.Serializable] public class PlayerHitEvent : UnityEvent<GameObject> { }
 
     [Tooltip("경로상의 Player 콜라이더(교차 피격 포함)가 활성 광선에 유효 접촉하면 발화. " +
-             "SectionRespawn 완성 전까지 RespawnController.RespawnPlayer(GameObject)에 배선한다(임시).")]
+             "구간별 SectionHitCounter.RegisterHitEvent에 배선한다(CH4 레이저 구간 시작 / CH5 시작).")]
     public PlayerHitEvent OnHazardHit;
 
     private LineRenderer line;

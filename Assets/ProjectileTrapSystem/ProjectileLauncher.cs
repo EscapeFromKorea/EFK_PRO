@@ -10,13 +10,12 @@ using UnityEngine.Events;
 /// [정지 → 시작은 겹치지 않는다] <see cref="Activate"/>는 이미 도는 주기 중에 다시 불려도 아무 일도
 /// 하지 않는다(사양 §3 확정). <see cref="Deactivate"/>는 예약된 발사를 취소하고 이 발사구가 낸 탄을
 /// 전부 지운다 — PRD §4 "전체 재시작/구간 종료"의 개별 발사구 몫이다. 여러 발사구를 챕터 단위로
-/// 한꺼번에 재시작하는 오케스트레이션은 아직 저장소에 없다(SectionRespawn 완성 전이라 PeriodicTrap과
-/// 같은 이유로 TBD로 남긴다 — CLAUDE.md 참고).
+/// 한꺼번에 재시작하는 오케스트레이션은 아직 저장소에 없다(챕터 재시작 시스템 자체가 없어
+/// PeriodicTrap과 같은 이유로 TBD로 남긴다 — CLAUDE.md 참고).
 ///
-/// [피격 알림은 낙석·주기형 함정과 같은 임시 배선] SectionRespawn(목적지 지정 개인 복귀)이 구현되기
-/// 전까지 <see cref="OnHazardHit"/>은 `RespawnController.RespawnPlayer(GameObject)`(공용 체크포인트)에
-/// 배선한다. CH3/CH5가 서로 다른 목적지("CH3 시작"/"CH5 시작")로 가야 한다는 요구는 SectionRespawn의
-/// 목적지 지정 오버로드가 생긴 뒤 배선만 바꾸면 되고, 이 스크립트는 그때 수정할 필요가 없다.
+/// [피격 알림은 SectionHitCounter 경유 구간 복귀] <see cref="OnHazardHit"/>은 씬에서 챕터별
+/// SectionHitCounter.RegisterHitEvent에 배선한다. CH3/CH5가 서로 다른 목적지("CH3 시작"/"CH5 시작")로
+/// 가야 한다는 요구는 인스턴스마다 다른 카운터를 꽂는 것으로 끝나고, 이 스크립트는 목적지를 모른다.
 /// </summary>
 public class ProjectileLauncher : MonoBehaviour
 {
@@ -56,8 +55,8 @@ public class ProjectileLauncher : MonoBehaviour
     [Header("예고 표시 (선택)")]
     public ProjectileWarning warning;
 
-    [Tooltip("위험부에 유효 접촉이 발생하면 발화(인자 = 맞은 플레이어 Root). SectionRespawn 완성 " +
-             "전까지 RespawnController.RespawnPlayer(GameObject)에 배선한다(임시).")]
+    [Tooltip("위험부에 유효 접촉이 발생하면 발화(인자 = 맞은 플레이어 Root). 챕터별 " +
+             "SectionHitCounter.RegisterHitEvent에 배선한다.")]
     public PlayerHitEvent OnHazardHit;
 
     private Phase phase = Phase.Stopped;
