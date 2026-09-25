@@ -29,24 +29,32 @@ public class WiringPort : MonoBehaviour
     [Tooltip("상호작용 키.")]
     public KeyCode interactKey = KeyCode.E;
 
-    private readonly List<PlayerMover> occupants = new List<PlayerMover>();
+    // 참가자별 겹친 콜라이더 수. 플레이어는 트리거(Player_Mesh)와 솔리드(Player_Collider)를 함께 가져
+    // 한 도형당 Enter/Exit가 여러 번 불린다. 참가자 단위 목록이면 콜라이더 하나가 빠지는 순간 아직
+    // 안에 있는 참가자가 사라진다(RoleSlot의 같은 버그를 콜라이더 수 집계로 고친 것과 동일).
+    private readonly Dictionary<PlayerMover, int> overlaps = new Dictionary<PlayerMover, int>();
 
     private void OnTriggerEnter(Collider other)
     {
         PlayerMover mover = other.GetComponentInParent<PlayerMover>();
-        if (mover != null && !occupants.Contains(mover)) occupants.Add(mover);
+        if (mover == null) return;
+        overlaps.TryGetValue(mover, out int n);
+        overlaps[mover] = n + 1;
     }
 
     private void OnTriggerExit(Collider other)
     {
         PlayerMover mover = other.GetComponentInParent<PlayerMover>();
-        if (mover != null) occupants.Remove(mover);
+        if (mover == null || !overlaps.TryGetValue(mover, out int n)) return;
+
+        if (n > 1) overlaps[mover] = n - 1;
+        else overlaps.Remove(mover);
     }
 
     private void Update()
     {
-        occupants.RemoveAll(m => m == null);
         if (!Input.GetKeyDown(interactKey)) return;
+        PruneDestroyed();
         if (ControlledOccupant() == null) return;
 
         if (panel == null)
@@ -65,12 +73,27 @@ public class WiringPort : MonoBehaviour
         if (active != null)
         {
             PlayerMover m = active.GetComponent<PlayerMover>();
-            return (m != null && occupants.Contains(m)) ? m : null;
+            return (m != null && overlaps.ContainsKey(m)) ? m : null;
         }
 
-        foreach (PlayerMover m in occupants)
+        foreach (PlayerMover m in overlaps.Keys)
             if (m != null && m.IsControlled) return m;
         return null;
+    }
+
+    // 트리거 안에서 파괴된 참가자(Exit가 오지 않음)를 정리한다. 입력이 있을 때만 돌려 매 프레임 비용을 피한다.
+    private void PruneDestroyed()
+    {
+        List<PlayerMover> dead = null;
+        foreach (PlayerMover m in overlaps.Keys)
+        {
+            if (m != null) continue;
+            if (dead == null) dead = new List<PlayerMover>();
+            dead.Add(m);
+        }
+
+        if (dead == null) return;
+        foreach (PlayerMover m in dead) overlaps.Remove(m);
     }
 
     private void OnDrawGizmos()
