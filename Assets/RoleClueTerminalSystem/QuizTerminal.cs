@@ -185,7 +185,14 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
         if (!CanAct(actor)) return SubmitResult.Rejected;
 
         Question q = CurrentQuestion();
-        if (q == null || SelectedIndex < 0) return SubmitResult.Rejected;
+        if (q == null) return SubmitResult.Rejected;
+
+        if (SelectedIndex < 0)
+        {
+            // 선택 없이 제출하면 조용히 무시하지 않고 안내한다(오답 처리·문항 진행은 없다).
+            LastFeedback = "정답을 선택해주세요!";
+            return SubmitResult.Rejected;
+        }
 
         if (!SubmitGateOpen)
         {

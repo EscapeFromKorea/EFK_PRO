@@ -353,6 +353,9 @@ public static class RoleClueTerminalSelfTest
             Rig r = NewRig();
             r.computer.HandleInteract(r.a);
             Check("제출: 선택 없이는 거부", r.quiz.Submit(r.a) == QuizTerminal.SubmitResult.Rejected);
+            Check("제출: 선택 없이 거부되면 안내 문구, 오답·진행 없음",
+                r.quiz.LastFeedback != null && r.quiz.LastFeedback.Contains("선택해주세요")
+                && r.wrong == 0 && r.quiz.CurrentIndex == 0);
             r.quiz.Select(0, r.a);
             Check("제출: 오답은 Wrong", r.quiz.Submit(r.a) == QuizTerminal.SubmitResult.Wrong);
             Check("제출: 오답 시 선택만 초기화, 같은 문제 유지", r.quiz.SelectedIndex == -1 && r.quiz.CurrentIndex == 0);
