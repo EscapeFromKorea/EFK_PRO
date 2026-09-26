@@ -5,7 +5,10 @@
 > 출처: Notion "요구사항명세서" — `[실험실 CH8] 관리자 감시·수면·열쇠 연계`.
 > 상태: **기획 단계 — PRD 작성만 완료, 구현 전.** CH1 추격자의 이동/모델을 재사용 대상으로
 > 지정한다 — 해당 시스템은 `docs/PRD/PathChaser.md`(`Assets/PathChaserSystem/`)로 이미
-> 작성되었다.
+> 작성되었다. 2026-09-26 `RoleClueTerminal` 구현(PR #102/#106)과 `PathChaserAgent` 실제 API 기준으로
+> 시작 입력·감시 화면·전원 복귀·재사용 조건을 갱신했다.
+> **선행 의존**: `PathChaserAgent`는 PR #107에만 있고 develop에는 아직 없다 — 이 기믹의 PR은
+> #107 머지 후에 올린다.
 
 ## 1. 기획 의도 / 목적
 
@@ -40,6 +43,18 @@
 
 - **`ManagerAgent`** (`C8_MANAGER`) — 순찰 경로(`C8_ROUTE`), 상태(순찰/의심/추격/수면),
   이동을 갖는다. `PathChaserSystem`의 이동 컴포넌트(`PathChaserAgent`)를 참조/재사용.
+  **`PathChaserAgent`는 수정하지 않으므로, 에이전트에 없는 것은 전부 `ManagerAgent`가 바깥에서
+  채운다**(실제 API 확인, 2026-09-26):
+  | 필요한 동작 | 에이전트 현황 | `ManagerAgent`의 처리 |
+  |---|---|---|
+  | 순찰 반복 | 경로는 한 방향 1회 순회(종점에서 정지, 루프 없음) | 닫힌 경로(마지막 지점 ≈ 첫 지점)로 배치하고, `ReachedLimit`이면 `RejoinPath(0)` |
+  | 바라보는 방향 | 에이전트는 회전하지 않음(위치만 이동) | FOV 기준 방향(`forward`)을 `ManagerAgent`가 소유 — 이동 방향으로 갱신, 의심 중엔 대상 쪽으로 회전. 모델 시각물도 여기서 돌린다 |
+  | 제자리 멈춤(의심·수면·이탈 정지) | 정지 API 없음 | 의심: `MoveToOverride(현재 위치)`. 수면·이탈 정지: 에이전트 컴포넌트 `enabled = false`(FixedUpdate 중단) |
+  | 추격 / 마지막 확인 위치로 이동 | `MoveToOverride(target)` 매 틱 갱신 가능 | 그대로 사용 |
+  | 순찰 복귀 | `NearestPathPoint` + `RejoinPath` | CH1과 같은 방식으로 경로 최근접점 복귀 |
+  | 순찰/추격 속도 차이 | `speed` 단일 필드(public) | 상태 전환 시 `speed`를 바꿔 쓴다 |
+  | 전체 재시작 | `ResetToStart()` | 그대로 사용(에이전트가 켜진 뒤 호출) |
+  | 잡힘 판정 | 에이전트에 솔리드 콜라이더 없음, 잡힘 판정도 없음 | `ManagerCatchZone`이 별도 트리거로 판정(CH1 `PathChaserCatchZone`은 CH1 상태에 묶여 있어 재사용하지 않는다) |
 - **`ManagerFieldOfView`** (`C8_FOV`) — 거리·시야각·차폐 검사. 의심 판정(`거리 ≤ D`)과
   추격 판정(`거리 ≤ D/2`)을 같은 프레임에서 함께 평가한다 — 갑자기 가까이 나타난 대상이
   주황을 거치지 않고 바로 빨강이 될 수 있다는 뜻이며, 이는 확정 동작이다.
@@ -52,7 +67,32 @@
   미확정을 모두 확인한 뒤에만 수락한다. 수락 시 완성물 소비 + 수면 확정을 **함께** 처리한다
   (`ReagentMixing`의 `TeamCompletionToken`을 소비).
 - **`ManagerKeyPoint`** (`C8_KEY_POINT`) — 수면 후 노출되는 열쇠. 물리로 굴리지 않는 획득
-  표시물, 직접 상호작용으로 팀 권한 1개 부여. 개인 복귀로 잃지 않는다.
+  표시물, 직접 상호작용(**Ctrl** — `ManagerUsePoint`와 같은 키, E 충돌 회피, 확정 2026-09-26)으로
+  팀 권한 1개 부여. 개인 복귀로 잃지 않는다.
+- **`ManagerCctvPanel`** (감시 화면, 확정 2026-09-26) — `RoleSlot`(roleId `"Monitor"`)에 붙는 패널.
+  씬에 배치한 CCTV 카메라(1대 이상)가 `RenderTexture`로 그린 영상을 OnGUI 패널에 띄운다. `←/→`로
+  카메라 전환(책 패널과 같은 키). 화면을 연 감시 담당만 볼 수 있고(`RoleSlot.CanShowTo` — 정보
+  격리), 보는 동안은 이동이 잠긴다(단독 사물 공통 규칙) — 감시 담당은 콘솔 앞에 서서 말로 전달한다.
+  카메라 렌더는 패널이 열려 있을 때만 켠다(닫혀 있을 땐 `Camera.enabled = false`). 관리자의
+  순찰/주황/빨강 색은 `ManagerStatusIndicator`가 월드에 표시하므로 CCTV 화면에도 그대로 찍힌다.
+- **`ManagerChapterController`** (CH8 오케스트레이터 — `PowerMaintenanceController`와 같은 위치) —
+  시작·정지·전원 복귀를 맡는다.
+  - **시작(확정 2026-09-26)**: 혼합대 패널의 액션 훅(`MixingStation.onActionRequested`,
+    **"[Space] 실험 시작"**)을 구독한다. 준비 상태에서만 라벨을 내보낸다. 요건: 책·혼합·감시
+    `RoleSlot` 3개 점유(시험 감시 생략 모드면 감시 제외). 거부 시 사유를 `MixingStation.SetFeedback`
+    으로 표시. 성공 시 `RoleAssignmentManager.SetStartOwner(요청자)` — 이탈 후 "이어서 시작" 권한자.
+  - **이탈 정지**: `IParticipantPauseReceiver` 구현. 정지 중엔 관리자 이동(`PathChaserAgent`
+    비활성)·감지·잡힘을 모두 끈다. 재개 시 정지 직전 상태로 복원.
+  - **전원 CH8 시작 복귀(잡힘 시)** — 저장소에 팀 전체 복귀 API가 없으므로(`RespawnController`는
+    개인 복귀만) 이 컨트롤러가 기존 API를 순서대로 부른다:
+    1. 팀 실패 확정 플래그 → 관리자 감지·잡힘·이동 OFF(이후 들어오는 잡힘·사용 요청 무시)
+    2. 참가자 전원에게 `RespawnController.RespawnPlayer(player, CH8_START)` — `CH8_START`는
+       `SectionSafePoint` 1개. 카트/로프 탑승 해제는 `RespawnController`가 이미 처리한다
+       (`ReleaseHoldRequested` 경로)
+    3. `RoleAssignmentManager.ResetChapter()` — 역할 해제 + `ChapterReset` 발신 → 책 첫 페이지,
+       `MixingStation`·`TeamCompletionToken` 초기화, 열쇠 미획득·숨김
+    4. `PathChaserAgent.ResetToStart()` + 상태 준비로 → 다시 "[Space] 실험 시작" 대기
+    - 세션 정지(이탈) 상태는 `ResetChapter`가 건드리지 않으므로 그대로 유지된다.
 
 ## 4. 확정값 / 기본값
 
@@ -60,7 +100,8 @@
 
 | 현재 | 조건 | 다음 동작/표시 |
 |---|---|---|
-| 준비 | 필수 역할 배정 + 시작 | 순찰·감지·잡힘 켜기 |
+| 준비 | 필수 역할 배정 + 시작(혼합대 패널 "[Space] 실험 시작") | 순찰·감지·잡힘 켜기 |
+| 활동 상태 | 참가자 이탈(`SetParticipantPaused(true)`) | 이동·감지·잡힘 정지, "이어서 시작" 시 직전 상태로 재개 |
 | 순찰 | 보이는 대상 거리 ≤ D | 대상 쪽 바라보기, 순찰 이동 멈춤, 주황 + 의심 아이콘 |
 | 의심 | 보이는 대상 거리 ≤ D/2 | 빨강 + 추격음, 해당 대상 추격 |
 | 의심 | 보이는 대상 없음이 S 지속 | 순찰 복귀 |
@@ -72,6 +113,8 @@
 
 | 항목 | 확정 내용 |
 |---|---|
+| 자발적 반환 / 이탈 | Esc로 사물을 내려놓아도 관리자는 계속 순찰·감지·잡힘(`RoleClueTerminal` 팀 회신 1). 참가자 이탈 시에만 정지 |
+| 입력 키 | 시작 = 혼합대 패널 `Space`, 사용 지점·열쇠 = `Ctrl`(E 충돌 회피), CCTV 카메라 전환 = `←/→`(확정 2026-09-26) |
 | 의심/추격 거리 비율 | 의심 = `D`, 추격 = `D/2`(정해진 요구) |
 | 시야 판정 | 바라보는 방향과 대상 방향 사이 각도 ≤ `F/2`, 지정 차폐물에 막히면 안 보이는 것으로 처리 |
 | 즉시 빨강 진입 | 순찰 중 바로 `D/2` 안에 나타난 대상도 같은 판정에서 의심·추격을 함께 평가해 곧바로 빨강이 될 수 있다 — 주황을 반드시 거치게 하는 유예 시간은 넣지 않는다 |
