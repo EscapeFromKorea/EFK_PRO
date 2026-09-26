@@ -91,6 +91,9 @@ public class SectionHitCounter : MonoBehaviour
         return true;
     }
 
+    /// <summary>인스펙터 동적 배선용, RegisterHit의 반환값 없는 래퍼.</summary>
+    public void RegisterHitEvent(GameObject playerRoot) => RegisterHit(playerRoot);
+
     /// <summary>이 구간 카운터를 특정 참가자에 대해 0으로 되돌린다 — 수동(R)이나 다른 경로로 실제
     /// 이 구간 시작점에 복귀했을 때 SectionSafePoint(counter 연결 시)나 외부 트리거가 호출한다
     /// (§4 "수동 복귀와의 상호작용").</summary>

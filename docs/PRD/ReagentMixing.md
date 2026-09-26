@@ -2,7 +2,8 @@
 
 > 독립 신규 기믹. 실험실 CH8 전용. 출처: Notion "요구사항명세서" —
 > `[실험실 CH8] 가상 시약 혼합 장치`.
-> 상태: **기획 단계 — PRD 작성만 완료, 구현 전.** `docs/PRD/ManagerSurveillance.md`(CH8 관리자
+> 상태: **기획 단계 — PRD 작성만 완료, 구현 전.** 2026-09-26 `RoleClueTerminal` 구현(PR #102/#106)
+> 기준으로 연동 방식·입력 키 갱신. `docs/PRD/ManagerSurveillance.md`(CH8 관리자
 > 감시·수면·열쇠)가 이 문서의 완성물을 소비한다 — 두 문서는 한 쌍으로 읽는다.
 
 ## 1. 기획 의도 / 목적
@@ -36,13 +37,29 @@
 
 예상 폴더: `Assets/ReagentMixingSystem/`.
 
-- **`MixingStation`** (혼합대, 상태 보유자) — 재료 버튼 3개(`R_L`/`R_N`/`R_V`), 선택 표시,
-  투입 버튼, 비우기 버튼, 진행칸 3개, 완성 병 시각물을 갖는다. 정답 순서는 화면에 노출하지
-  않는다(콘텐츠 데이터는 판정에만 존재).
+- **`MixingStation`** (혼합대, 상태 보유자) — `RoleSlot`(roleId `"Mixer"`)에 붙는 패널.
+  재료 3개(`R_L`/`R_N`/`R_V`), 선택 표시, 투입, 비우기, 진행칸 3개, 완성 병 시각물을 갖는다. 정답
+  순서는 화면에 노출하지 않는다(콘텐츠 데이터는 판정에만 존재).
+  - **입력은 키보드 패널**(`QuizTerminal`과 같은 관례 — 카메라가 커서를 잠가 OnGUI 버튼을 못
+    누른다): `1~3` 재료 선택, `Enter` 투입, `Backspace` 비우기. 패널 표시·입력 조건은
+    `RoleSlot.CanShowTo(조작 중인 참가자)`.
+  - **패널 액션 훅**: `QuizTerminal`과 같은 모양의 `actionLabel`/`actionKey`(기본 Space)/
+    `onActionRequested(PlayerMover)`/`SetFeedback(string)`을 둔다. CH8의 **"[Space] 실험 시작"**이
+    여기에 얹힌다(확정 2026-09-26 — CH7이 컴퓨터 패널에 얹은 것과 같은 방식). 시작 판정·거부 사유는
+    `ManagerSurveillance` 컨트롤러가 이 이벤트를 구독해 처리하고 `SetFeedback`으로 돌려준다 —
+    혼합대는 "시작"이 무엇인지 모른다.
+  - **`RoleClueTerminal` 연동**: `slot.PanelClosed` → 미제출 선택만 취소.
+    `IParticipantPauseReceiver` 구현 → 이탈 정지 중 입력 차단 + 미제출 선택 취소(버퍼 유지).
+    `slot.manager.ChapterReset` 구독 → 버퍼·완성 병·선택·완성물 권한 초기화.
 - **`TeamCompletionToken`** (팀 공유 완성물 권한) — 팀 전체가 들고 다니는 권한 1개.
-  물리적 운반/분실 퍼즐을 추가하지 않는다 — 순수 카운터.
-- **`ManagerUsePoint`** (`C8_USE`, 발신자) — 상호작용 시 `ManagerSurveillance`에 "사용 요청"
-  이벤트를 발신한다. 완성물이 없으면 안내만 표시하고 요청 자체를 보내지 않는다.
+  물리적 운반/분실 퍼즐을 추가하지 않는다 — 순수 카운터. `ChapterReset`에 0으로 초기화.
+- **`ManagerUsePoint`** (`C8_USE`, 발신자) — **Ctrl(`LeftControl`) 키** 상호작용(확정 2026-09-26 —
+  `RoleSlot`·`WiringPort`·`SnapBlock`·`MovablePortalPanel`이 쓰는 E와 겹치지 않게 분리) 시
+  `ManagerSurveillance`에 "사용 요청" 이벤트를 발신한다. 역할 사물이 아니다 — 점유 없이 팀원
+  누구나 쓴다. 완성물이 없으면 안내만 표시하고 요청 자체를 보내지 않는다.
+  - 걸어서 사용 지점까지 가야 하므로, 사물 화면을 연 참가자는 Esc(사물 내려놓기)나 Tab으로 화면을
+    닫아야 움직일 수 있다(`RoleClueTerminal.md` §4 "Esc의 이중 의미"). 내려놓아도 버퍼·완성물은
+    유지된다.
 - **책 표시**: `docs/PRD/RoleClueTerminal.md`의 `BookPanel` 재사용, CH8 전용 콘텐츠(§6)
   바인딩.
 - **연결 방향**: `MixingStation`은 `ManagerSurveillance`를 참조하지 않는다 — `ManagerUsePoint`가
@@ -53,7 +70,9 @@
 
 | 항목 | 확정 내용 |
 |---|---|
-| 재료 선택/투입 | 선택은 강조만(미투입), 투입 버튼을 눌러야 버퍼에 반영 |
+| 재료 선택/투입 | 선택은 강조만(미투입), 투입(Enter)을 눌러야 버퍼에 반영 |
+| 입력 키 | 혼합대 패널 `1~3` 선택 / `Enter` 투입 / `Backspace` 비우기 / `Space` 실험 시작(준비 상태에서만 표시), 사용 지점 `Ctrl`(확정 2026-09-26) |
+| 자발적 반환 / 이탈 | Esc로 혼합대를 내려놓아도 퍼즐·관리자는 계속 진행, 버퍼 유지. 참가자 이탈 시에만 정지(`IParticipantPauseReceiver`) — 미제출 선택만 지우고 버퍼 보존(`RoleClueTerminal` 팀 회신) |
 | 오조합 처리 | 버퍼/선택 전체 초기화, 책/레시피는 유지, 재료 재사용 무제한 |
 | 완성 조건 | 정답 재료 3개를 순서대로 투입 |
 | 완성 후 잠금 | 투입/비우기 버튼 비활성화(완료 뒤 비우기 거부) |
@@ -71,8 +90,8 @@
 
 ## 5. 남은 TBD
 
-- **역할 공석 시 세부 처리**: "역할 재배정 대기 중에는 관리자와 작업 입력을 함께 정지한다"가
-  원본이 명시한 미결정 처리안. `RoleClueTerminal`의 일반 정책과 통일할지 확인 필요.
+- ~~역할 공석 시 세부 처리~~ — **해소(2026-09-26)**: `RoleClueTerminal` 팀 회신으로 "공석 정지"
+  개념이 폐지됐다. 자발적 반환은 정지 없음, 참가자 이탈 시에만 관리자·작업 입력을 함께 정지(§4).
 - **새 시도에서 옛 결과물 사용**: 거부한다는 원칙은 확정이지만, 판정 기준(시도 번호 비교)의
   정확한 구현 지점은 `ManagerSurveillance`의 사용 검증 로직과 함께 확정.
 

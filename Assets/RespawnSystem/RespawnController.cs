@@ -104,6 +104,12 @@ public class RespawnController : MonoBehaviour
     /// 컨트롤러가 알 필요가 없도록 이벤트로만 열어 둔다.</summary>
     public event System.Action<GameObject> PlayerRespawned;
 
+    /// <summary>복귀 직전, "붙잡힘" 판정(IsHeld) 전에 발신한다. 좌석형으로 몸을 붙잡는 기믹(레일카 탑승 등)이
+    /// 구독해 그 참가자를 스스로 내려놓는다 — 탑승은 매달림·벽 부착과 달리 R로 풀 수 없고, 탑승 중
+    /// 추격자에게 잡히는 것이 CH1의 정상 경로라 거절하면 영영 복귀하지 못한다. 구독자를 이 컨트롤러가
+    /// 알 필요가 없도록 static 이벤트로만 연다.</summary>
+    public static event System.Action<PlayerMover> ReleaseHoldRequested;
+
     private static RespawnController instance;
 
     // 체크포인트는 도형별이 아니라 마지막에 갱신된 하나만 공유한다. 좌표로 들고 있어서 구역이
@@ -364,17 +370,9 @@ public class RespawnController : MonoBehaviour
             return false;
         }
 
-        // 조인트/키네마틱으로 붙잡힌 바디를 순간이동시키면 기믹 상태가 꼬인다. 수동·외부 발동은
-        // 미루지 않고 거절한다 — R은 "지금" 되돌리라는 의사표시라, 몇 초 뒤 갑자기 발동하면 더 나쁘다.
-        if (IsHeld(mover))
-        {
-            Debug.Log($"[Respawn] '{ShapeLabel(mover)}'는 다른 기믹이 붙잡고 있어 리스폰하지 않는다 " +
-                      "(매달림은 F, 벽 부착은 F/점프로 먼저 푼 뒤 다시 시도해라).");
-            return false;
-        }
-
         // 구간 목적지의 점유 검사 — 벽/도형 겹침 없이, 전부 막히면 강제로 밀어 넣지 않고 이번 호출을
-        // 포기한다(docs/PRD/SectionRespawn.md §4 "안전점 다중화").
+        // 포기한다(docs/PRD/SectionRespawn.md §4 "안전점 다중화"). 아래 좌석 해제보다 먼저 한다 —
+        // 복귀가 불발될 호출에서 탑승자를 내려놓으면 안 된다.
         Vector3? sectionPoint = null;
         if (destination != null)
         {
@@ -386,6 +384,18 @@ public class RespawnController : MonoBehaviour
                 return false;
             }
             sectionPoint = point;
+        }
+
+        // 좌석형 기믹(레일카)은 여기서 스스로 내려놓는다 — 그 뒤엔 IsHeld가 false라 정상 진행한다.
+        ReleaseHoldRequested?.Invoke(mover);
+
+        // 조인트/키네마틱으로 붙잡힌 바디를 순간이동시키면 기믹 상태가 꼬인다. 수동·외부 발동은
+        // 미루지 않고 거절한다 — R은 "지금" 되돌리라는 의사표시라, 몇 초 뒤 갑자기 발동하면 더 나쁘다.
+        if (IsHeld(mover))
+        {
+            Debug.Log($"[Respawn] '{ShapeLabel(mover)}'는 다른 기믹이 붙잡고 있어 리스폰하지 않는다 " +
+                      "(매달림은 F, 벽 부착은 F/점프로 먼저 푼 뒤 다시 시도해라).");
+            return false;
         }
 
         StartCoroutine(RespawnRoutine(mover, useFade, reason, sectionPoint));

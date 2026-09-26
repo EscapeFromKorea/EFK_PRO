@@ -28,11 +28,10 @@ public abstract class PeriodicTrapBase : MonoBehaviour
     [System.Serializable]
     public class PlayerHitEvent : UnityEvent<GameObject> { }
 
-    [Header("공통 — 피격 알림 (SectionRespawn 완성 전 임시 배선)")]
-    [Tooltip("위험부에 유효 접촉이 발생하면 발화(인자 = 맞은 플레이어 Root). 지금은 " +
-             "RespawnController.RespawnPlayer(GameObject)에 배선한다 — 낙석(FallingRockSpawner)과 " +
-             "같은 임시 방식. SectionRespawn(목적지 지정 오버로드) 완성 후 배선만 교체할 예정이며 " +
-             "이 스크립트는 그때 수정할 필요가 없다.")]
+    [Header("공통 — 피격 알림 (SectionHitCounter 경유 구간 복귀)")]
+    [Tooltip("위험부에 유효 접촉이 발생하면 발화(인자 = 맞은 플레이어 Root). 구간 카운터의 " +
+             "SectionHitCounter.RegisterHitEvent에 배선한다(예: CH5_시작) — 임계 횟수와 복귀 목적지는 " +
+             "카운터가 정하므로 이 스크립트는 목적지를 모른다.")]
     public PlayerHitEvent OnHazardHit;
 
     [Header("공통 — 끼임 안전 정지 (사양 §5 확정)")]
