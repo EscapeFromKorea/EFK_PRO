@@ -134,16 +134,18 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
         string[] prev = recipe;
         int n = reagents != null ? reagents.Length : 0;
         string[] next = new string[n];
-        // ponytail: 재료가 1개면 순열이 하나뿐이라 "직전과 다름"을 만족할 수 없다 — 그때만 같은 순서를 허용한다.
-        for (int tries = 0; tries < 20; tries++)
+        for (int i = 0; i < n; i++) next[i] = reagents[i].id;
+        for (int i = n - 1; i > 0; i--)
         {
-            for (int i = 0; i < n; i++) next[i] = reagents[i].id;
-            for (int i = n - 1; i > 0; i--)
-            {
-                int j = UnityEngine.Random.Range(0, i + 1);
-                (next[i], next[j]) = (next[j], next[i]);
-            }
-            if (n < 2 || !SameOrder(prev, next)) break;
+            int j = UnityEngine.Random.Range(0, i + 1);
+            (next[i], next[j]) = (next[j], next[i]);
+        }
+        // 직전과 같으면 첫 칸을 다른 칸과 맞바꾼다 — id가 서로 다르면 반드시 다른 순서가 된다(재추첨 상한 없음, PR #108 피드백).
+        // 재료가 1개면 순열이 하나뿐이라 같은 순서만 가능하다.
+        if (n >= 2 && SameOrder(prev, next))
+        {
+            int k = UnityEngine.Random.Range(1, n);
+            (next[0], next[k]) = (next[k], next[0]);
         }
         recipe = next;
         WriteBook();

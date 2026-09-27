@@ -32,7 +32,8 @@ using UnityEngine.Events;
 /// RespawnController는 이동 전에 같은 프레임에서 점유 검사를 해서, 셋을 한 SectionSafePoint로 동시에 보내면 전원이
 /// "비어 있다"고 판정받아 같은 점에 겹친다. 그래서 startPoints를 참가자 순서(Kind 순)대로 하나씩 준다.
 /// 잡힌 순간 이미 다른 복귀 연출 중인 참가자는 RespawnController가 거절하므로 pendingReturns에 넣어 두고, 연출이
-/// 끝나는 즉시 CH8 시작 지점으로 다시 보낸다. 대기자가 남아 있는 동안엔 자동 재시작하지 않는다.
+/// 끝나는 즉시 CH8 시작 지점으로 다시 보낸다. 대기자가 남아 있거나, 수락된 복귀 연출이 하나라도 끝나지 않았으면
+/// 자동 재시작하지 않는다 — 먼저 도착한 한 명이 구역에 서는 것만으로 관리자가 다시 움직이면 안 된다(PR #108 피드백).
 /// </summary>
 public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
 {
@@ -96,6 +97,8 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
         new System.Collections.Generic.Dictionary<PlayerMover, SectionSafePoint>();
     private readonly System.Collections.Generic.List<PlayerMover> retryBuffer = new System.Collections.Generic.List<PlayerMover>();
     private float nextReturnRetry;
+    // CH8 복귀가 수락돼 연출 중인 참가자. 연출(착지까지)이 끝나야 빠진다 — 전원이 빠지기 전엔 재시작하지 않는다.
+    private readonly System.Collections.Generic.List<PlayerMover> returning = new System.Collections.Generic.List<PlayerMover>();
 
     private void OnEnable() => Bind();
     private void OnDisable() => Unbind();
@@ -147,8 +150,9 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
     private void Update()
     {
         RetryPendingReturns();
-        // 전원이 CH8 시작 지점에 돌아오기 전엔 재시작하지 않는다(PRD "안전 복귀 완료 후 준비").
-        if (Current != State.Ready || Paused || startZone == null || pendingReturns.Count > 0) return;
+        returning.RemoveAll(m => m == null || !m.ExternallyDriven);
+        // 전원이 CH8 시작 지점 복귀 연출까지 끝내기 전엔 재시작하지 않는다(PRD "안전 복귀 완료 후 준비").
+        if (Current != State.Ready || Paused || startZone == null || pendingReturns.Count > 0 || returning.Count > 0) return;
         foreach (PlayerShapeIdentity p in managerAgent.Players)
         {
             PlayerMover m = p != null ? p.GetComponent<PlayerMover>() : null;
@@ -295,6 +299,7 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
         if (!ManagerAgent.IsAlive(m) || (rb != null && rb.isKinematic)) return false;
         respawnController.RespawnPlayer(m.gameObject, point);
         if (!m.ExternallyDriven) return false; // 안전점 점유 등으로 거절
+        returning.Add(m);
         LokiTelemetry.Event("ch8_respawn",
             $"player={m.name} point={(point != null ? point.sectionId : "null(공용 체크포인트)")}");
         return true;
