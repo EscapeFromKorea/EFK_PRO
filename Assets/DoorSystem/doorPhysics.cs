@@ -48,7 +48,10 @@ public class doorPhysics : MonoBehaviour
 
         currentTargetPosition = isPadPressed ? doorTargetPosition : leverBasedPosition;
 
-        Vector3 moveTarget = isBlocked ? doorRigidbody.transform.position : currentTargetPosition;
+        // 끼임 방지는 내려갈 때만 — 올라가는(열리는) 문은 플레이어를 누를 일이 없다. 전엔 문에 붙어 선 플레이어의
+        // Player_Mesh 트리거 때문에 열리는 것까지 멈췄다(CH8 열쇠 문 "앞에 서 있으면 안 열림").
+        bool descending = currentTargetPosition.y < doorRigidbody.transform.position.y;
+        Vector3 moveTarget = isBlocked && descending ? doorRigidbody.transform.position : currentTargetPosition;
 
         doorRigidbody.MovePosition(
             Vector3.MoveTowards(doorRigidbody.transform.position, moveTarget, doorSpeed * Time.fixedDeltaTime)
