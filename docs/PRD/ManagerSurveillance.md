@@ -7,8 +7,7 @@
 > `Assets/ManagerSurveillanceSystem/`. CH1 추격자의 이동체(`Assets/PathChaserSystem/PathChaserAgent`)를 수정 없이
 > 재사용한다. 구현·플레이테스트 중 사용자 결정으로 바뀐 사항(구역 진입 자동 시작, 사용 거리 기준, CCTV 3대,
 > 열쇠 문 등)을 역반영했다 — 원문과 달라진 곳은 "(변경 2026-09-26)"으로 표시한다.
-> **선행 의존**: `PathChaserAgent`는 PR #107에만 있고 develop에는 아직 없다 — 이 기믹의 PR은
-> #107 머지 후에 올린다.
+> **선행 의존**: `PathChaserAgent`(PR #107, 2026-09-26 develop 머지 완료).
 
 ## 1. 기획 의도 / 목적
 
