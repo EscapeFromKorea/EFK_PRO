@@ -37,10 +37,18 @@ public class ManagerAgent : MonoBehaviour
     [Range(1f, 360f)] public float fieldOfView = 90f;
     [Tooltip("S: 대상이 안 보인 채 이 시간(초)이 지나면 순찰로 돌아간다.")]
     public float loseSeconds = 3f;
+    [Tooltip("의심(주황) 상태가 이 시간(초) 이상 이어지면 거리와 무관하게 추격으로 넘어간다.")]
+    public float suspectToChaseSeconds = 1f;
+    [Tooltip("추격 중 대상이 이 시간(초) 이하로 안 보이면 계속 쫓고, 넘기면 경계로 전환한다.")]
+    public float chaseLoseSeconds = 2f;
+    [Tooltip("추격을 놓친 뒤의 경계에서 이 시간(초) 동안 아무도 안 보이면 경로로 돌아가 순찰한다.")]
+    public float alertLoseSeconds = 2f;
     [Tooltip("시야를 가리는 레이어. 이 레이어의 콜라이더가 사이를 막으면 안 보인다.")]
     public LayerMask sightMask = ~0;
     [Tooltip("시야 기준점 높이(관리자 피벗 기준 U). 피벗이 바닥에 있으면 올려 바닥이 시선을 막지 않게 한다.")]
     public float eyeHeight = 0.5f;
+    [Tooltip("순찰 복귀 시 '벽 없는 직선' 판정에 쓰는 관리자 몸통 반지름(U). 모퉁이를 깎아 지나가면 키워라.")]
+    public float pathClearRadius = 0.3f;
 
     [Header("이동")]
     [Tooltip("순찰 속도(U/s).")]
@@ -86,6 +94,18 @@ public class ManagerAgent : MonoBehaviour
     private Vector3 lastPos;
     private Vector3 lastSeen;
     private float lostTimer;
+    private float suspectTimer;
+    private bool alerted; // Suspect 중 "추격을 놓친 뒤의 경계"인가(순찰 중 발견한 의심과 규칙이 다르다).
+
+    // 추격 중 대상이 안 보일 때 밟아 갈 발자취(대상이 실제로 지나간 지점들). [0]이 다음 목표.
+    private readonly List<Vector3> trail = new List<Vector3>();
+    private Vector3 prevTargetPos;
+    private bool trailBroken;
+    // 경로를 벗어난 뒤 관리자 자신이 지나온 지점들. 순찰 복귀 때 끝에서부터 거꾸로 밟는다.
+    private readonly List<Vector3> track = new List<Vector3>();
+    private const float TrailSpacing = 0.5f;    // 발자취 간격(U)
+    private const float TrailReach = 0.3f;      // 이만큼 가까워지면 다음 발자취로(U)
+    private const float TrailBreakJump = 1f;    // 한 틱 이동이 이보다 크면 순간이동으로 보고 기록 중단(U)
     private bool returning;
     private Vector3 returnPoint;
     private int returnNextIndex;
@@ -118,6 +138,7 @@ public class ManagerAgent : MonoBehaviour
         Surveillance = surveillance;
         Target = null;
         returning = false;
+        track.Clear();
         lostTimer = 0f;
         Current = State.Patrol;
         agent.ClearOverride();
@@ -152,6 +173,7 @@ public class ManagerAgent : MonoBehaviour
         Current = State.Inactive;
         Target = null;
         returning = false;
+        track.Clear();
         lostTimer = 0f;
         if (agent != null)
         {
@@ -201,27 +223,49 @@ public class ManagerAgent : MonoBehaviour
                 TickPatrol(pos);
                 break;
 
-            case State.Suspect:
-                if (targetVisible)
-                {
-                    lostTimer = 0f;
-                    if (targetDist <= detectDistance * 0.5f) EnterChase(Target, targetCenter);
-                }
-                else if ((lostTimer += dt) >= loseSeconds) ReturnToPatrol(pos);
+            case State.Suspect when alerted:
+                // 추격을 놓친 뒤의 경계: 누구든 보이면 거리와 무관하게 즉시 추격, 안 보인 채 alertLoseSeconds면 순찰 복귀.
+                if (FindNearestVisible(pos, out PlayerShapeIdentity seen, out Vector3 seenCenter, out _))
+                    EnterChase(seen, seenCenter);
+                else if ((lostTimer += dt) >= alertLoseSeconds) ReturnToPatrol(pos);
                 break;
 
-            case State.Chase:
+            case State.Suspect:
+                suspectTimer += dt;
                 if (targetVisible)
                 {
                     lostTimer = 0f;
                     lastSeen = targetCenter;
+                    if (targetDist <= detectDistance * 0.5f) { EnterChase(Target, targetCenter); break; }
                 }
-                else lostTimer += dt;
+                else if ((lostTimer += dt) >= loseSeconds) { ReturnToPatrol(pos); break; }
+                // 의심이 오래 이어지면 거리와 무관하게 추격 — 안 보이는 중이면 마지막 목격 지점으로 간다.
+                if (suspectTimer >= suspectToChaseSeconds) EnterChase(Target, lastSeen);
+                break;
 
-                if (lostTimer >= loseSeconds) ReturnToPatrol(pos);
-                else agent.MoveToOverride(new Vector3(lastSeen.x, pos.y, lastSeen.z)); // 수평 추격 — 경로 높이 유지
+            case State.Chase:
+                Vector3 goal;
+                if (targetVisible)
+                {
+                    lostTimer = 0f;
+                    lastSeen = targetCenter;
+                    ResetTrail(targetCenter);
+                    goal = lastSeen; // 보이는 동안은 시선이 뚫린 직선이라 벽을 안 지난다.
+                }
+                else
+                {
+                    if ((lostTimer += dt) > chaseLoseSeconds) { EnterAlert(pos); break; }
+                    // 안 보이는 동안(≤ chaseLoseSeconds)은 대상에게 직행하지 않고 대상이 실제로 지나간 발자취를 순서대로
+                    // 밟는다 — 이동체가 벽을 무시하는 직선 이동이라, 직행하면 벽을 뚫는다.
+                    RecordTrail();
+                    if (trail.Count > 1 && Flat(trail[0] - pos).sqrMagnitude <= TrailReach * TrailReach) trail.RemoveAt(0);
+                    goal = trail[0];
+                }
+                agent.MoveToOverride(new Vector3(goal.x, pos.y, goal.z)); // 수평 추격 — 경로 높이 유지
                 break;
         }
+
+        if (Current == State.Suspect || Current == State.Chase) RecordTrack(pos);
 
         // 바라보는 방향: 의심·추격 중 대상이 보이면 대상 쪽, 아니면 이동 방향.
         Vector3 desired = facing;
@@ -245,19 +289,34 @@ public class ManagerAgent : MonoBehaviour
             if (Vector3.Distance(pos, returnPoint) <= ArriveThreshold)
             {
                 returning = false;
+                track.Clear();
                 agent.RejoinPath(returnNextIndex);
                 Log("rejoin", $"nextWp={returnNextIndex}");
             }
+            else StepReturn(pos);
         }
         else if (agent.ReachedLimit)
         {
             agent.RejoinPath(0); // 에이전트는 종점에서 멈춘다 — 닫힌 경로의 처음으로 되돌려 반복시킨다.
         }
 
-        // 표적 획득: 가장 가까운 보이는 대상. Players가 Kind 순이고 비교가 엄격(<)이라 동거리면 앞 ID가 이긴다.
-        PlayerShapeIdentity best = null;
-        Vector3 bestCenter = default;
-        float bestDist = float.MaxValue;
+        if (!FindNearestVisible(pos, out PlayerShapeIdentity best, out Vector3 bestCenter, out float bestDist)) return;
+
+        // 경로 위에서 벗어나면 발자취를 새로 시작한다. 복귀 도중 다시 벗어나면 남은 발자취를 이어 쓴다(아직 경로 밖이다).
+        if (!returning) track.Clear();
+        RecordTrack(pos);
+
+        // 의심·추격을 같은 판정에서 함께 평가한다 — D/2 안에 갑자기 나타나면 주황을 거치지 않는다.
+        if (bestDist <= detectDistance * 0.5f) EnterChase(best, bestCenter);
+        else EnterSuspect(best, pos, bestCenter);
+    }
+
+    /// <summary>가장 가까운 보이는 대상. Players가 Kind 순이고 비교가 엄격(<)이라 동거리면 앞 ID가 이긴다.</summary>
+    private bool FindNearestVisible(Vector3 pos, out PlayerShapeIdentity best, out Vector3 bestCenter, out float bestDist)
+    {
+        best = null;
+        bestCenter = default;
+        bestDist = float.MaxValue;
         foreach (PlayerShapeIdentity p in Players)
         {
             if (!CanSee(p, pos, out Vector3 c, out float d) || d >= bestDist) continue;
@@ -265,18 +324,50 @@ public class ManagerAgent : MonoBehaviour
             bestCenter = c;
             bestDist = d;
         }
-        if (best == null) return;
-
-        // 의심·추격을 같은 판정에서 함께 평가한다 — D/2 안에 갑자기 나타나면 주황을 거치지 않는다.
-        if (bestDist <= detectDistance * 0.5f) EnterChase(best, bestCenter);
-        else EnterSuspect(best, pos);
+        return best != null;
     }
 
-    private void EnterSuspect(PlayerShapeIdentity target, Vector3 pos)
+    /// <summary>발자취를 목격 지점 하나로 초기화한다(대상이 보이는 동안 매 틱).</summary>
+    private void ResetTrail(Vector3 seenAt)
+    {
+        trail.Clear();
+        trail.Add(seenAt);
+        trailBroken = false;
+        if (Target != null) prevTargetPos = Target.transform.position;
+    }
+
+    /// <summary>안 보이는 대상의 실제 위치를 일정 간격으로 발자취에 쌓는다. 한 틱에 크게 튀면(리스폰 순간이동 등)
+    /// 그 뒤로는 쌓지 않는다 — 순간이동 구간을 이으면 그 직선이 벽을 지난다. 끊기면 마지막 발자취에서 멈춰 기다린다.</summary>
+    private void RecordTrail()
+    {
+        if (trailBroken) return;
+        if (Target == null || !IsAlive(Target.GetComponent<PlayerMover>())) { trailBroken = true; return; }
+        Vector3 p = Target.transform.position;
+        if (Flat(p - prevTargetPos).sqrMagnitude > TrailBreakJump * TrailBreakJump) { trailBroken = true; return; }
+        prevTargetPos = p;
+        if (Flat(p - trail[trail.Count - 1]).sqrMagnitude >= TrailSpacing * TrailSpacing) trail.Add(p);
+    }
+
+    /// <summary>추격을 chaseLoseSeconds 넘게 놓쳤을 때: 제자리에서 경계.</summary>
+    private void EnterAlert(Vector3 pos)
+    {
+        Log("alert", $"target={(Target != null ? Target.name : "null")} lastSeen={lastSeen}");
+        Current = State.Suspect;
+        alerted = true;
+        Target = null;
+        lostTimer = 0f;
+        agent.speed = patrolSpeed;
+        agent.MoveToOverride(pos);
+    }
+
+    private void EnterSuspect(PlayerShapeIdentity target, Vector3 pos, Vector3 center)
     {
         Current = State.Suspect;
+        alerted = false;
         Target = target;
         lostTimer = 0f;
+        suspectTimer = 0f;
+        lastSeen = center;
         returning = false;
         Log("suspect", TargetInfo(target, pos));
         agent.MoveToOverride(pos); // 순찰 이동을 멈추고 제자리에서 바라본다.
@@ -290,6 +381,7 @@ public class ManagerAgent : MonoBehaviour
         lostTimer = 0f;
         returning = false;
         lastSeen = center;
+        ResetTrail(center);
         Log("chase", $"from={from} {TargetInfo(target, agent.transform.position)}"); // from=Patrol이면 주황 생략(D/2 즉시 진입)
         agent.speed = chaseSpeed;
     }
@@ -303,9 +395,58 @@ public class ManagerAgent : MonoBehaviour
         lostTimer = 0f;
         agent.speed = patrolSpeed;
         // 복귀점은 시작하는 순간 한 번만 정한다 — 매 틱 다시 구하면 가는 도중 목표가 미끄러진다(CH1과 같은 이유).
+        // 되짚어 가는 발자취 지점에 도착했을 때만 다시 구한다(StepReturn).
         returnPoint = agent.NearestPathPoint(pos, out returnNextIndex);
         returning = true;
+        StepReturn(pos);
+    }
+
+    /// <summary>복귀 한 틱: 복귀점까지 직선이 비어 있으면 곧장, 막혀 있으면 경로를 벗어난 뒤 지나온 자기 발자취를
+    /// 거꾸로 밟는다(이동체가 벽을 무시하는 직선 이동이라 막힌 직선으로 가면 벽을 뚫는다). 발자취 지점에 닿을
+    /// 때마다 그 자리에서 가장 가까운 경로 지점을 다시 구해 질러갈 수 있는지 본다.</summary>
+    private void StepReturn(Vector3 pos)
+    {
+        if (track.Count > 0 && !IsPathClear(pos, returnPoint))
+        {
+            int last = track.Count - 1;
+            if (Flat(track[last] - pos).sqrMagnitude > TrailReach * TrailReach)
+            {
+                agent.MoveToOverride(new Vector3(track[last].x, pos.y, track[last].z));
+                return;
+            }
+            track.RemoveAt(last);
+            returnPoint = agent.NearestPathPoint(pos, out returnNextIndex);
+            if (track.Count > 0 && !IsPathClear(pos, returnPoint))
+            {
+                agent.MoveToOverride(new Vector3(track[track.Count - 1].x, pos.y, track[track.Count - 1].z));
+                return;
+            }
+        }
+        // ponytail: 발자취가 다 떨어졌는데도 막혀 있으면 직선으로 간다 — 첫 발자취가 경로를 벗어난 지점(경로 위)이라
+        // 정상이면 여기서 막힐 일이 없다. 생기면 경로 웨이포인트를 따라 걷는 복귀로 바꿔라.
         agent.MoveToOverride(returnPoint);
+    }
+
+    /// <summary>from → to 수평 직선에 관리자 몸통 두께(pathClearRadius)만큼 벽이 없는가. 자기 자신·참가자·트리거는 무시.</summary>
+    private bool IsPathClear(Vector3 from, Vector3 to)
+    {
+        Vector3 a = from + Vector3.up * eyeHeight;
+        Vector3 d = Flat(to - from);
+        float len = d.magnitude;
+        if (len < 1e-4f) return true;
+        foreach (RaycastHit h in Physics.SphereCastAll(a, pathClearRadius, d / len, len, sightMask, QueryTriggerInteraction.Ignore))
+        {
+            if (h.collider.transform.IsChildOf(transform) || (agent != null && h.collider.transform.IsChildOf(agent.transform))) continue;
+            if (h.collider.GetComponentInParent<PlayerMover>() != null) continue;
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>경로를 벗어난 동안(의심·추격·경계) 자기 위치를 발자취로 쌓는다 — 복귀 때 거꾸로 밟는다.</summary>
+    private void RecordTrack(Vector3 pos)
+    {
+        if (track.Count == 0 || Flat(pos - track[track.Count - 1]).sqrMagnitude >= TrailSpacing * TrailSpacing) track.Add(pos);
     }
 
     // ── 시야 ─────────────────────────────────────────────────────────

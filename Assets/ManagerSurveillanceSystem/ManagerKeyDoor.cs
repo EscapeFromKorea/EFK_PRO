@@ -55,6 +55,11 @@ public class ManagerKeyDoor : MonoBehaviour
     public bool TryOpen(PlayerMover p)
     {
         if (IsOpen || p == null) return false;
+        if (manager != null && manager.IsPaused)
+        {
+            Say("참가자 재접속 대기 중입니다.");
+            return false;
+        }
         if (keyPoint == null || !keyPoint.HasKey)
         {
             Say("열쇠가 필요합니다.");

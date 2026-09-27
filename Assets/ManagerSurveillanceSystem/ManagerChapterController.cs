@@ -31,6 +31,8 @@ using UnityEngine.Events;
 /// [전원 복귀 — 참가자마다 다른 지점]
 /// RespawnController는 이동 전에 같은 프레임에서 점유 검사를 해서, 셋을 한 SectionSafePoint로 동시에 보내면 전원이
 /// "비어 있다"고 판정받아 같은 점에 겹친다. 그래서 startPoints를 참가자 순서(Kind 순)대로 하나씩 준다.
+/// 잡힌 순간 이미 다른 복귀 연출 중인 참가자는 RespawnController가 거절하므로 pendingReturns에 넣어 두고, 연출이
+/// 끝나는 즉시 CH8 시작 지점으로 다시 보낸다. 대기자가 남아 있는 동안엔 자동 재시작하지 않는다.
 /// </summary>
 public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
 {
@@ -89,6 +91,12 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
     private string useRequester;   // 텔레메트리용 — 이번 사용 요청의 요청자·측정 거리(거부 사유와 함께 보낸다).
     private float useDist;
 
+    // 잡힘 시점에 다른 복귀 연출 중이라 거절된 참가자 → 보낼 시작 지점.
+    private readonly System.Collections.Generic.Dictionary<PlayerMover, SectionSafePoint> pendingReturns =
+        new System.Collections.Generic.Dictionary<PlayerMover, SectionSafePoint>();
+    private readonly System.Collections.Generic.List<PlayerMover> retryBuffer = new System.Collections.Generic.List<PlayerMover>();
+    private float nextReturnRetry;
+
     private void OnEnable() => Bind();
     private void OnDisable() => Unbind();
 
@@ -138,7 +146,9 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
 
     private void Update()
     {
-        if (Current != State.Ready || Paused || startZone == null) return;
+        RetryPendingReturns();
+        // 전원이 CH8 시작 지점에 돌아오기 전엔 재시작하지 않는다(PRD "안전 복귀 완료 후 준비").
+        if (Current != State.Ready || Paused || startZone == null || pendingReturns.Count > 0) return;
         foreach (PlayerShapeIdentity p in managerAgent.Players)
         {
             PlayerMover m = p != null ? p.GetComponent<PlayerMover>() : null;
@@ -264,13 +274,41 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
         for (int i = 0; i < players.Count; i++)
         {
             if (players[i] == null) continue;
+            PlayerMover m = players[i].GetComponent<PlayerMover>();
+            if (m == null) continue;
             SectionSafePoint point = startPoints != null && startPoints.Length > 0 ? startPoints[i % startPoints.Length] : null;
-            // ponytail: 복귀 도중(busy)이거나 다른 기믹이 붙잡은(IsHeld) 참가자는 RespawnController가 거절하고 경고만
-            // 남긴다 — 그 사람은 제자리에 남는다. CH8엔 붙잡는 기믹이 없어 두지만, 생기면 거절 결과를 받아 재시도하라.
-            respawnController.RespawnPlayer(players[i].gameObject, point);
-            LokiTelemetry.Event("ch8_respawn",
-                $"player={players[i].name} kind={players[i].Kind} point={(point != null ? point.sectionId : "null(공용 체크포인트)")}");
+            if (!SendToStart(m, point))
+            {
+                // 이미 다른 복귀 연출 중이면 RespawnController가 거절한다. 그대로 두면 그 사람만 옛 목적지로 가고
+                // 챕터는 초기화돼 버리므로, 연출이 끝나는 즉시 CH8 시작 지점으로 다시 보낸다(RetryPendingReturns).
+                pendingReturns[m] = point;
+                LokiTelemetry.Event("ch8_respawn_deferred", $"player={m.name}");
+            }
         }
+    }
+
+    /// <summary>복귀 요청. 수락 여부는 반환값이 없어 ExternallyDriven으로 읽는다 — 수락되면 RespawnRoutine이
+    /// 같은 프레임(첫 yield 전)에 켠다. 이미 켜져 있거나 키네마틱(붙잡힘)이면 거절될 호출이라 보내지 않는다.</summary>
+    private bool SendToStart(PlayerMover m, SectionSafePoint point)
+    {
+        Rigidbody rb = m.GetComponent<Rigidbody>();
+        if (!ManagerAgent.IsAlive(m) || (rb != null && rb.isKinematic)) return false;
+        respawnController.RespawnPlayer(m.gameObject, point);
+        if (!m.ExternallyDriven) return false; // 안전점 점유 등으로 거절
+        LokiTelemetry.Event("ch8_respawn",
+            $"player={m.name} point={(point != null ? point.sectionId : "null(공용 체크포인트)")}");
+        return true;
+    }
+
+    private void RetryPendingReturns()
+    {
+        if (pendingReturns.Count == 0 || Time.time < nextReturnRetry) return;
+        nextReturnRetry = Time.time + 0.5f; // 거절 경고 로그가 매 프레임 쌓이지 않게.
+        if (respawnController == null) { pendingReturns.Clear(); return; }
+        retryBuffer.Clear();
+        retryBuffer.AddRange(pendingReturns.Keys);
+        foreach (PlayerMover m in retryBuffer)
+            if (m == null || SendToStart(m, pendingReturns[m])) pendingReturns.Remove(m);
     }
 
     /// <summary>챕터 재시작(ChapterReset 수신): 관리자를 경로 처음으로 돌리고 준비 상태로. 이탈 정지 상태는 유지한다.</summary>

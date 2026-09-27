@@ -64,6 +64,7 @@ public class ManagerKeyPoint : MonoBehaviour
     public bool TryTake(PlayerMover p)
     {
         if (!Revealed || HasKey || !ManagerAgent.IsAlive(p)) return false;
+        if (manager != null && manager.IsPaused) return false; // 재접속 대기 중엔 팀 진행을 바꾸지 않는다.
         if (Vector3.Distance(p.transform.position, transform.position) > pickupRadius) return false;
         HasKey = true;
         RefreshVisual();
@@ -86,7 +87,7 @@ public class ManagerKeyPoint : MonoBehaviour
 
     private void OnGUI()
     {
-        if (!Revealed || HasKey || manager == null) return;
+        if (!Revealed || HasKey || manager == null || manager.IsPaused) return;
         PlayerMover p = manager.ControlledPlayer();
         if (p == null || Vector3.Distance(p.transform.position, transform.position) > pickupRadius) return;
         GUI.Label(new Rect((Screen.width - 420f) * 0.5f, Screen.height - 140f, 420f, 24f), $"[{takeKey}] 열쇠 줍기");
