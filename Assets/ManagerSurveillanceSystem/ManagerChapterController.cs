@@ -313,7 +313,16 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
         retryBuffer.Clear();
         retryBuffer.AddRange(pendingReturns.Keys);
         foreach (PlayerMover m in retryBuffer)
+        {
+            // 먼저 돌던 복귀가 이미 CH8 시작 구역에 내려놨으면(CH8 안에서 R 등) 한 번 더 보내지 않는다.
+            if (m != null && ManagerAgent.IsAlive(m) && InStartZone(m.transform.position))
+            {
+                pendingReturns.Remove(m);
+                LokiTelemetry.Event("ch8_respawn_skipped", $"player={m.name} reason=already_in_start_zone");
+                continue;
+            }
             if (m == null || SendToStart(m, pendingReturns[m])) pendingReturns.Remove(m);
+        }
     }
 
     /// <summary>챕터 재시작(ChapterReset 수신): 관리자를 경로 처음으로 돌리고 준비 상태로. 이탈 정지 상태는 유지한다.</summary>
