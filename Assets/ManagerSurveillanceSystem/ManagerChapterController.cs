@@ -56,7 +56,8 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
     [Header("자동 시작 구역")]
     [Tooltip("구역 중심(회전 반영). 비우면 자동 시작하지 않는다.")]
     public Transform startZone;
-    [Tooltip("구역 크기(startZone 로컬 축 기준, U).")]
+    [Tooltip("구역 크기(startZone 로컬 축 기준, U). 밑면은 바닥면보다 아래로 둘 것 — 세모는 피벗이 바닥면 아래라 " +
+             "밑면이 바닥과 같으면 서 있어도 구역 밖으로 판정된다.")]
     public Vector3 startZoneSize = new Vector3(40f, 6f, 40f);
 
     [Header("전원 복귀")]

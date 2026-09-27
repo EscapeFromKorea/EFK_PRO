@@ -159,7 +159,8 @@ public static class Ch8TestRoomMenuItem
         controller.keyPoint = key;
         controller.respawnController = respawn;
         // 자동 시작 구역 = 방 바닥 위 전체(경계벽 안쪽). 들어오는 순간 감시 시작.
-        controller.startZone = Child(root, "CH8_StartZone", new Vector3(0f, 3f, 0f)).transform;
+        // 구역 밑면을 바닥면보다 1 U 아래로 — 세모는 피벗이 바닥면 아래(-0.21)라 밑면이 바닥과 같으면 서 있어도 구역 밖이다.
+        controller.startZone = Child(root, "CH8_StartZone", new Vector3(0f, 2f, 0f)).transform;
         controller.startZoneSize = new Vector3(40f, 6f, 40f);
         controller.startPoints = startPoints.ToArray();
         catchZone.controller = controller;
