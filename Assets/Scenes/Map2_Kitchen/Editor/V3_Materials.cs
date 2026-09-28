@@ -6,7 +6,7 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// KitchenMapV3 — 부엌 질감 적용 (v3.2 머티리얼 팔레트 기반).
-/// 텍스처: Assets/KitchenMapV3/Textures/kv3_*.png (절차 생성 · 타일링).
+/// 텍스처: Assets/Scenes/Map2_Kitchen/Textures/kv3_*.png (절차 생성 · 타일링).
 /// 팔레트 출처(이어하기_1 §6): Counter #D8D2C4 · Metal #B9C0C7 · Wood #8A5A3B · Ceramic #EFEAE2
 ///                          · Plastic #D9E3EA · Fabric #C9BBA8 · Accent #F2933A(주황=상호작용).
 /// 어포던스 3채널(🔒N6)은 질감으로도 유지된다 — 결(나무·패브릭)=오른다 / 주황=조작한다 / 매끈(메탈·플라스틱)=배경.
@@ -14,8 +14,9 @@ using UnityEngine.Rendering;
 /// </summary>
 public static class V3Materials
 {
-    const string TexDir = "Assets/KitchenMapV3/Textures";
-    const string MatDir = "Assets/KitchenMapV3/Materials";
+    const string BaseDir = "Assets/Scenes/Map2_Kitchen";
+    const string TexDir = BaseDir + "/Textures";
+    const string MatDir = BaseDir + "/Materials";
 
     // [R2 복구, 2026-09-10 — map-reviewer 37차 R2 반려 반영] accent(KV3_accent, rule1 —
     // Start_Mat/PlateA/PlateB/PlateC 등이 받는 재질)는 V3_PlateSensor.SetLit의 자기 판 조명(Q2)이
@@ -180,7 +181,7 @@ public static class V3Materials
     static Dictionary<string, Material> BuildMaterials()
     {
         if (!AssetDatabase.IsValidFolder(MatDir))
-            AssetDatabase.CreateFolder("Assets/KitchenMapV3", "Materials");
+            AssetDatabase.CreateFolder(BaseDir, "Materials");
 
         bool isUrp;
         Shader shader = ResolveShader(out isUrp);

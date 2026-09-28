@@ -4,7 +4,7 @@
 
 ## 실행
 
-Unity 2022.3.62f3, 팀 저장소의 PlayerSystem·DoorSystem·DreamThreadSystem·RespawnSystem·RailCartSystem·WindupAxleSystem이 필요하다. 기존 작업 씬을 보관한 뒤 새 Empty 씬 하나를 `Assets/KitchenMapV3/Scenes/` 아래 저장한다.
+Unity 2022.3.62f3, 팀 저장소의 PlayerSystem·DoorSystem·DreamThreadSystem·RespawnSystem이 필요하다. 현재 씬은 `Assets/Scenes/Map2_Kitchen/Scenes/TeamKitchen.unity`이며, 새 후보 씬도 `Assets/Scenes/Map2_Kitchen/` 아래에 저장한다.
 
 1. `Tools/KitchenMapV3/2. Build All (팀 기믹)`.
 2. `Tools/KitchenMapV3/3. Setup Play (팀 플레이어·카메라)`.
@@ -61,3 +61,11 @@ CP07에서 팀 카메라가 벽·덕트 뒤로 가려지는 화면을 확인했�
 검증 사본의 12개 체크포인트 × 세 도형 자동 추락 복귀 36조건 통과. 구·세모 연속 스윙은 합성 펌핑과 팀 연결/해제를 사용한 보조 물리 시험에서 6개 고리 연결, 냉장고 착지 후 정지, CP08 영역 도달을 확인했다. 실제 키보드 완주 검증이 아니다. 모든 줄 길이 설정에서 성공한 것도 아니다.
 
 최종 출구 시험은 팀 무게판으로 문을 연 뒤 합성 이동을 사용했으며 세 도형 모두 문 뒤 바닥에서 정지했다. 최종 Windows 빌드 오류0, 경고1. 누락 스크립트·깨진 직렬화 참조·자체 게임플레이 런타임0. 전체 맵 실제 완주와 구조물 카메라 가림·입력 방향 정책 검토는 남아 있다. 상세 근거: 상위 작업 폴더 `잔여진행_보완완료_보고.md`.
+
+## 2026-09-28 완주 동선 보강
+
+- 폴더 이동 뒤에도 빌더가 현재 `Assets/Scenes/Map2_Kitchen/` 경로를 정상 소유 경로로 인식하도록 씬·재질 경로를 수정했다.
+- S5 팬트리 내부 선반은 상판이 등반 물체 위를 막아 실제 통과가 불가능하므로, 팬트리 동측 빈 회랑에 5개 경사로와 5개 착지대를 배치해 바닥부터 상부장 능선까지 연결했다. 청록 점선과 07번 화살표도 이 경로에 맞춰 갱신했다.
+- CP07 이후는 기존 실고리 6개를 그대로 사용한다. 별도 레일카·태엽축은 배치하지 않는다.
+- 아일랜드·마당 줄다리의 맵 인스턴스 폭과 처짐 상한을 완주 동선에 맞게 보정하고 출구 뒤 안전 착지대를 유지했다.
+- `Tools/KitchenMapV3/5. Validate Full Route`에서 체크포인트 12개, S5 경사 동선, 실다리·앵커, 시작·출구를 정적으로 검사할 수 있다. 레일카가 남아 있어도 실패로 처리한다. 실제 키보드 전 구간 플레이테스트는 별도로 수행해야 한다.

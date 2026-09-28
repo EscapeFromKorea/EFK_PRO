@@ -76,13 +76,13 @@ public static class V3
     // 첫 줄에서 EnsureOwnedScene()을 통과해야 하고, 통과 못 하면 아무것도 바꾸지 않고 return한다.
     //   조건 1: 열린 씬이 정확히 1개(additive로 다른 씬이 함께 열려 있으면 전역 Find가 그 씬을
     //           잡을 수 있어 거부).
-    //   조건 2: 활성 씬이 미저장 새 씬(path 없음)이거나 Assets/KitchenMapV3/ 하위에 저장된 씬.
+    //   조건 2: 활성 씬이 미저장 새 씬(path 없음)이거나 Assets/Scenes/Map2_Kitchen/ 하위에 저장된 씬.
     //           이름에 "V3"가 들어가는 것만으로는 허용하지 않는다(경로 = 소유 표식).
     //   조건 3(checkForeign): V3_Owned 표식이 없는 동명 Player_*·RespawnController·
     //           PlayerControlSwitcher가 있으면 거부 — 이 도구가 만든 것이 아니라 재사용·이동·변경도,
     //           복제(공용 싱글턴 중복)도 하지 않는다. 우리 루트(KitchenMapV3_Blockout) 안만 만지는
     //           토글류는 checkForeign=false로 조건 1·2만 본다.
-    public const string OwnedSceneFolder = "Assets/KitchenMapV3/";
+    public const string OwnedSceneFolder = "Assets/Scenes/Map2_Kitchen/";
     static readonly string[] ReservedNames = { "Player_Sphere", "Player_Cube", "Player_Tetrahedron" };
 
     /// <summary>변경 진입점 공통 가드. false면 호출자는 아무것도 바꾸지 않고 return해야 한다.</summary>

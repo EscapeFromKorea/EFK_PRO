@@ -34,7 +34,7 @@ public static class V3Gimmicks {
   V3.Box(g,"Goal_LandingRail_R",54,110,0,54.3f,115,1.2f,"Gray");
   V3.Box(g,"Goal_LandingRail_End",44,114.7f,0,54,115,1.2f,"Gray");
  }
- static void Bridge(Transform parent,string name,Vector3 a,Vector3 b){var bridge=Create<ThreadBridge>("Tools/DreamThread/Create Rope Bridge",parent);bridge.name=name;bridge.anchorA.transform.position=a;bridge.anchorB.transform.position=b;}
+ static ThreadBridge Bridge(Transform parent,string name,Vector3 a,Vector3 b){var bridge=Create<ThreadBridge>("Tools/DreamThread/Create Rope Bridge",parent);bridge.name=name;bridge.anchorA.transform.position=a;bridge.anchorB.transform.position=b;return bridge;}
  public static bool WireChecked(){
   if(!V3.EnsureOwnedScene("Team Gimmicks"))return false;
   try{
@@ -50,16 +50,13 @@ public static class V3Gimmicks {
    // Replace the old dummy clothesline with the team bridge. Layout helper relocates
    // it to the former decorative drying-rack area with ground-access ramps.
    RemoveVisual("Clothesline_");
-   Bridge(group.transform,"Yard_Clothesline",new Vector3(61,1.2f,97),new Vector3(73,1.2f,97));
+   var yardBridge=Bridge(group.transform,"Yard_Clothesline",new Vector3(61,1.2f,97),new Vector3(73,1.2f,97));
+   yardBridge.segmentWidth=1.4f;yardBridge.baseSag=.2f;yardBridge.maxSag=2f;
    V3YardBridgeLayout.Apply();
    // Team bridge replaces the dummy cart which previously filled the island gap.
    RemoveVisual("Trolley_카트");RemoveVisual("BrakePlate");
-   Bridge(group.transform,"Island_Crossing",new Vector3(49,9.8f,69),new Vector3(49,9.8f,76));
-   // Genuine rail cart + winding axle, on clear floor east of dining area. No teleport docking.
-   var cartGo=RailCartMenuItem.CreateRailCartAt(new Vector3(85,.02f,42));
-   V3.MarkOwned(cartGo,"Team RailCart");cartGo.transform.SetParent(group.transform,true);
-   var cart=cartGo.GetComponent<RailCart>();V3.MarkOwned(cart.path.gameObject,"Team RailPath");cart.path.transform.SetParent(group.transform,true);
-   var axle=Create<WindupAxle>("Tools/WindupAxleSystem/Create Windup Axle",group.transform);axle.transform.position=new Vector3(81,0,42);cart.axle=axle;
+   var islandBridge=Bridge(group.transform,"Island_Crossing",new Vector3(49,9.8f,69),new Vector3(49,9.8f,76));
+   islandBridge.segmentWidth=1.4f;islandBridge.baseSag=.15f;islandBridge.maxSag=1.5f;
    // A real lever/door set in the yard; retain factory links.
    var leverSet=new GameObject("Team_LeverStation");leverSet.transform.SetParent(group.transform,false);
    Create<LeverHead>("Tools/DoorSystem/Create Door Set (Door + Lever + Pad)",leverSet.transform);

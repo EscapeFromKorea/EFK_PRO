@@ -57,6 +57,7 @@ public static class V3Build
         WindowShelves();
         S5_Pantry();
         S8_Backyard();
+        V3Progression.Build();
         // 질감 + 자연화 + 깃발 체크포인트 자동 체인 — 콜라이더·측정 수치에는 영향 없음.
         V3Materials.Apply();
         V3Dress.Apply();

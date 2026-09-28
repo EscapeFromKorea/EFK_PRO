@@ -422,7 +422,8 @@ public static class V3Dress
     //     진입부에서 끊음), 서쪽 복귀는 화살표+순번만 두고 점선은 스토브 서쪽 끝(x≤56)에서
     //     새로 시작해 전진선(y≈79)과 안 겹치는 y≈82.5~83.5로 서행한다. 점선은 CP 번호 순으로
     //     끊김 없이 이어진다(세그 이름에 진행 순서를 반영, 화력 징검다리·코너 클라임·팬트리
-    //     체인·P4 스윙·덕트 낙하는 기존대로 "관문 미표시" — 점선 없이 화살표+다음 번호만).
+    //     체인·P4 스윙·덕트 낙하는 화살표+다음 번호로 안내한다. CP06→CP07은 팬트리 내부의
+    //     막힌 선반 등반 대신 외곽 경사로의 실제 표면 위에 점선을 표시한다.
     // 새 T0RS_01~12 볼륨(중심 ±3, 07만 +0.6 — V3_Checkpoints.cs Defs와 동일 좌표, map-builder
     // 재배열분)을 전부 순서대로 통과하도록 웨이포인트를 다시 짰다(예외: 07 — 06→07 팬트리 체인과
     // 07→08 스윙이 모두 "가이드 없음" 구간이라 점선이 07 볼륨 자체를 지나지 않는다. 07은 화살표
@@ -457,7 +458,8 @@ public static class V3Dress
         foreach (var col in root.GetComponentsInChildren<Collider>())
         {
             if (col.isTrigger || !col.enabled ||
-                !(col.name.StartsWith("Crate_Ramp_") || col.name.StartsWith("Crate_StableLanding_"))) continue;
+                !(col.name.StartsWith("Crate_Ramp_") || col.name.StartsWith("Crate_StableLanding_") ||
+                  col.name.StartsWith("S5_Ramp_") || col.name.StartsWith("S5_Landing_") || col.name == "S5_Ridge_Connector")) continue;
             if (col.Raycast(new Ray(origin, Vector3.down), out var hit, 3f) && hit.normal.y > .7f && hit.distance < nearest)
             { nearest = hit.distance; chosen = hit; }
         }
@@ -489,6 +491,10 @@ public static class V3Dress
             Seg(new float[,]{{55.2f,83,9.65f},{50,83,9.65f},{45,81.5f,9.65f},{43,80.5f,9.65f}}),
             Seg(new float[,]{{43,80.5f,9.65f},{35,77,9.65f},{31,77,9.65f},{27,77.2f,9.65f},{20,77.2f,9.65f},{15,77.2f,9.65f}}),
             Seg(new float[,]{{15,77.2f,9.65f},{13.5f,79,9.65f},{13.5f,81,9.65f},{14,82,10.25f},{14.5f,82.6f,10.25f}}),
+            Seg(new float[,]{{16,27,0.05f},{16,37,4.85f},{18,40,4.85f},{18,50,9.65f},
+                              {16,53,9.65f},{16,63,14.45f},{18,66,14.45f},{18,76,19.25f},
+                              {18,78.5f,19.25f},{10f,78.5f,22.25f},{8,80,22.25f},
+                              {20,84.2f,21.25f},{32,84.2f,22.25f},{55,82,22.25f}}),
             Seg(new float[,]{{93.5f,57.5f,20.05f},{94,61.5f,20.05f},{94,62.3f,20.55f},{94,64.7f,21.05f},
                               {94,66.7f,21.55f},{94,68.8f,22.05f},{94,73,23.05f},{93,75.5f,23.55f},
                               {92.5f,78,24.0f},{92,79.5f,24.05f}}),
@@ -524,7 +530,8 @@ public static class V3Dress
             ("thread_bridge_entry",49f, 67.2f,9.65f,  null,  1.1f, 49f,   76f),
             ("counter_route_cue",54.5f, 79.3f, 9.65f,  "04",  1.6f, 84.5f, 81f),
             ("west_return_cue",  87f,   81f,   9.65f,  "05",  1.6f, 55.2f, 83f),
-            ("pantry_entry_cue", 13f,   82.1f, 10.25f, "07",  1.1f, 12f,   81.1f),
+            ("sector5_descent",  14.5f, 82.6f, 10.25f, null,  1.1f, 39.5f, 72.5f),
+            ("sector5_entry",    12.0f, 67.0f, 0.05f, "07",  1.6f, 16.0f, 27.0f),
             ("swing_cue",        55.5f, 77f,   22.25f, "08",  1.6f, 60f,   77.5f),
             ("duct_drop_cue",    5f,    84f,   24.08f, "10",  1.6f, 6.5f,  87.5f),
             ("final_goal_cue",   56.5f, 101f,  0.05f,  null,  1.6f, 49f,   104f),
@@ -665,7 +672,7 @@ public static class V3Dress
     static Material Tinted(Color c, string baseKey)
     {
         if (tintCache.TryGetValue(c, out Material cached) && cached != null) return cached;
-        Material src = AssetDatabase.LoadAssetAtPath<Material>($"Assets/KitchenMapV3/Materials/KV3_{baseKey}.mat");
+        Material src = AssetDatabase.LoadAssetAtPath<Material>($"Assets/Scenes/Map2_Kitchen/Materials/KV3_{baseKey}.mat");
         Material m;
         if (src != null)
         {
