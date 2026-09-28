@@ -14,7 +14,10 @@ using UnityEngine.SceneManagement;
 /// </summary>
 public static class Map1CodexBuilder
 {
-    private const string ScenePath = "Assets/Scenes/map1_codex.unity";
+    // Platform visuals include soft/irregular edges. Keeping the gameplay surface
+    // slightly inside the rendered bounds prevents characters from appearing to float.
+    private const float PlatformColliderHeightRatio = 0.85f;
+    private const string ScenePath = "Assets/Scenes/Map1_DayDream/map1_codex.unity";
     private const string MaterialFolder = "Assets/LevelDesignSystem/Materials/Codex";
     private static readonly Dictionary<string, Material> Materials = new Dictionary<string, Material>();
     private static Transform worldRoot, systemsRoot, playersRoot, environmentRoot;
@@ -242,7 +245,8 @@ public static class Map1CodexBuilder
         ThreadAnchorAt(p, "P06_WallMarker_Low", new Vector3(-2.5f, 7f, 198.2f), 3.2f);
         ThreadAnchorAt(p, "P06_WallMarker_High", new Vector3(2.5f, 12f, 198.2f), 3.2f);
         Platform(p, "P06_Top", new Vector3(0, 13f, 204f), new Vector3(16, 2, 9));
-        doorPhysics liftGate = SimpleDoor(p, "P06_TeamLiftGate", new Vector3(6.2f, 7.3f, 199f), new Vector3(4.2f, 7f, 1f));
+        doorPhysics liftGate = SimpleDoor(p, "P06_TeamLiftGate", new Vector3(4.92f, 3.48f, 195.57f), new Vector3(4.2f, 0.515886f, 4.4272f));
+        liftGate.doorTargetYOffset = 7.5f;
         PressurePad(p, "P06_Tetra_TopSwitch", new Vector3(0, 14.1f, 204f), liftGate);
         for (int i = 0; i < 4; i++)
             Platform(p, $"P06_Descent_{i + 1}", new Vector3(-6f, 11.5f - i * 2.3f, 210f + i * 3.2f), new Vector3(5f, 1.2f, 3f));
@@ -351,7 +355,8 @@ public static class Map1CodexBuilder
         GameObject respawn = new GameObject("RespawnController");
         respawn.transform.SetParent(systemsRoot);
         RespawnController rc = respawn.AddComponent<RespawnController>();
-        rc.killY = -24f;
+        rc.killY = -8f;
+        rc.outOfBoundsSeconds = 2f;
         GameObject thread = new GameObject("DreamThreadController");
         thread.transform.SetParent(systemsRoot);
         DreamThreadController controller = thread.AddComponent<DreamThreadController>();
@@ -427,7 +432,37 @@ public static class Map1CodexBuilder
         collision.transform.position = center;
         BoxCollider box = collision.AddComponent<BoxCollider>();
         box.size = size;
+        AlignColliderYToRendererBounds(box, CombinedBounds(visual.GetComponentsInChildren<Renderer>(true)));
+        wrapper.transform.position += Vector3.up * (size.y * (1f - PlatformColliderHeightRatio));
         return wrapper;
+    }
+
+    private static void AlignColliderYToRendererBounds(BoxCollider collider, Bounds rendererBounds)
+    {
+        float localMinY = float.PositiveInfinity;
+        float localMaxY = float.NegativeInfinity;
+
+        for (int x = 0; x <= 1; x++)
+        for (int y = 0; y <= 1; y++)
+        for (int z = 0; z <= 1; z++)
+        {
+            Vector3 worldCorner = new Vector3(
+                x == 0 ? rendererBounds.min.x : rendererBounds.max.x,
+                y == 0 ? rendererBounds.min.y : rendererBounds.max.y,
+                z == 0 ? rendererBounds.min.z : rendererBounds.max.z);
+            float localY = collider.transform.InverseTransformPoint(worldCorner).y;
+            localMinY = Mathf.Min(localMinY, localY);
+            localMaxY = Mathf.Max(localMaxY, localY);
+        }
+
+        Vector3 center = collider.center;
+        Vector3 size = collider.size;
+        float visualHeight = localMaxY - localMinY;
+        float colliderHeight = Mathf.Max(0.01f, visualHeight * PlatformColliderHeightRatio);
+        center.y = localMinY + colliderHeight * 0.5f;
+        size.y = colliderHeight;
+        collider.center = center;
+        collider.size = size;
     }
 
     private static GameObject SolidBox(Transform parent, string name, Vector3 center, Vector3 size, Material material)

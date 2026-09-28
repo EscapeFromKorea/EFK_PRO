@@ -19,20 +19,22 @@ public class PadTrigger : MonoBehaviour
 
     void Start()
     {
-        EnsureP04TriggerReachesAboveFloor();
+        EnsureTriggerReachesAboveFloor();
         padStartPosition = transform.position;
         padPressedPosition = padStartPosition - new Vector3(0, padPressDepth, 0);
     }
 
-    private void EnsureP04TriggerReachesAboveFloor()
+    private void EnsureTriggerReachesAboveFloor()
     {
-        if (gameObject.name != "P04_HoldPad") return;
         if (!(GetComponent<Collider>() is BoxCollider box)) return;
 
         float worldScaleY = Mathf.Abs(transform.lossyScale.y);
         if (worldScaleY <= Mathf.Epsilon) return;
 
-        const float minimumWorldHeight = 0.5f;
+        // 스위치의 얇은 시각 모델이 바닥에 살짝 묻혀 있어도 플레이어 콜라이더가
+        // 트리거에 안정적으로 닿도록 합니다. 아래쪽은 그대로 두고 위쪽으로만
+        // 확장하므로 외형과 눌림 애니메이션 위치에는 영향을 주지 않습니다.
+        const float minimumWorldHeight = 0.6f;
         float currentWorldHeight = box.size.y * worldScaleY;
         if (currentWorldHeight >= minimumWorldHeight) return;
 
@@ -59,7 +61,7 @@ public class PadTrigger : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
+        if (!IsValidPresser(other)) return;
 
         overlapCount++;
         isPressed = true;
@@ -67,10 +69,20 @@ public class PadTrigger : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
+        if (!IsValidPresser(other)) return;
 
         overlapCount = Mathf.Max(0, overlapCount - 1);
         if (overlapCount == 0)
             isPressed = false;
+    }
+
+    private static bool IsValidPresser(Collider other)
+    {
+        if (other.CompareTag("Player") || other.CompareTag("InteractionItem")) return true;
+
+        // 플레이어의 자식 콜라이더 태그가 바뀌더라도 Root의 도형 식별자로
+        // 정상 판정합니다. PlayerShapeIdentity가 없는 기존 상호작용 아이템은
+        // 위 태그 판정을 그대로 사용합니다.
+        return other.GetComponentInParent<PlayerShapeIdentity>() != null;
     }
 }

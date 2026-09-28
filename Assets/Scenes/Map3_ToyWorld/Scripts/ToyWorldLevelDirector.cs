@@ -79,6 +79,16 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
         return true;
     }
 
+    public void SetInstallPadPressed(ToyWorldRepairItemType type, bool pressed)
+    {
+        if (!state.SetInstallPadPressed(type, pressed)) return;
+
+        if (verboseLogging)
+            Debug.Log($"[ToyWorld] Install pad {type}: {(pressed ? "pressed" : "released")}. Active {state.InstalledCount}/3.", this);
+
+        ApplyProgressToScene();
+    }
+
     public bool TryActivateMusicBox()
     {
         if (!state.TryActivateMusicBox()) return false;

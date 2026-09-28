@@ -24,13 +24,14 @@ public sealed class ToyWorldProgressState
 
     private int collectedMask;
     private int installedMask;
+    private bool installationCompleted;
     private bool musicBoxActivated;
     private bool levelCompleted;
 
     public int CollectedCount => CountBits(collectedMask);
     public int InstalledCount => CountBits(installedMask);
     public bool AllCollected => collectedMask == AllItemsMask;
-    public bool AllInstalled => installedMask == AllItemsMask;
+    public bool AllInstalled => installationCompleted;
     public bool MusicBoxActivated => musicBoxActivated;
     public bool LevelCompleted => levelCompleted;
     public bool CanExit => AllCollected && AllInstalled && musicBoxActivated;
@@ -59,7 +60,23 @@ public sealed class ToyWorldProgressState
         if (index != InstalledCount) return false;
 
         installedMask |= bit;
+        if (installedMask == AllItemsMask) installationCompleted = true;
         return true;
+    }
+
+    public bool SetInstallPadPressed(ToyWorldRepairItemType type, bool pressed)
+    {
+        int bit = Bit(type);
+        int previousMask = installedMask;
+
+        if (pressed)
+            installedMask |= bit;
+        else
+            installedMask &= ~bit;
+
+        if (installedMask == AllItemsMask) installationCompleted = true;
+
+        return previousMask != installedMask;
     }
 
     public bool TryActivateMusicBox()
@@ -80,6 +97,7 @@ public sealed class ToyWorldProgressState
     {
         collectedMask = 0;
         installedMask = 0;
+        installationCompleted = false;
         musicBoxActivated = false;
         levelCompleted = false;
     }

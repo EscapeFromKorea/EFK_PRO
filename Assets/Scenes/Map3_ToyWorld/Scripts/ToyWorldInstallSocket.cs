@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
@@ -10,6 +11,7 @@ public sealed class ToyWorldInstallSocket : MonoBehaviour
     public Color installedColor = new Color(0.2f, 1f, 0.35f);
 
     private MaterialPropertyBlock colorBlock;
+    private readonly Dictionary<PlayerMover, int> playerContacts = new Dictionary<PlayerMover, int>();
     private static readonly int ColorId = Shader.PropertyToID("_Color");
 
     private void Awake()
@@ -24,9 +26,45 @@ public sealed class ToyWorldInstallSocket : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.GetComponentInParent<PlayerMover>() == null) return;
+        PlayerMover player = other.GetComponentInParent<PlayerMover>();
+        if (player == null) return;
+
+        bool wasEmpty = playerContacts.Count == 0;
+        playerContacts.TryGetValue(player, out int contactCount);
+        playerContacts[player] = contactCount + 1;
+
+        if (!wasEmpty) return;
         ResolveDirector();
-        if (director != null && director.TryInstallItem(itemType)) Refresh();
+        if (director != null) director.SetInstallPadPressed(itemType, true);
+        Refresh();
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        PlayerMover player = other.GetComponentInParent<PlayerMover>();
+        if (player == null || !playerContacts.TryGetValue(player, out int contactCount)) return;
+
+        if (contactCount > 1)
+            playerContacts[player] = contactCount - 1;
+        else
+            playerContacts.Remove(player);
+
+        if (playerContacts.Count != 0) return;
+        ReleasePad();
+    }
+
+    private void OnDisable()
+    {
+        if (playerContacts.Count == 0) return;
+        playerContacts.Clear();
+        ReleasePad();
+    }
+
+    private void ReleasePad()
+    {
+        ResolveDirector();
+        if (director != null) director.SetInstallPadPressed(itemType, false);
+        Refresh();
     }
 
     public void Refresh()
