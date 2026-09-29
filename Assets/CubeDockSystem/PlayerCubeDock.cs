@@ -412,7 +412,10 @@ public class PlayerCubeDock : MonoBehaviour
             why = "몸이 고정됨(굴리기 모드·벽 부착 등)";
             return true;
         }
-        if (GetComponent("PlayerRollModeReceiver") != null)
+        // 컴포넌트 존재가 아니라 모드 on 여부를 본다 — Portal은 첫 통과 때 붙인 뒤 떼지 않아서, 존재만 보면
+        // 포탈을 한 번 지난 도형은 영원히 도킹을 못 한다(2026-09-29 점검에서 발견, BlockCarrySystem과 동일 결함).
+        PlayerRollModeReceiver rollMode = GetComponent<PlayerRollModeReceiver>();
+        if (rollMode != null && rollMode.RollModeActive)
         {
             why = "굴리기 모드 진입";
             return true;

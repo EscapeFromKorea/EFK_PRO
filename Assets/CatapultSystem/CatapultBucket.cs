@@ -241,6 +241,15 @@ public class CatapultBucket : MonoBehaviour
         return (body.mass / identity.stats.mass) > shrunkBoardMaxScaleRatio;
     }
 
+    // 이미 다른 기믹이 붙잡고 있는 몸이면 탑승시키지 않는다(2026-09-29 점검에서 발견 — 예: 조향석에
+    // 도킹된 구, 벽에 부착된 세모를 억지로 태우면 소유권이 두 기믹 사이에서 꼬인다). 세 진입점
+    // (OnTriggerEnter/Stay, C키)이 전부 이 헬퍼를 공유한다 — 하나만 고치면 회귀가 생긴다.
+    private static bool IsGrabbedElsewhere(PlayerShapeIdentity identity, Rigidbody body)
+    {
+        PlayerMover mover = identity.GetComponent<PlayerMover>();
+        return (mover != null && mover.ExternallyDriven) || body.isKinematic;
+    }
+
     // 벽이 사라진 대신 이 거리 게이트가 "가장자리를 스치기만 해도 탑승"을 막는다(클래스 상단
     // "탑승 각도 게이트와 중앙 탑승 구역" 주석 참고). world 좌표를 이 트리거(Catapult_BucketInner)
     // 자신의 로컬 좌표로 변환해, 콜라이더 절반 크기(box.size/2)의 centralZoneFraction(0.8)배
@@ -319,6 +328,12 @@ public class CatapultBucket : MonoBehaviour
             return;
         }
 
+        if (IsGrabbedElsewhere(identity, body))
+        {
+            Debug.Log("[Catapult] 이미 다른 기믹이 이 정육면체를 붙잡고 있어 탑승할 수 없습니다.");
+            return;
+        }
+
         float myDistance = Vector3.Distance(body.position, transform.position);
         if (myDistance > boardApproachRange) return;
 
@@ -394,6 +409,7 @@ public class CatapultBucket : MonoBehaviour
 
         // 벽이 사라진 대신, 가장자리를 스치기만 한 진입은 걸러낸다(클래스 상단 주석 참고).
         if (!IsWithinCentralBoardZone(body.position)) return;
+        if (IsGrabbedElsewhere(identity, body)) return; // 로그는 OnTriggerStay가 매 프레임 스팸하지 않게 생략.
 
         overlapCount = 1;
         Board(identity, body);
@@ -420,6 +436,7 @@ public class CatapultBucket : MonoBehaviour
 
         // 가장자리에 머무르며 재시도하는 것도 같은 기준으로 걸러낸다.
         if (!IsWithinCentralBoardZone(body.position)) return;
+        if (IsGrabbedElsewhere(identity, body)) return; // 로그는 매 프레임 스팸하지 않게 생략.
 
         overlapCount = 1;
         Board(identity, body);

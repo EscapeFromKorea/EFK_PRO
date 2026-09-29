@@ -428,14 +428,20 @@ public class ManagerAgent : MonoBehaviour
     }
 
     /// <summary>from → to 수평 직선에 관리자 몸통 두께(pathClearRadius)만큼 벽이 없는가. 자기 자신·참가자·트리거는 무시.</summary>
+    // SphereCastAll은 호출마다 배열을 새로 할당한다 — 복귀 시퀀스 동안 매 프레임 불릴 수 있는
+    // 경로라 NonAlloc 버퍼로 바꾼다(2026-09-29 점검에서 발견).
+    private readonly RaycastHit[] pathClearBuffer = new RaycastHit[16];
+
     private bool IsPathClear(Vector3 from, Vector3 to)
     {
         Vector3 a = from + Vector3.up * eyeHeight;
         Vector3 d = Flat(to - from);
         float len = d.magnitude;
         if (len < 1e-4f) return true;
-        foreach (RaycastHit h in Physics.SphereCastAll(a, pathClearRadius, d / len, len, sightMask, QueryTriggerInteraction.Ignore))
+        int count = Physics.SphereCastNonAlloc(a, pathClearRadius, d / len, pathClearBuffer, len, sightMask, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
         {
+            RaycastHit h = pathClearBuffer[i];
             if (h.collider.transform.IsChildOf(transform) || (agent != null && h.collider.transform.IsChildOf(agent.transform))) continue;
             if (h.collider.GetComponentInParent<PlayerMover>() != null) continue;
             return false;

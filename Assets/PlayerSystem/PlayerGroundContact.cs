@@ -108,8 +108,13 @@ public class PlayerGroundContact : MonoBehaviour
     {
         if (collision.gameObject.CompareTag("Player")) return;
 
-        foreach (ContactPoint contact in collision.contacts)
+        // collision.contacts는 호출마다 배열을 새로 할당한다 — 이 콜백은 접지 중인 플레이어마다
+        // 매 물리 스텝 불리는 핫패스라 GetContact(i)/contactCount로 할당 없이 순회한다
+        // (2026-09-29 점검에서 발견).
+        int contactCount = collision.contactCount;
+        for (int i = 0; i < contactCount; i++)
         {
+            ContactPoint contact = collision.GetContact(i);
             if (contact.normal.y > groundNormalThreshold)
             {
                 lastGroundedTime = Time.time;

@@ -77,6 +77,14 @@ public class RailCartRider : MonoBehaviour
         Rigidbody body = mover.GetComponent<Rigidbody>();
         if (body == null) return;
 
+        // 이미 다른 기믹이 붙잡고 있는 몸이면 탑승시키지 않는다(2026-09-29 점검에서 발견 — 예:
+        // 벽에 부착 중인 세모를 억지로 태우면 부모화가 두 소유자 사이에서 꼬인다).
+        if (mover.ExternallyDriven || body.isKinematic)
+        {
+            Debug.Log("[RailCart] 이미 다른 기믹이 이 도형을 붙잡고 있어 탑승할 수 없습니다.");
+            return;
+        }
+
         float myDistance = Vector3.Distance(body.position, transform.position);
         if (myDistance > boardRange) return;
         if (!IsNearestRider(body.position, myDistance)) return;

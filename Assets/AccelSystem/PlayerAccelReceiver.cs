@@ -84,6 +84,13 @@ public class PlayerAccelReceiver : MonoBehaviour
             float h = Input.GetAxis("Horizontal");
             float v = Input.GetAxis("Vertical");
             inputVel = new Vector3(h, 0f, v) * mover.moveSpeed;
+            // PlayerMover.LegacyVelocityFixedUpdate/TorqueRollingFixedUpdate와 같은 회전 보정 — 없으면
+            // 궤도 카메라를 돌린 채 가속 발판을 밟았을 때 조향 입력 방향이 평소 이동과 반대로 꼬인다
+            // (2026-09-29 점검에서 발견). PlayerMover.EffectiveInputYaw()는 private라 PortalSystem/
+            // PlayerRollModeReceiver와 같은 방식으로 공개 멤버만으로 같은 식을 다시 계산한다.
+            float yaw = EffectiveInputYaw();
+            if (Mathf.Abs(yaw) > 0.0001f)
+                inputVel = Quaternion.AngleAxis(yaw, Vector3.up) * inputVel;
 
             Vector3 boostDir = boostVelocity.sqrMagnitude > 0.0001f ? boostVelocity.normalized : Vector3.zero;
             if (boostDir != Vector3.zero)
@@ -130,5 +137,16 @@ public class PlayerAccelReceiver : MonoBehaviour
                 state = State.None; // velocity 제어권을 다른 이동 스크립트로 완전히 반납
             }
         }
+    }
+
+    // PlayerMover.cs는 건드리지 않는다(PortalSystem/PlayerRollModeReceiver와 같은 방침) — 그 클래스의
+    // private EffectiveInputYaw()과 같은 식을 공개 멤버(inputYawOffset/cameraRelativeInput/ViewYaw/
+    // MouseOrbitActive)만으로 다시 계산한다.
+    private float EffectiveInputYaw()
+    {
+        float? viewYaw = PlayerFollowCamera.ViewYaw;
+        if (viewYaw.HasValue && (PlayerFollowCamera.MouseOrbitActive || mover.cameraRelativeInput))
+            return viewYaw.Value;
+        return mover.inputYawOffset;
     }
 }

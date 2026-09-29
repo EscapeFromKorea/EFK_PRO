@@ -488,6 +488,12 @@ public class SpacePortal : MonoBehaviour
         }
         quadMaterial.mainTexture = viewTexture;
 
+        // 화면에 안 보이면(컬링됨) 매 프레임 씬 하나를 통째로 렌더텍스처에 다시 그리는 비용을
+        // 낸다 — 포탈이 여러 개거나 한동안 화면 밖에 있으면 무의미한 렌더가 쌓인다(2026-09-29
+        // 점검에서 발견). 텍스처는 마지막으로 보였을 때 값 그대로 남고, 다시 보이면 다음 프레임에
+        // 갱신된다(한 프레임 지연은 무해하다).
+        if (!quadRenderer.isVisible) return;
+
         Camera mainCam = Camera.main;
         if (mainCam == null) return;
 

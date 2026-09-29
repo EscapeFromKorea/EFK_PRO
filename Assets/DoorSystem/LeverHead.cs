@@ -131,11 +131,14 @@ public class LeverHead : MonoBehaviour
     // 평균 내어 더 안정적인 방향을 얻는다.
     private static Vector3 AverageContactNormal(Collision collision)
     {
+        // collision.contacts는 호출마다 배열을 새로 할당한다 — GetContact(i)/contactCount로
+        // 할당 없이 순회한다(2026-09-29 점검에서 발견).
+        int count = collision.contactCount;
         Vector3 sum = Vector3.zero;
-        foreach (ContactPoint contact in collision.contacts)
-            sum += contact.normal;
+        for (int i = 0; i < count; i++)
+            sum += collision.GetContact(i).normal;
 
-        return sum.sqrMagnitude > 0.0001f ? sum.normalized : collision.contacts[0].normal;
+        return sum.sqrMagnitude > 0.0001f ? sum.normalized : collision.GetContact(0).normal;
     }
 
     void OnCollisionExit(Collision collision)
