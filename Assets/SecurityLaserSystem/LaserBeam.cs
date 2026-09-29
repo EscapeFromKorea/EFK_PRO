@@ -40,6 +40,12 @@ public class LaserBeam : MonoBehaviour
     private readonly HashSet<Rigidbody> hitThisFiring = new HashSet<Rigidbody>();
     private bool wasFiring;
 
+    // RaycastAll/SphereCastAll은 호출마다 배열을 새로 할당한다 — Tick은 Telegraph/Firing 동안
+    // 매 FixedUpdate 불리는 핫패스라 NonAlloc 버퍼로 바꾼다(2026-09-29 점검에서 발견). 16개면
+    // 이 저장소의 다른 NonAlloc 버퍼들과 같은 여유 크기다.
+    private readonly RaycastHit[] wallHitBuffer = new RaycastHit[16];
+    private readonly RaycastHit[] beamHitBuffer = new RaycastHit[16];
+
     private void Awake()
     {
         line = GetComponent<LineRenderer>();
@@ -73,16 +79,16 @@ public class LaserBeam : MonoBehaviour
 
         // 플레이어 자신의 콜라이더는 "벽"이 아니다 — 포함시키면 광선이 조준 대상(또는 경로상의 다른
         // 도형)의 솔리드 콜라이더에서 멈춰버려 PRD의 "벽 첫 충돌점까지만" 요구와 "교차 피격"(경로의
-        // 모든 도형을 맞혀야 함) 요구를 둘 다 깬다. RaycastAll로 전체 후보를 모아 Player 태그가 아닌
-        // 첫 충돌만 벽으로 인정한다.
-        RaycastHit[] wallCandidates = Physics.RaycastAll(origin, dir, range, wallMask, QueryTriggerInteraction.Ignore);
-        System.Array.Sort(wallCandidates, (a, b) => a.distance.CompareTo(b.distance));
-        foreach (RaycastHit candidate in wallCandidates)
+        // 모든 도형을 맞혀야 함) 요구를 둘 다 깬다. 전체 후보 중 Player 태그가 아닌 것만 골라
+        // 가장 가까운 것을 벽으로 삼는다(정렬 없이 최솟값 한 번에 — RaycastAll+Sort와 결과는 같다).
+        int wallCount = Physics.RaycastNonAlloc(origin, dir, wallHitBuffer, range, wallMask, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < wallCount; i++)
         {
+            RaycastHit candidate = wallHitBuffer[i];
             if (candidate.collider != null && candidate.collider.CompareTag(playerTag)) continue;
+            if (candidate.distance >= dist) continue;
             dist = candidate.distance;
             endPoint = candidate.point;
-            break;
         }
 
         line.enabled = true;
@@ -103,9 +109,10 @@ public class LaserBeam : MonoBehaviour
         if (!firingOn) return;
 
         // 시각과 정확히 같은 origin/dir/dist로 판정한다(발사선-판정 일치, PRD §4 확정).
-        RaycastHit[] hits = Physics.SphereCastAll(origin, beamRadius, dir, dist, ~0, QueryTriggerInteraction.Ignore);
-        foreach (RaycastHit h in hits)
+        int beamCount = Physics.SphereCastNonAlloc(origin, beamRadius, dir, beamHitBuffer, dist, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < beamCount; i++)
         {
+            RaycastHit h = beamHitBuffer[i];
             if (h.collider == null || !h.collider.CompareTag(playerTag)) continue;
             Rigidbody rb = h.collider.attachedRigidbody;
             if (rb == null) continue;

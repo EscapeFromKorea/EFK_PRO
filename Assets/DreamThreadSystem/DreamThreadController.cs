@@ -239,7 +239,7 @@ public class DreamThreadController : MonoBehaviour
             Vector3 move = new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical"));
             if (move.sqrMagnitude > 1f) move.Normalize();
             move *= groundMoveSpeed;
-            float yaw = activeMover != null ? activeMover.inputYawOffset : 0f;
+            float yaw = EffectiveInputYaw();
             if (Mathf.Abs(yaw) > 0.0001f)
                 move = Quaternion.AngleAxis(yaw, Vector3.up) * move;
             activeBody.velocity = new Vector3(move.x, activeBody.velocity.y, move.z);
@@ -266,7 +266,7 @@ public class DreamThreadController : MonoBehaviour
             Vector3 wish = new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical"));
             if (wish.sqrMagnitude > 1f) wish.Normalize();
             if (invertSwing) wish = -wish;
-            float yaw = activeMover != null ? activeMover.inputYawOffset : 0f;
+            float yaw = EffectiveInputYaw();
             if (Mathf.Abs(yaw) > 0.0001f) wish = Quaternion.AngleAxis(yaw, Vector3.up) * wish;
             push = Vector3.ProjectOnPlane(wish, ropeDir);
         }
@@ -278,6 +278,19 @@ public class DreamThreadController : MonoBehaviour
             push = tangent * input;
         }
         activeBody.AddForce(push * pumpAcceleration, ForceMode.Acceleration);
+    }
+
+    // PlayerMover.cs는 건드리지 않는다(교차 폴더 하드룰 + PortalSystem/PlayerRollModeReceiver와 같은
+    // 방침) — 그 클래스의 private EffectiveInputYaw()과 같은 식을 공개 멤버만으로 다시 계산한다.
+    // 고정 inputYawOffset만 쓰던 예전 코드는 궤도 카메라를 돌린 채 매달리면 A/D가 평소 이동과
+    // 반대로 꼬였다(2026-09-29 점검에서 발견 — 접지 이동에도 같은 결함이 있었다).
+    private float EffectiveInputYaw()
+    {
+        if (activeMover == null) return 0f;
+        float? viewYaw = PlayerFollowCamera.ViewYaw;
+        if (viewYaw.HasValue && (PlayerFollowCamera.MouseOrbitActive || activeMover.cameraRelativeInput))
+            return viewYaw.Value;
+        return activeMover.inputYawOffset;
     }
 
     /// <summary>무게가 임계 이상인 채로 흐른 시간을 누적하고, 유예를 다 썼으면 true(끊어야 함)를 준다.
@@ -390,6 +403,18 @@ public class DreamThreadController : MonoBehaviour
 
         Rigidbody body = mover.GetComponent<Rigidbody>();
         if (body == null) return;
+
+        // 이미 다른 기믹이 붙잡고 있는 몸이면 매달지 않는다(2026-09-29 점검에서 발견 — 예: 투석기
+        // 조향석에 도킹된 채(ExternallyDriven+isKinematic) 근처 앵커에서 F를 누르면 이 컨트롤러가
+        // 위 상태를 모른 채 같은 Rigidbody에 조인트를 걸어 두 기믹이 동시에 소유권을 주장했다).
+        // ExternallyDriven만으로는 부족하다 — ThreadPinPlacer의 벽 부착처럼 isKinematic만 세우고
+        // ExternallyDriven은 안 건드리는 소유 방식도 있다(`Assets/CLAUDE.md` "소유 신호가 하나가
+        // 아니다" 참고).
+        if (mover.ExternallyDriven || body.isKinematic)
+        {
+            Debug.Log("[DreamThread] 이미 다른 기믹이 이 도형을 붙잡고 있어 매달 수 없습니다.");
+            return;
+        }
 
         // 게이트는 도형 종류(Kind)가 아니라 "무게"로 판정한다 — 실이 버티는 물리량이 질량이 아니라
         // 무게라, 무중력 버블 안에서는 네모(3.0 → 1.8)도 매달릴 수 있게 하려는 것이다.

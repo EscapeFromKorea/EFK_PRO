@@ -50,12 +50,19 @@ public class CharacterLockedLaser : MonoBehaviour
     private PlayerShapeIdentity target;
     private Vector3 lockedDirection;
 
+    // WaitingForTarget 동안 매 FixedUpdate 호출되던 FindNearestValidTarget이 그때마다
+    // FindObjectsOfType로 씬 전체를 훑고 있었다(2026-09-29 점검에서 발견) — PathChaserController/
+    // ManagerAgent와 같은 패턴으로 Start에 한 번만 캐시한다. 플레이어 3개는 씬에 미리 배치되고
+    // 런타임에 새로 생기지 않으므로(저장소 전역 전제) 캐시가 stale해질 일이 없다.
+    private PlayerShapeIdentity[] candidates;
+
     private void Start()
     {
         if (targetKinds == null || targetKinds.Length == 0)
             Debug.LogWarning($"[SecurityLaser] '{name}'의 targetKinds가 비어 있다 — 최소 1개 이상 " +
                              "지정해야 록온할 수 있다.", this);
 
+        candidates = FindObjectsOfType<PlayerShapeIdentity>();
         EnterPhase(Phase.WaitingForTarget);
     }
 
@@ -138,7 +145,7 @@ public class CharacterLockedLaser : MonoBehaviour
         PlayerShapeIdentity nearest = null;
         float nearestDist = float.MaxValue;
 
-        foreach (PlayerShapeIdentity id in FindObjectsOfType<PlayerShapeIdentity>())
+        foreach (PlayerShapeIdentity id in candidates)
         {
             if (System.Array.IndexOf(targetKinds, id.Kind) < 0) continue;
             if (!IsCandidateValid(id)) continue;

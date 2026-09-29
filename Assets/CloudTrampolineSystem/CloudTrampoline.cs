@@ -329,8 +329,12 @@ public class CloudTrampoline : MonoBehaviour
     /// 옆으로 스치며 점프할 때의 오발사를 막는다(평평한 박스 윗면이라 이 엄격 판정이 정확하다).</summary>
     private bool IsTopLanding(Collision collision)
     {
-        foreach (ContactPoint c in collision.contacts)
-            if (c.normal.y <= -0.5f) return true;
+        // collision.contacts는 호출마다 배열을 새로 할당한다 — OnCollisionStay가 판 위에 선
+        // 동안 매 물리 스텝 이 메서드를 부르는 핫패스라 GetContact(i)/contactCount로 할당 없이
+        // 순회한다(2026-09-29 점검에서 발견).
+        int count = collision.contactCount;
+        for (int i = 0; i < count; i++)
+            if (collision.GetContact(i).normal.y <= -0.5f) return true;
         return false;
     }
 

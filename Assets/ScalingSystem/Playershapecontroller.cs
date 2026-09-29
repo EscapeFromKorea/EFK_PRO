@@ -261,6 +261,32 @@ public class PlayerShapeController : MonoBehaviour
         RecomputeTargetScale();
     }
 
+    /// <summary>현재 크기 상태(외부에서 임시로 배율을 강제했다가 되돌리려는 기믹이 저장해 두는 용도 —
+    /// 예: CatapultSteerHandle이 도킹 전 크기를 기억해 해제 때 복원한다). 2026-09-29 추가.</summary>
+    public EScaleState CurrentState => currentState;
+
+    /// <summary>state로 강제 전환한다. `ToggleScale`과 달리 대칭 토글이 아니라 목표 상태를 그대로
+    /// 설정하므로, 이미 그 상태여도(예: ScalePad로 이미 커진 채) 다시 꺼지지 않고 멱등하게 유지된다.
+    /// 2026-09-29 추가 — CatapultSteerHandle 도킹이 ToggleScale을 도킹/해제에 두 번 불러 "이미 커진
+    /// 채 도킹하면 오히려 줄어들고, 작아진 채 도킹하면 해제 후 원래(작아진) 크기로 못 돌아가는"
+    /// 결함이 있었다(전 기믹 점검에서 발견). 같은 상태면 아무 일도 하지 않는다.</summary>
+    public void SetScaleState(EScaleState state)
+    {
+        if (currentState == state) return;
+        currentState = state;
+        RecomputeTargetScale();
+    }
+
+    /// <summary>growMultiplier를 바꾸고, 현재 Grown 상태면 즉시 반영한다(아니면 다음 Grown 전환 때
+    /// 적용된다). 2026-09-29 추가 — 도킹처럼 "지금 이 배율로 강제 고정"이 필요한 기믹을 위한 진입점.
+    /// growMultiplier 자체는 이 컴포넌트와 ScalePad가 공유하는 필드라(기존 설계), 호출자가 원래 값으로
+    /// 되돌리지 않으면 이후 ScalePad 성장도 이 값을 쓴다 — 의도된 동작이다.</summary>
+    public void SetGrowMultiplier(float multiplier)
+    {
+        growMultiplier = multiplier;
+        if (currentState == EScaleState.Grown) RecomputeTargetScale();
+    }
+
     /// <summary>현재 접지 여부 반환 (외부 참조용)</summary>
     public bool IsGrounded() => isGrounded;
 

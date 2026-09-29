@@ -89,6 +89,8 @@ public class PlayerBlockCarrier : MonoBehaviour
     private static readonly System.Collections.Generic.List<SnapBlock> blockBuf =
         new System.Collections.Generic.List<SnapBlock>();
 
+    private readonly Collider[] dropOverlapBuffer = new Collider[16];
+
     private static readonly Color colorOk = new Color(1f, 1f, 1f, 0.95f);
     private static readonly Color colorReject = new Color(0.9f, 0.2f, 0.2f, 0.95f);
 
@@ -354,7 +356,10 @@ public class PlayerBlockCarrier : MonoBehaviour
             return true;
         }
 
-        if (GetComponent("PlayerRollModeReceiver") != null)
+        // 컴포넌트 존재가 아니라 모드 on 여부를 본다 — Portal은 첫 통과 때 붙인 뒤 떼지 않아서, 존재만 보면
+        // 포탈을 한 번 지난 도형은 영원히 블록을 못 든다(2026-09-29 점검에서 발견).
+        PlayerRollModeReceiver rollMode = GetComponent<PlayerRollModeReceiver>();
+        if (rollMode != null && rollMode.RollModeActive)
         {
             why = "굴리기 모드 진입";
             return true;
@@ -402,9 +407,11 @@ public class PlayerBlockCarrier : MonoBehaviour
     private bool IsDropSpaceClear(Vector3 center, Quaternion rot)
     {
         Vector3 half = CarriedHalfExtents() * 0.95f;
-        Collider[] hits = Physics.OverlapBox(center, half, rot, ~0, QueryTriggerInteraction.Ignore);
-        foreach (Collider h in hits)
+        // 운반 중 조준 표시가 매 프레임 부르므로 NonAlloc으로 힙 할당을 없앤다(버퍼 16개면 충분).
+        int count = Physics.OverlapBoxNonAlloc(center, half, dropOverlapBuffer, rot, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
         {
+            Collider h = dropOverlapBuffer[i];
             if (h == null) continue;
             if (carried != null && h.transform.IsChildOf(carried.transform)) continue;
             if (h.transform.IsChildOf(transform) || transform.IsChildOf(h.transform)) continue;

@@ -121,9 +121,12 @@ public class AxeTrap : PeriodicTrapBase
     {
         if (!IsDangerous || !collision.collider.CompareTag(playerTag)) return;
 
-        foreach (ContactPoint contact in collision.contacts)
+        // collision.contacts는 호출마다 배열을 새로 할당한다 — Enter/Stay 둘 다 부르는 경로라
+        // GetContact(i)/contactCount로 할당 없이 순회한다(2026-09-29 점검에서 발견).
+        int count = collision.contactCount;
+        for (int i = 0; i < count; i++)
         {
-            if (contact.thisCollider != bladeCollider) continue;
+            if (collision.GetContact(i).thisCollider != bladeCollider) continue;
             TryRegisterHit(collision.rigidbody);
             return;
         }
