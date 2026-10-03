@@ -771,6 +771,7 @@ public static class ToyWorldPrototypeBuilder
         plate.angularResistance = 0.05f;
         plate.maxAngularSpeedDeg = 720f;
         plate.plateUseGravity = true;
+        root.AddComponent<SeesawWeightTilt>();
         root.AddComponent<PuzzleResettable>().autoResetBelowY = -7f;
 
         if (launchPad)
