@@ -79,9 +79,8 @@ public static class InertiaCapacitorMenuItem
 
         InertiaCapacitor cap = capGo.AddComponent<InertiaCapacitor>();
         cap.bodyRenderer = capGo.GetComponent<Renderer>();
-        cap.dischargeKey = KeyCode.X; // 다른 시스템과 안 겹치는 키(E/V/Q/C/G/F/T는 전부 선점됨).
 
-        // 회전판 — 4유닛 옆. 캡시터에 부딪혀 충전한 뒤 걸어가서 X로 방출하는 동선을 만든다.
+        // 회전판 — 4유닛 옆. 캡시터에 부딪혀 충전한 뒤 걸어가서 E 홀드로 방출하는 동선을 만든다.
         Vector3 platformPos = origin + Vector3.right * 4f;
         GameObject platformGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         platformGo.name = "RotatingPlatform_Demo";

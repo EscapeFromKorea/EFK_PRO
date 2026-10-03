@@ -11,7 +11,7 @@ using UnityEngine;
 /// 이 파일과 RoleSlot이 로직을 공유하진 않는다 — 서로 다른 시스템 폴더라 복제한다(저장소 관례,
 /// SectionHitCounter가 FallingRockSpawner 패턴을 복제한 것과 같은 이유).
 /// </summary>
-public class WiringPort : MonoBehaviour
+public class WiringPort : MonoBehaviour, IInteractionProvider
 {
     public enum Role { Output, Input }
 
@@ -25,9 +25,6 @@ public class WiringPort : MonoBehaviour
     [Tooltip("이 포트가 속한 패널. 씬에 프리팹 배치 시 직접 연결한다(RoleSlot→RoleAssignmentManager와 " +
              "같은 동일 시스템 내부 직접 참조 관례).")]
     public WiringPanel panel;
-
-    [Tooltip("상호작용 키.")]
-    public KeyCode interactKey = KeyCode.E;
 
     // 참가자별 겹친 콜라이더 수. 플레이어는 트리거(Player_Mesh)와 솔리드(Player_Collider)를 함께 가져
     // 한 도형당 Enter/Exit가 여러 번 불린다. 참가자 단위 목록이면 콜라이더 하나가 빠지는 순간 아직
@@ -51,11 +48,32 @@ public class WiringPort : MonoBehaviour
         else overlaps.Remove(mover);
     }
 
-    private void Update()
+    private System.Action interact;
+
+    private void OnEnable() => InteractionController.Register(this);
+    private void OnDisable() => InteractionController.Unregister(this);
+
+    // E는 InteractionController가 한 번만 읽는다(키맵 통합안 §3). 조작 중인 참가자가 트리거 안에 있을 때만 올린다.
+    public void CollectActions(List<InteractionAction> into)
     {
-        if (!Input.GetKeyDown(interactKey)) return;
+        PlayerMover p = InteractionController.Controlled;
+        if (p == null || !overlaps.ContainsKey(p)) return;
+        interact ??= Interact;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand,
+            trigger = InteractionTrigger.Tap,
+            verb = role == Role.Output ? "출력 선택" : "입력 연결",
+            enabled = true,
+            priority = InteractionPriority.Panel,
+            distance = Vector3.Distance(p.transform.position, transform.position),
+            execute = interact,
+        });
+    }
+
+    private void Interact()
+    {
         PruneDestroyed();
-        if (ControlledOccupant() == null) return;
 
         if (panel == null)
         {
@@ -65,20 +83,6 @@ public class WiringPort : MonoBehaviour
 
         if (role == Role.Output) panel.SelectOutput(this);
         else panel.TrySelectInput(this);
-    }
-
-    private PlayerMover ControlledOccupant()
-    {
-        Transform active = PlayerControlSwitcher.ActiveTarget;
-        if (active != null)
-        {
-            PlayerMover m = active.GetComponent<PlayerMover>();
-            return (m != null && overlaps.ContainsKey(m)) ? m : null;
-        }
-
-        foreach (PlayerMover m in overlaps.Keys)
-            if (m != null && m.IsControlled) return m;
-        return null;
     }
 
     // 트리거 안에서 파괴된 참가자(Exit가 오지 않음)를 정리한다. 입력이 있을 때만 돌려 매 프레임 비용을 피한다.
