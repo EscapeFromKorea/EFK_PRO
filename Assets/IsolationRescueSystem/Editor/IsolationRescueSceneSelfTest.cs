@@ -230,10 +230,10 @@ public static class IsolationRescueSceneSelfTest
 
         // 격리 시작 전 입력은 컨트롤러가 무시하지만, 레버는 문턱 에지를 한 번만 센다.
         Check("레버: 문턱 미만에서는 신호 없음", !l2.Evaluate(0.3f));
-        Check("레버: 문턱(0.9) 도달 시 신호 1회", l2.Evaluate(0.9f));
+        Check("레버: 문턱(0.75) 도달 시 신호 1회", l2.Evaluate(0.75f));
         Check("레버: 당긴 채 유지하면 반복 신호 없음(PRD '반복 신호 금지')", !l2.Evaluate(1f) && !l2.Evaluate(0.95f));
-        Check("레버: 문턱 아래·해제선 위(0.7)에서는 아직 무장 해제 상태", !l2.Evaluate(0.7f) && !l2.Armed);
-        Check("레버: 해제선(0.5) 이하로 돌아오면 다시 무장", !l2.Evaluate(0.5f) && l2.Armed);
+        Check("레버: 문턱 아래·해제선 위(0.6)에서는 아직 무장 해제 상태", !l2.Evaluate(0.6f) && !l2.Armed);
+        Check("레버: 해제선(0.4) 이하로 돌아오면 다시 무장", !l2.Evaluate(0.4f) && l2.Armed);
         Check("레버: 다시 당기면 신호 1회", l2.Evaluate(1f));
         Check("레버: 진행 전(준비 아님) 입력은 컨트롤러가 무시", r.c.InputCount == 0);
 

@@ -112,7 +112,7 @@ public class IsolationPlaySmokeRunner : MonoBehaviour
         r = IsolationRescueMenuItem.Build(Vector3.zero);
         IsolationRescueController c = r.controller;
         Ball a = NewBall("A", new Vector3(0f, 0.6f, -8f));
-        Ball b = NewBall("B", new Vector3(3f, 0.6f, -12f));
+        Ball b = NewBall("B", new Vector3(-3f, 0.6f, -12f));
 
         // 1) 진입문은 시작하면 열려 있어야 한다
         yield return new WaitForSeconds(2.5f);

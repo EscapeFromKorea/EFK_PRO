@@ -174,7 +174,7 @@ Notion: `[실험실 CH2] 격리실 협력 구출 장치`
 | 동시 통과 판정 순서 | 안쪽으로 깊은 순, 같으면 인스턴스 ID 순 | `OnTriggerExit` 호출 순서가 비결정적이라 "첫 번째"를 고정 |
 | 끼임 판정 | 끼임 1초 이상 지속 또는 6초 안에 못 닫힘 → 막힘 | 스치듯 지나가는 한순간을 막힘으로 보지 않음. 값은 인스펙터에서 조정 |
 | 전원 스위치 | 눌려 있는 동안만 켜짐, 상자(InteractionItem)도 누름으로 침 | 문 패드(`PadTrigger`)와 같은 기준. 상자 고정을 막을지는 기획 결정 |
-| 순서 레버 | `LeverHead` 각도 0.9 이상 도달 시 1회, 0.5 이하로 돌아와야 재무장 | PRD "상태 유지 중 반복 신호 금지" |
+| 순서 레버 | `LeverHead` 각도 0.75 이상 도달 시 1회, 0.4 이하로 돌아와야 재무장 | PRD "상태 유지 중 반복 신호 금지". 처음엔 0.9/0.5였으나 실제 플레이어로 밀어 보니 막대가 끝까지 가기 전에 몸이 밀려나 입력이 안 먹어 낮췄다(2026-10-03 실측) |
 | 키 | E (손 채널) | 2026-10-02 키 매핑 통합안과 동일. 컴포넌트마다 `KeyCode` 필드 |
 | 기호 기본값 | 파도=1 / 달=2 / 십자=3 | §4 미확정 콘텐츠 구성안의 원본 예시 그대로 |
 
@@ -184,7 +184,7 @@ Notion: `[실험실 CH2] 격리실 협력 구출 장치`
 - **정식 레벨 배치**: `Tools > Isolation Rescue > Create Test Room`은 동작 확인용 시험 배치다. 방 배치·비상 동선·실제 콘텐츠는 레벨/기획 확정 후.
 - **상자가 문에 끼는 경우**: `doorPhysics`가 Player 태그만 보므로 진입문 안전검사도 상자는 보지 못한다.
 - **C2-07(구/세모/네모 도형별 끼임)**: 도형별 플레이 시험은 하지 않았다.
-- **사람 플레이**: 레버를 실제로 미는 감각, E 키 반응, 화면 배치는 Unity 플레이로 확인해야 한다.
+- **사람 플레이**: E 키 반응, 화면 배치, Tab 전환 흐름, 마우스 시점은 Unity 플레이로 확인해야 한다. 레버 밀기는 구와 정육면체로 코드 구동 시험을 했지만 정사면체와 사람 조작은 아직이다.
 
 ### 검증 방법
 
@@ -193,5 +193,6 @@ Notion: `[실험실 CH2] 격리실 협력 구출 장치`
 | 컨트롤러 로직 | `Tools > Isolation Rescue > Run Logic Self-Test` | §4 상태 전이, C2-01~06·08 로직 |
 | 씬 컴포넌트 로직 | `Tools > Isolation Rescue > Run Scene Component Self-Test` | 레버 에지, 전원, 진입 판정·동시 통과, 진입문 안전검사, 버튼 거부 사유, 정보 격리, 복귀 선택, 시험 배치 배선 구조 |
 | PlayMode 스모크 | `Tools > Isolation Rescue > Run Play Smoke (enters Play Mode)` | 실제 물리: 통과→확정→문 닫힘→레버→문 열림→전원→성공→재시작, 문틈 끼임 취소 |
+| 시험 씬 | `Tools > Isolation Rescue > Create Test Scene` → `Assets/Scenes/IsolationRescue_Test_local.unity` | 사람이 바로 플레이할 수 있는 씬(플레이어 2명·카메라·리스폰·시험 격리실). 배치모드 검증 `IsolationRescueTestScene.VerifyFromCommandLine`은 **실제 플레이어 오브젝트가 레버를 직접 밀어** 3단계를 끝까지 진행한다 |
 
 배치모드: 앞의 두 개는 `-batchmode -nographic -quit -executeMethod <클래스>.RunFromCommandLine`, 스모크는 `-quit` 없이 `IsolationRescuePlaySmoke.RunFromCommandLine`.

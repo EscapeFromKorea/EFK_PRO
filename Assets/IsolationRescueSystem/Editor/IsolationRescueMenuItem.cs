@@ -38,6 +38,16 @@ public static class IsolationRescueMenuItem
     private const float OutsideDepth = 24f;
     private const float ShortcutDepth = 18f;
     private const int RoomCount = 3;
+    // 레버 막대는 피벗보다 약 0.12 위에 놓인다. 플레이어는 1유닛 크기라(큐브 1x1x1, 구 반지름 0.5) 막대가
+    // 바닥에서 1.5 위에 있으면 닿지 못한다 — 몸 높이에 오도록 낮춘다.
+    private const float LeverPivotY = 0.4f;
+    // 레버는 방 중앙 쪽(서쪽)에서 동쪽으로 밀어 당긴다. 막대는 쉬는 위치에서 북쪽(+Z)을 향하고, 밀면 동쪽을 향하도록
+    // 90도 돌아간다. 막대 길이가 약 3.8이라 동쪽 벽(안쪽 면 x=7.7)에 닿지 않게 피벗을 x=2에 둔다.
+    private const float LeverX = 2f;
+    private const float LeverSpacing = 6f;
+    // LeverHead는 밀린 쪽으로 막대를 돌린다(막대가 향하는 방향이 '밀린 방향'이 된다). SpawnLever의 기본 방위로는
+    // 쉬는 막대가 남서쪽을 향하므로, 북쪽을 향하게 조립 전체를 +135도 돌린다.
+    private const float LeverMountYaw = 135f;
 
     // 시험용 단계별 정답 순서(레버 번호). IsolationRescueSelfTest의 기본값과 같다 — 미확정 콘텐츠 구성안.
     private static readonly int[][] StageOrders =
@@ -153,7 +163,7 @@ public static class IsolationRescueMenuItem
 
         r.levers = new SequenceLever[IsolationRescueController.LeverCount];
         for (int i = 0; i < r.levers.Length; i++)
-            r.levers[i] = BuildLever(root, r.controller, i + 1, new Vector3(6f, 1.5f, -4f - 8f * i));
+            r.levers[i] = BuildLever(root, r.controller, i + 1, new Vector3(LeverX, LeverPivotY, -6f - LeverSpacing * i));
 
         r.power = Zone<PowerHoldSwitch>(root, "C2_POWER", new Vector3(0f, 0.15f, -22f), 3.5f, "Power");
         r.power.controller = r.controller;
@@ -293,9 +303,30 @@ public static class IsolationRescueMenuItem
     private static SequenceLever BuildLever(Transform parent, IsolationRescueController controller, int number,
                                             Vector3 localPosition)
     {
-        GameObject pivot = DoorSystemMenuItem.SpawnLever(parent.TransformPoint(localPosition), null);
-        pivot.name = $"C2_LEVER_{number}";
-        pivot.transform.SetParent(parent, true);
+        Vector3 world = parent.TransformPoint(localPosition);
+        GameObject pivot = DoorSystemMenuItem.SpawnLever(world, null);
+        pivot.name = "lever_pivot";
+
+        // 조립 전체를 돌리는 마운트. LeverHead는 피벗의 '로컬' 각도(-45 쉼 ~ +45 당김)로 동작하므로 부모를 돌려도 된다.
+        GameObject mount = NewChild(parent, $"C2_LEVER_{number}", localPosition);
+        mount.transform.localRotation = Quaternion.Euler(0f, LeverMountYaw, 0f);
+        pivot.transform.SetParent(mount.transform, false);
+        pivot.transform.localPosition = Vector3.zero;
+        pivot.transform.localRotation = Quaternion.Euler(0f, -45f, 0f);
+
+        // SpawnLever가 받침대(lever_body)를 씬 루트에 따로 만든다 — 같은 위치의 것을 찾아 마운트 아래로 옮긴다.
+        // (받침대는 피벗의 자식이 아니라 돌지 않지만, 마운트를 돌려도 크기 대칭이라 모양은 같다.)
+        foreach (Transform t in Object.FindObjectsOfType<Transform>())
+        {
+            if (t.name != "lever_body" || t.parent != null) continue;
+            if ((t.position - (world + new Vector3(0.2f, -0.5835f, 0.4338f))).sqrMagnitude > 0.01f) continue;
+            t.SetParent(mount.transform, true);
+            // 받침대는 모양만 남긴다. 솔리드로 두면 플레이어가 막대에 닿기도 전에 받침대에 막힌다 — 정육면체는 높이
+            // 0.9의 받침대를 넘지 못해 막대를 밀 수 없었다(2026-10-03 실측).
+            Collider baseCollider = t.GetComponent<Collider>();
+            if (baseCollider != null) Object.DestroyImmediate(baseCollider);
+            break;
+        }
 
         LeverHead head = pivot.GetComponentInChildren<LeverHead>();
 

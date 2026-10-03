@@ -32,13 +32,13 @@ public class SequenceLever : MonoBehaviour
     [Range(1, IsolationRescueController.LeverCount)]
     public int leverNumber = 1;
 
-    [Tooltip("이 값(0~1, 최대 각도 대비 위치) 이상으로 당겨지면 입력 1회.")]
+    [Tooltip("이 값(0~1, 최대 각도 대비 위치) 이상으로 당겨지면 입력 1회. 0.75 = 최대 각도의 약 3/4. 실제 플레이어가 밀 때 막대가 끝까지 가기 전에 몸이 밀려나므로 끝에 가깝게 두면 입력이 안 먹는다(2026-10-03 실측).")]
     [Range(0f, 1f)]
-    public float pressThreshold = 0.9f;
+    public float pressThreshold = 0.75f;
 
     [Tooltip("이 값 이하로 되돌아와야 다음 입력을 받는다. pressThreshold보다 작아야 한다.")]
     [Range(0f, 1f)]
-    public float releaseThreshold = 0.5f;
+    public float releaseThreshold = 0.4f;
 
     private bool armed = true;
 
