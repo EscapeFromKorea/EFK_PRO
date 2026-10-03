@@ -70,6 +70,10 @@ public class InteractionController : MonoBehaviour
         public readonly HoldTracker tracker = new HoldTracker();
         public PlayerMover heldBy;
 
+        // 프롬프트 문자열 캐시 — OnGUI는 프레임당 여러 번 불려서 매번 이어 붙이면 GC가 쌓인다.
+        public string tapText, holdText, lastTapKey, lastHoldKey;
+        public bool tapGray;
+
         public bool hasTap, hasTapBlocked, hasHold;
         public InteractionAction tap, tapBlocked, hold;
 
@@ -105,10 +109,6 @@ public class InteractionController : MonoBehaviour
     private string toast;
     private float toastUntil;
 
-    // 프롬프트 문자열 캐시 — OnGUI는 프레임당 여러 번 불려서 매번 이어 붙이면 GC가 쌓인다.
-    private string tapText, holdText;
-    private bool tapGray;
-    private string lastTapKey, lastHoldKey;
     private GUIStyle style;
 
     private void Awake()
@@ -155,7 +155,7 @@ public class InteractionController : MonoBehaviour
         }
 
         foreach (Channel ch in channels) Process(ch);
-        RefreshPrompt(channels[0]);
+        foreach (Channel ch in channels) RefreshPrompt(ch);
     }
 
     private void Process(Channel ch)
@@ -219,24 +219,24 @@ public class InteractionController : MonoBehaviour
 
     // ── 임시 프롬프트 ─────────────────────────────────────────
 
-    private void RefreshPrompt(Channel hand)
+    private void RefreshPrompt(Channel ch)
     {
         string tapKey = null;
-        if (hand.hasTap) { tapKey = "T" + hand.tap.verb; tapGray = false; }
-        else if (hand.hasTapBlocked) { tapKey = "B" + hand.tapBlocked.verb + hand.tapBlocked.reason; tapGray = true; }
-        if (tapKey != lastTapKey)
+        if (ch.hasTap) { tapKey = "T" + ch.tap.verb; ch.tapGray = false; }
+        else if (ch.hasTapBlocked) { tapKey = "B" + ch.tapBlocked.verb + ch.tapBlocked.reason; ch.tapGray = true; }
+        if (tapKey != ch.lastTapKey)
         {
-            lastTapKey = tapKey;
-            tapText = tapKey == null ? null
-                : hand.hasTap ? $"[{hand.key}] {hand.tap.verb}"
-                : $"[{hand.key}] {hand.tapBlocked.verb} — {hand.tapBlocked.reason}";
+            ch.lastTapKey = tapKey;
+            ch.tapText = tapKey == null ? null
+                : ch.hasTap ? $"[{ch.key}] {ch.tap.verb}"
+                : $"[{ch.key}] {ch.tapBlocked.verb} — {ch.tapBlocked.reason}";
         }
 
-        string holdKey = hand.hasHold ? hand.hold.verb : null;
-        if (holdKey != lastHoldKey)
+        string holdKey = ch.hasHold ? ch.hold.verb : null;
+        if (holdKey != ch.lastHoldKey)
         {
-            lastHoldKey = holdKey;
-            holdText = holdKey == null ? null : $"[{hand.key} 길게] {hand.hold.verb}";
+            ch.lastHoldKey = holdKey;
+            ch.holdText = holdKey == null ? null : $"[{ch.key} 길게] {ch.hold.verb}";
         }
     }
 
@@ -252,18 +252,23 @@ public class InteractionController : MonoBehaviour
         float x = (Screen.width - w) * 0.5f;
         float y = Screen.height * 0.78f;
 
-        if (tapText != null) DrawLine(x, ref y, w, h, tapText, tapGray ? Color.gray : Color.white);
-        if (holdText != null) DrawLine(x, ref y, w, h, holdText, Color.white);
-
-        HoldTracker tr = channels[0] != null ? channels[0].tracker : null;
-        if (tr != null && tr.IsHolding)
+        foreach (Channel ch in channels)
         {
+            if (ch.tapText != null) DrawLine(x, ref y, w, h, ch.tapText, ch.tapGray ? Color.gray : Color.white);
+            if (ch.holdText != null) DrawLine(x, ref y, w, h, ch.holdText, Color.white);
+        }
+
+        foreach (Channel ch in channels)
+        {
+            HoldTracker tr = ch.tracker;
+            if (!tr.IsHolding) continue;
             float p = tr.Progress(Time.time, holdSeconds);
             GUI.color = new Color(0f, 0f, 0f, 0.6f);
             GUI.DrawTexture(new Rect(x + w * 0.3f, y, w * 0.4f, 8f), Texture2D.whiteTexture);
             GUI.color = Color.white;
             GUI.DrawTexture(new Rect(x + w * 0.3f, y, w * 0.4f * p, 8f), Texture2D.whiteTexture);
             y += 12f;
+            break;
         }
 
         if (toast != null && Time.time < toastUntil)

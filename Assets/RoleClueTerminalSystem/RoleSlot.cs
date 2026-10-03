@@ -28,7 +28,7 @@ using UnityEngine;
 /// PanelUser = 지금 이 사물의 화면을 열어 둔 참가자. 점유(Users)와는 별개다 — Tab으로 조종 캐릭터를
 /// 바꾸거나 개인 복귀·거리 이탈이 있으면 화면만 닫히고 점유는 유지된다(§2.5, 회신 3).
 /// </summary>
-public class RoleSlot : MonoBehaviour
+public class RoleSlot : MonoBehaviour, IInteractionProvider
 {
     [Tooltip("이 슬롯의 역할 ID. 챕터 안에서 유일해야 한다 " +
              "(예: \"Book\", \"Computer\", \"Power\" — CH8은 \"Mixer\", \"Monitor\").")]
@@ -37,9 +37,6 @@ public class RoleSlot : MonoBehaviour
     [Tooltip("이 슬롯이 속한 챕터의 매니저. 씬에 하나뿐이라 직접 참조한다(동일 시스템 내부 참조 — " +
              "RespawnZone→RespawnController와 같은 관례로, 이벤트로 분리하지 않는다).")]
     public RoleAssignmentManager manager;
-
-    [Tooltip("상호작용 키.")]
-    public KeyCode interactKey = KeyCode.E;
 
     [Tooltip("여러 명이 함께 쓸 수 있는 사물인가. 서버실 배선(전력 담당)만 켠다 — 나머지는 한 사람만 " +
              "사용한다(회신 1).")]
@@ -72,11 +69,13 @@ public class RoleSlot : MonoBehaviour
     private void OnEnable()
     {
         if (manager != null) manager.RegisterSlot(this);
+        InteractionController.Register(this);
     }
 
     private void OnDisable()
     {
         if (manager != null) manager.UnregisterSlot(this);
+        InteractionController.Unregister(this);
     }
 
     private void OnTriggerEnter(Collider other)
@@ -103,9 +102,30 @@ public class RoleSlot : MonoBehaviour
         if (PanelUser == mover) ClosePanel();
     }
 
-    private void Update()
+    private System.Action interact;
+    private string verb;
+
+    // E는 InteractionController가 한 번만 읽는다(키맵 통합안 §3).
+    public void CollectActions(List<InteractionAction> into)
     {
-        if (!Input.GetKeyDown(interactKey)) return;
+        PlayerMover requester = InteractionController.Controlled;
+        if (requester == null || !overlaps.ContainsKey(requester)) return;
+        interact ??= Interact;
+        verb ??= $"{roleId} 사용";
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand,
+            trigger = InteractionTrigger.Tap,
+            verb = verb,
+            enabled = true,
+            priority = InteractionPriority.Panel,
+            distance = Vector3.Distance(requester.transform.position, transform.position),
+            execute = interact,
+        });
+    }
+
+    private void Interact()
+    {
         if (manager == null)
         {
             Debug.LogWarning($"[RoleSlot] '{name}'에 RoleAssignmentManager가 연결되지 않아 상호작용을 " +
@@ -113,7 +133,7 @@ public class RoleSlot : MonoBehaviour
             return;
         }
 
-        PlayerMover requester = manager.ControlledPlayer();
+        PlayerMover requester = InteractionController.Controlled;
         if (requester == null || !overlaps.ContainsKey(requester)) return;
         HandleInteract(requester);
     }
