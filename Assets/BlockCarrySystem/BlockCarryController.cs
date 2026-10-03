@@ -31,9 +31,6 @@ public class BlockCarryController : MonoBehaviour
              "SnapBlock 생성 기본 질량은 1이라 기본값 2면 표준 블록은 통과한다.")]
     public float maxCarryMass = 2f;
 
-    [Tooltip("픽업 / 내려놓기 토글 키. (E=결합, V=스티커, F·G=실타래와 겹치지 않게 C 사용)")]
-    public KeyCode pickupKey = KeyCode.C;
-
     [Tooltip("몇 초마다 씬에서 플레이어를 다시 훑어 캐리어를 보장할지(초). 런타임에 플레이어가 " +
              "새로 생겨도 곧 붙는다.")]
     public float rescanInterval = 1f;
@@ -96,6 +93,5 @@ public class BlockCarryController : MonoBehaviour
         carrier.carryHeight = carryHeight;
         carrier.dropDistance = dropDistance;
         carrier.maxCarryMass = maxCarryMass;
-        carrier.pickupKey = pickupKey;
     }
 }

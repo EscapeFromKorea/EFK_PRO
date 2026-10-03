@@ -96,8 +96,11 @@ public class SnapBlock : MonoBehaviour
         allBlocks.Remove(this);
     }
 
+    private bool destroying;
+
     private void OnDestroy()
     {
+        destroying = true;
         DetachAll();
     }
 
@@ -172,8 +175,30 @@ public class SnapBlock : MonoBehaviour
         {
             if (j != null) Destroy(j);
             joints.Remove(other);
+            if (!destroying && other != null && gameObject.activeInHierarchy)
+                StartCoroutine(RefilterPair(other));
         }
         other.joints.Remove(this);
+    }
+
+    // 결합 중엔 두 블록 사이 충돌이 꺼져 있다. 조인트를 없애도 물리 엔진이 그 쌍의 필터를 다시 계산하지
+    // 않아, 위아래로 쌓았다 해체하면 위 블록이 아래 블록을 통과해 겹친 채 정지했다(2026-10-03 Loki 실측:
+    // IgnoreCollision·레이어·트리거는 모두 정상인데 dy 1.0 → 0.0). 충돌 무시를 켰다 꺼서 필터를 강제로
+    // 갱신한다. 조인트 제거는 프레임 끝에 반영되므로 다음 FixedUpdate 뒤에 한다.
+    private System.Collections.IEnumerator RefilterPair(SnapBlock other)
+    {
+        yield return null;
+        yield return new WaitForFixedUpdate();
+        if (this == null || other == null || HasConnectionTo(other)) yield break;
+
+        Collider a = GetComponent<Collider>(), b = other.GetComponent<Collider>();
+        if (a != null && b != null)
+        {
+            Physics.IgnoreCollision(a, b, true);
+            Physics.IgnoreCollision(a, b, false);
+        }
+        if (body != null) body.WakeUp();
+        if (other.body != null) other.body.WakeUp();
     }
 
     /// <summary>이 블록의 모든 결합을 해제한다(구조물에서 이 블록만 떼어낸다).</summary>

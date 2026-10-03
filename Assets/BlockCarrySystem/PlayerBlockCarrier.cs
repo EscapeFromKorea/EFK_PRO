@@ -1,14 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// 구 / 정사면체가 딱딱 블록(<see cref="SnapBlock"/>) 1개를 머리 위에 얹어 들고 이동·점프해,
+/// 정육면체만 딱딱 블록(<see cref="SnapBlock"/>) 1개를 머리 위에 얹어 들고 이동·점프해,
 /// 턱이나 선반 위에 올려놓는 주체. <see cref="BlockCarryController"/>가 런타임에 플레이어 Root에
 /// AddComponent한다 — PlayerSystem 파일도, 씬의 플레이어 3종도, SnapBlockSystem도 건드리지
 /// 않는다(교차 폴더 하드룰). PlayerStickerCarrier / PlayerRollModeReceiver 와 같은 "기믹이
 /// 붙여주는 컴포넌트" 패턴이다.
 ///
-/// [입력 게이트] 이 플레이어가 조작 대상일 때만(PlayerMover.IsControlled &amp;&amp; !ExternallyDriven)
-/// 입력을 읽는다. Tab으로 다른 도형을 조작 중이면 반응하지 않는다.
+/// [입력] 키를 직접 읽지 않는다. 들기/내려놓기는 E 탭 액션으로 <see cref="InteractionController"/>에
+/// 올린다(키맵 통합안 §7-1). 이 플레이어가 조작 대상일 때만(PlayerMover.IsControlled &amp;&amp;
+/// !ExternallyDriven) 액션을 올린다. Tab으로 다른 도형을 조작 중이면 반응하지 않는다.
 ///
 /// [타겟팅 — 근접] 카메라 조준이 아니라 "플레이어에서 pickupRange 안, 가장 가까운 자유 상태
 /// SnapBlock"을 대상으로 삼는다(마찰 스티커·딱딱 블록과 동일). 대상 블록 위에 작은 공(조준점)이
@@ -32,7 +33,7 @@ using UnityEngine;
 /// </summary>
 [RequireComponent(typeof(PlayerMover))]
 [DisallowMultipleComponent]
-public class PlayerBlockCarrier : MonoBehaviour
+public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
 {
     [Header("타겟팅 (근접)")]
     [Tooltip("이 거리(Unit) 안에서 가장 가까운 SnapBlock을 대상으로 삼는다. 플레이어 위치에서 " +
@@ -46,10 +47,6 @@ public class PlayerBlockCarrier : MonoBehaviour
     public float dropDistance = 1.2f;
     [Tooltip("들 수 있는 블록 Rigidbody 질량 상한. 초과하면 거부한다.")]
     public float maxCarryMass = 2f;
-
-    [Header("입력 키")]
-    [Tooltip("픽업 / 내려놓기 토글 키.")]
-    public KeyCode pickupKey = KeyCode.C;
 
     [Header("자동 내려놓기 감지")]
     [Tooltip("한 프레임에 플레이어가 이 거리(Unit) 넘게 순간이동하면 리스폰/리셋으로 보고 즉시 드롭한다.")]
@@ -81,7 +78,13 @@ public class PlayerBlockCarrier : MonoBehaviour
     // 마지막 스캔 시점의 대상(없으면 null) + 거부 사유. retargetInterval 간격으로만 갱신된다.
     private SnapBlock aimed;
     private string rejectReason;
+    private float aimedDistance;
     private float nextRetargetTime;
+
+    // 컨트롤러에 액션을 올려도 되는 상태인가(Update의 게이트를 통과한 프레임에만 true) + 내려놓기 가능 여부.
+    private bool interactable;
+    private bool dropClear;
+    private System.Action onInteractTap;
 
     private Transform reticle;
     private Renderer reticleRenderer;
@@ -100,10 +103,18 @@ public class PlayerBlockCarrier : MonoBehaviour
         shapeId = GetComponentInChildren<PlayerShapeIdentity>();
         lastPos = transform.position;
         lastScale = transform.localScale;
+        onInteractTap = OnInteractTap;
+    }
+
+    private void OnEnable()
+    {
+        InteractionController.Register(this);
     }
 
     private void OnDisable()
     {
+        InteractionController.Unregister(this);
+        interactable = false;
         if (carried != null) DropInPlace("컴포넌트 비활성화");
         HideReticle();
     }
@@ -128,6 +139,7 @@ public class PlayerBlockCarrier : MonoBehaviour
         }
         RecordFrameSnapshot();
 
+        interactable = false;
         if (mover == null || !mover.IsControlled || mover.ExternallyDriven)
         {
             aimed = null;
@@ -135,9 +147,10 @@ public class PlayerBlockCarrier : MonoBehaviour
             return;
         }
 
-        // 정육면체는 애초에 못 든다(EvaluateReject가 항상 거부) — CubeDock이 !IsCube를 미리
-        // 걸러두는 것과 똑같이, 스캔·조준점도 아예 안 띄운다(PR #92 리뷰 지적, 경미).
-        if (shapeId != null && shapeId.Kind == PlayerShapeStats.ShapeKind.Cube)
+        // 정육면체만 블록을 옮긴다(2026-10-03 확정: 구·정사면체는 도형 특성상 블록을 옮기는 게 어색하다.
+        // 결합은 도형 제한 없음). 정육면체가 아니면 EvaluateReject가 항상 거부하므로, 스캔·조준점도
+        // 아예 안 띄운다(PR #92 리뷰 지적, 경미).
+        if (shapeId == null || shapeId.Kind != PlayerShapeStats.ShapeKind.Cube)
         {
             aimed = null;
             HideReticle();
@@ -153,11 +166,44 @@ public class PlayerBlockCarrier : MonoBehaviour
         }
 
         UpdateReticle();
+        interactable = true;
+    }
 
-        if (Input.GetKeyDown(pickupKey))
+    // ── 중앙 입력 연동 ────────────────────────────────────────
+
+    /// <summary>들고 있는 블록. 없으면 null. 결합(SnapBlockController)이 든 블록을 대상으로 쓰는 데 필요하다.</summary>
+    public SnapBlock Carried => carried;
+
+    /// <summary>든 블록을 지금 위치에 그대로 놓는다(공간 검사 없음). 같은 프레임에 결합하기 직전에 부른다.</summary>
+    public void ReleaseInPlace() => DropInPlace("결합을 위해 들기 해제");
+
+    private void OnInteractTap()
+    {
+        if (carried != null) TryDropForward();
+        else TryPickup();
+    }
+
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        if (!interactable) return;
+
+        if (carried != null)
         {
-            if (carried != null) TryDropForward();
-            else TryPickup();
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "내려놓기", enabled = dropClear, reason = "내려놓을 공간이 없습니다 — 벽·천장과 겹칩니다.",
+                priority = InteractionPriority.Block, distance = 0f, execute = onInteractTap,
+            });
+        }
+        else if (aimed != null)
+        {
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "들기", enabled = rejectReason == null, reason = rejectReason,
+                priority = InteractionPriority.Block, distance = aimedDistance, execute = onInteractTap,
+            });
         }
     }
 
@@ -211,6 +257,7 @@ public class PlayerBlockCarrier : MonoBehaviour
         if (best == null) return;
 
         aimed = best;
+        aimedDistance = Mathf.Sqrt(bestSqr);
         rejectReason = EvaluateReject(best);
     }
 
@@ -218,8 +265,8 @@ public class PlayerBlockCarrier : MonoBehaviour
     private string EvaluateReject(SnapBlock b)
     {
         PlayerShapeStats.ShapeKind kind = shapeId != null ? shapeId.Kind : PlayerShapeStats.ShapeKind.Sphere;
-        if (kind == PlayerShapeStats.ShapeKind.Cube)
-            return "정육면체는 블록을 들 수 없습니다 (구·정사면체 전용).";
+        if (kind != PlayerShapeStats.ShapeKind.Cube)
+            return "정육면체만 블록을 들 수 있습니다.";
 
         if (b.HasConnections)
             return "결합된 구조물은 들 수 없습니다.";
@@ -464,7 +511,8 @@ public class PlayerBlockCarrier : MonoBehaviour
         {
             Vector3 target = transform.position + LookDir() * dropDistance + Vector3.up * carryHeight;
             pos = target;
-            c = IsDropSpaceClear(target, carriedRotation) ? colorOk : colorReject;
+            dropClear = IsDropSpaceClear(target, carriedRotation);
+            c = dropClear ? colorOk : colorReject;
         }
         else if (aimed != null)
         {

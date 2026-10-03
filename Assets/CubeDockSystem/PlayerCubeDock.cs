@@ -9,8 +9,9 @@ using UnityEngine;
 /// [도형 게이트] 정육면체(PlayerShapeIdentity.Kind == Cube)만 도킹한다. 구·정사면체는 조준·도킹을
 /// 스스로 거부한다.
 ///
-/// [입력 게이트] 새 도킹 / 해제는 이 플레이어가 조작 대상일 때만(IsControlled &amp;&amp;
-/// !ExternallyDriven) 받는다. "결합 해제는 정육면체 자신만" 요구를 이 게이트가 만족한다.
+/// [입력] 키를 직접 읽지 않는다. 도킹/해제는 E 탭 액션으로 <see cref="InteractionController"/>에 올린다
+/// (키맵 통합안 §7-1). 새 도킹 / 해제는 이 플레이어가 조작 대상일 때만(IsControlled &amp;&amp;
+/// !ExternallyDriven) 올린다. "결합 해제는 정육면체 자신만" 요구를 이 게이트가 만족한다.
 ///
 /// [왜 SnapBlock 프록시가 아니라 전용 조인트인가]
 /// SnapBlock은 블록↔블록 조인트만 관리하고 BoxCollider+Rigidbody를 요구한다. 플레이어에 프록시
@@ -27,7 +28,7 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerMover))]
 [RequireComponent(typeof(Rigidbody))]
 [DisallowMultipleComponent]
-public class PlayerCubeDock : MonoBehaviour
+public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
 {
     [Header("타겟팅 (근접)")]
     [Tooltip("이 거리(Unit) 안에서 가장 가까운 SnapBlock을 대상으로 삼는다.")]
@@ -46,10 +47,6 @@ public class PlayerCubeDock : MonoBehaviour
     public int maxDockedBlocks = 6;
     [Tooltip("도킹 가능한 결합 구조물의 최대 총 질량.")]
     public float maxDockedMass = 12f;
-
-    [Header("입력 키")]
-    [Tooltip("도킹 / 해제 토글 키. (G는 ThreadPinPlacer가 이미 써서 H로 변경 — 2026-09-14 QA에서 발견)")]
-    public KeyCode dockKey = KeyCode.H;
 
     [Header("자동 해제 감지")]
     [Tooltip("한 프레임에 플레이어가 이 거리(Unit) 넘게 순간이동하면 리스폰/리셋으로 보고 즉시 해제한다.")]
@@ -88,7 +85,12 @@ public class PlayerCubeDock : MonoBehaviour
     private Vector3 aimSelfFaceCenter, aimBlockFaceCenter, aimBlockFaceNormal;
     private bool hasCandidate;
     private string rejectReason;
+    private float aimedDistance;
     private float nextRetargetTime;
+
+    private bool interactable;
+    private System.Action onInteractTap;
+    private PlayerBlockCarrier carrier;          // 블록을 든 동안은 도킹을 올리지 않는다(들기·내려놓기와 같은 E 탭).
 
     private Transform reticle;
     private Renderer reticleRenderer;
@@ -118,10 +120,19 @@ public class PlayerCubeDock : MonoBehaviour
         selfBox = ResolveSelfBox();
         lastPos = transform.position;
         lastScale = transform.localScale;
+        onInteractTap = OnInteractTap;
+        carrier = GetComponent<PlayerBlockCarrier>();
+    }
+
+    private void OnEnable()
+    {
+        InteractionController.Register(this);
     }
 
     private void OnDisable()
     {
+        InteractionController.Unregister(this);
+        interactable = false;
         if (joint != null) Undock("컴포넌트 비활성화");
         HideReticle();
     }
@@ -151,6 +162,7 @@ public class PlayerCubeDock : MonoBehaviour
 
         RecordFrameSnapshot();
 
+        interactable = false;
         bool controllable = mover != null && mover.IsControlled && !mover.ExternallyDriven;
 
         if (!controllable || !IsCube)
@@ -171,11 +183,44 @@ public class PlayerCubeDock : MonoBehaviour
         }
 
         UpdateReticle();
+        interactable = true;
+    }
 
-        if (Input.GetKeyDown(dockKey))
+    // ── 중앙 입력 연동 ────────────────────────────────────────
+
+    private void OnInteractTap()
+    {
+        if (joint != null) Undock("수동 해제");
+        else TryDock();
+    }
+
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        if (!interactable) return;
+
+        if (joint != null)
         {
-            if (joint != null) Undock("수동 해제");
-            else TryDock();
+            // 도킹 중에는 해제가 최우선이다(상태를 쥔 쪽) — 근처 블록 들기가 가로채지 못한다.
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "도킹 해제", enabled = true,
+                priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteractTap,
+            });
+        }
+        else if (aimed != null && (carrier == null || carrier.Carried == null))
+        {
+            string reason = !hasCandidate
+                ? $"맞물릴 면이 없습니다 — 블록 면을 {snapDistance}칸 안, 나란히 맞대세요."
+                : rejectReason;
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "도킹", enabled = reason == null, reason = reason,
+                // 정육면체는 들기와 도킹이 같은 E 탭이다. 도킹 가능한 면 쌍을 맞댄 상태면 도킹이 이기고,
+                // 아니면(비활성) 들기만 활성이라 들기가 나간다.
+                priority = InteractionPriority.Block + 10, distance = aimedDistance, execute = onInteractTap,
+            });
         }
     }
 
@@ -220,6 +265,7 @@ public class PlayerCubeDock : MonoBehaviour
 
         if (best == null) return;
         aimed = best;
+        aimedDistance = Mathf.Sqrt(bestSqr);
 
         FindBestFacePair(best);
         if (hasCandidate)
