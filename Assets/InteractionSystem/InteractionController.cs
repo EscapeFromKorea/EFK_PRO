@@ -37,6 +37,9 @@ public class InteractionController : MonoBehaviour
 
     public static void Unregister(IInteractionProvider p) => providers.Remove(p);
 
+    /// <summary>지금 조작 중인 플레이어(없으면 null). 제공자가 씬을 훑지 않고 쓰는 창구 — 매 프레임 갱신된다.</summary>
+    public static PlayerMover Controlled { get; private set; }
+
     /// <summary>다른 기믹이 이 바디를 붙잡고 있는가(ExternallyDriven ‖ isKinematic ‖ InputLocked).</summary>
     public static bool IsGripped(PlayerMover m)
     {
@@ -118,7 +121,7 @@ public class InteractionController : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (instance == this) instance = null;
+        if (instance == this) { instance = null; Controlled = null; }
     }
 
     private void Update()
@@ -128,16 +131,27 @@ public class InteractionController : MonoBehaviour
         channels[1].key = gearKey;
 
         holder = FindControlled();
+        Controlled = holder;
         bool gripped = holder == null || IsGripped(holder);
 
         buffer.Clear();
-        if (!gripped)
+        if (holder != null)
         {
             for (int i = providers.Count - 1; i >= 0; i--)
             {
                 if (providers[i] == null) { providers.RemoveAt(i); continue; }
                 providers[i].CollectActions(buffer);
             }
+        }
+
+        // 붙잡힌 상태에선 해제 계열(allowWhenGripped)만 남긴다 — 탑승·도킹 중인 몸은 isKinematic이라
+        // 일반 액션은 막되, 그 상태를 풀 수 있는 키는 살아 있어야 한다.
+        if (gripped)
+        {
+            int w = 0;
+            for (int i = 0; i < buffer.Count; i++)
+                if (buffer[i].allowWhenGripped) buffer[w++] = buffer[i];
+            buffer.RemoveRange(w, buffer.Count - w);
         }
 
         foreach (Channel ch in channels) Process(ch);

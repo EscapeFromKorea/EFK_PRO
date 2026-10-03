@@ -119,7 +119,7 @@ using UnityEngine;
 /// 비율이 1을 넘는 경우가 없어 항상 "가벼울수록 더 빨리" 방향으로만 작동한다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class CatapultBucket : MonoBehaviour
+public class CatapultBucket : MonoBehaviour, IInteractionProvider
 {
     [Header("발사 후 조작 복구")]
     [Tooltip("착지를 못 잡아도 이 시간(초) 안에 강제로 조작을 복구한다. " +
@@ -273,9 +273,48 @@ public class CatapultBucket : MonoBehaviour
         c.isTrigger = true;
     }
 
+    private System.Action onInteract;
+
+    void OnEnable() => InteractionController.Register(this);
+    void OnDisable() => InteractionController.Unregister(this);
+
+    // 키를 직접 읽지 않는다 — 정육면체가 탑승 범위 안이면 E 탭 액션을 올리고, 막힌 이유는 회색 사유로
+    // 보여 준다(키맵 통합안 §2-1). 탑승 중에는 하차 키가 없다(발사로만 내린다).
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        if (occupantBody != null) return;
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
+        if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Cube) return;
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+
+        float d = Vector3.Distance(body.position, transform.position);
+        if (d > boardApproachRange) return;
+
+        string reason = BoardBlockReason(body, identity);
+        onInteract ??= HandleBoardInput;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "버킷 탑승", enabled = reason == null, reason = reason,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+        });
+    }
+
+    // 탑승이 막히는 이유(없으면 null). HandleBoardInput의 게이트와 같은 순서·같은 문구.
+    private string BoardBlockReason(Rigidbody body, PlayerShapeIdentity identity)
+    {
+        if (IsTooHeavyToBoard(body, identity)) return "커진 상태로는 버킷에 탑승할 수 없습니다.";
+        if (IsNotShrunkEnoughToBoard(body, identity)) return "이 투석기는 축소(Shrunk) 상태에서만 탑승할 수 있습니다.";
+        if (!ArmAngleAllowsBoard()) return "아직 팔이 충분히 당겨지지 않아 탑승할 수 없습니다.";
+        if (IsGrabbedElsewhere(identity, body)) return "이미 다른 기믹이 이 정육면체를 붙잡고 있어 탑승할 수 없습니다.";
+        return null;
+    }
+
     void Update()
     {
-        HandleBoardInput();
 
         if (!launching) return;
 
@@ -295,7 +334,6 @@ public class CatapultBucket : MonoBehaviour
     // 이 메서드 하나로 완결된다(클래스 상단 "C키 탑승" 주석 참고).
     private void HandleBoardInput()
     {
-        if (!Input.GetKeyDown(KeyCode.C)) return;
         if (occupantBody != null) return; // 이미 탑승 중
 
         PlayerMover mover = FindControlledPlayer();

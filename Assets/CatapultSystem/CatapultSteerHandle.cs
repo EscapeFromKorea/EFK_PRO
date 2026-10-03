@@ -110,7 +110,7 @@ using UnityEngine;
 /// (사용자 명시적 확정)** — 구는 현재(도킹된, 확대된) 위치에서 그대로 다시 조작 가능해질 뿐이고,
 /// 걸어/뛰어 나가는 것은 플레이어 몫이다.
 /// </summary>
-public class CatapultSteerHandle : MonoBehaviour
+public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
 {
     [Header("도킹 대상 (구 전용)")]
     [Tooltip("도킹 지점 — 고리 시각 장식의 중심(또는 그 안의 빈 자식). CatapultMenuItem이 자동으로 " +
@@ -173,10 +173,62 @@ public class CatapultSteerHandle : MonoBehaviour
         if (rootBody != null) baseYaw = rootBody.rotation.eulerAngles.y;
     }
 
+    private System.Action onInteract;
+
+    void OnEnable() => InteractionController.Register(this);
+    void OnDisable() => InteractionController.Unregister(this);
+
+    // 키를 직접 읽지 않는다 — 도킹 중인 구에게는 해제(붙잡힌 상태에서도 허용), 그 외엔 구가 범위 안일 때
+    // 도킹을 E 탭 액션으로 올린다. 다른 플레이어가 도킹 중이면 회색 사유로 막는다(키맵 통합안 §2-1).
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        onInteract ??= HandleDockInput;
+
+        if (dockedBody != null)
+        {
+            if (dockedMover == mover)
+            {
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "조향석 해제", enabled = true,
+                    priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteract,
+                    allowWhenGripped = true,
+                });
+            }
+            else if (dockAnchor != null && Vector3.Distance(mover.transform.position, dockAnchor.position) <= dockRange)
+            {
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "조향석 도킹", enabled = false,
+                    reason = "다른 플레이어가 조향석에 도킹되어 있습니다 — Tab으로 그 플레이어를 조작해 해제하세요.",
+                    priority = InteractionPriority.Panel, distance = 0f, execute = onInteract,
+                });
+            }
+            return;
+        }
+
+        if (dockAnchor == null || rootBody == null) return;
+        PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
+        if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Sphere) return;
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+
+        float d = Vector3.Distance(body.position, dockAnchor.position);
+        if (d > dockRange) return;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "조향석 도킹", enabled = true,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+        });
+    }
+
     void Update()
     {
-        HandleDockInput();
-
         // 입력은 여기서 읽고, 실제 회전 대입은 FixedUpdate에서 한다(클래스 상단 "조향" 주석 참고).
         // `dockedBody != null`만으로는 부족하다 — Input.GetAxis("Horizontal")은 전역 축이라, 도킹된
         // 구가 Tab으로 파킹된 동안 다른 플레이어가 A/D를 눌러도 그 값이 그대로 여기 들어와 투석기가
@@ -208,8 +260,6 @@ public class CatapultSteerHandle : MonoBehaviour
 
     private void HandleDockInput()
     {
-        if (!Input.GetKeyDown(KeyCode.C)) return;
-
         if (dockedBody != null)
         {
             // 입력 게이트(DreamThreadController/CatapultLoadController와 같은 패턴, 클래스 상단

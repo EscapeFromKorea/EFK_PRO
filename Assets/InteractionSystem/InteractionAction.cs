@@ -29,6 +29,8 @@ public struct InteractionAction
     public int priority;
     public float distance;
     public Action execute;
+    /// <summary>붙잡힌 상태(탑승·도킹 중)에서도 올리는 해제 액션인가. 붙잡는 쪽이 자기 점유자에게만 올린다.</summary>
+    public bool allowWhenGripped;
 }
 
 public interface IInteractionProvider
