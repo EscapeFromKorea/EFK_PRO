@@ -63,6 +63,14 @@ public class doorPhysics : MonoBehaviour
         isPadPressed = pressed;
     }
 
+    /// <summary>플레이어가 문틈(트리거)에 겹쳐 있어 내려가기를 멈춘 상태인가. 읽기 전용 —
+    /// IsolationEntryDoor가 격리 진입 시 끼임 안전검사에 쓴다(동작 변경 없음).</summary>
+    public bool IsBlocked => isBlocked;
+
+    /// <summary>문이 닫힘 위치(시작 위치)에 도달했는가. 읽기 전용 — 위와 같은 안전검사용.</summary>
+    public bool IsAtClosedPosition =>
+        doorRigidbody != null && (doorRigidbody.position - doorStartPosition).sqrMagnitude < 0.0001f;
+
     private void OnTriggerEnter(Collider other)
     {
         if (!other.CompareTag("Player")) return;
