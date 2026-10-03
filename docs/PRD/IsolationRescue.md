@@ -2,7 +2,7 @@
 
 > 독립 신규 기믹. 실험실 CH2 전용. 출처: Notion "요구사항명세서" —
 > `[실험실 CH2] 격리실 협력 구출 장치`.
-> 상태: **기획 단계 — PRD 작성만 완료, 구현 전.**
+> 상태: **구현 완료(컨트롤러 #104 + 씬 컴포넌트 2026-10-03) — 실제 레벨 배치·콘텐츠 확정·사람 플레이 시험은 남음.** 아래 §7 참고.
 > 스코프 메모: `docs/PRD/RoleClueTerminal.md`(CH7·8 역할 슬롯 시스템)와는 **별도 구현**이다 —
 > 이유는 해당 문서 §1 "CH2 스코프 제외(확정)" 참고. CH2의 "안쪽/바깥쪽"은 위치를 골라 선택하는
 > 역할이 아니라 진입 이벤트로 자동 결정된다.
@@ -147,3 +147,52 @@
 Notion: `[실험실 CH2] 격리실 협력 구출 장치`
 (`https://app.notion.com/p/3e1473544adf80a78f88de45f634177d`). "함께 사용하는 기믹" 링크
 3건은 접근 권한이 없어(404) 확인하지 못했다.
+
+## 7. 구현 현황 (2026-10-03)
+
+컨트롤러·타이머는 #104, 씬 컴포넌트와 시험 배치는 이번 변경이다. `Assets/IsolationRescueSystem/`.
+
+### 컴포넌트 대응 (§3)
+
+| PRD §3 | 구현 | 비고 |
+|---|---|---|
+| `IsolationCaptureTrigger` | `IsolationCaptureTrigger` | 안쪽 방향으로 트리거를 완전히 벗어난 참가자를 후보로 모아 다음 스텝에 판정. 준비 중 바깥으로 되돌아 나오면 취소 |
+| 문 안전검사 | `IsolationEntryDoor` | `doorPhysics`의 끼임·닫힘 상태(`IsBlocked`, `IsAtClosedPosition`, 읽기 전용 신규)로 결과 신호 생성 |
+| `ClueBoard` / `CorrespondenceMap` | 동일 이름 | 보는 사람이 격리된 참가자인지로 가림. 임시 OnGUI |
+| `SequenceLever` | `SequenceLever` | 기존 `LeverHead` 각도를 문턱 에지로 검출해 1회만 신호 |
+| `PowerHoldSwitch` | `PowerHoldSwitch` | 압력판. Player/InteractionItem가 올라서 있는 동안 켜짐 |
+| `ReleaseButton` | `ReleaseButton` + `IsolationReadyButton`(READY_IN/OUT) | E 키. 거부 시 사유 표시 |
+| 개인 추락 복귀 (§2.8) | `IsolationRoleReturn` | 역할별 안전점 선택 후 `RespawnController.RespawnPlayer(root, SectionSafePoint)` 재사용 |
+| (표시) | `IsolationRescueHud` | 상태·남은 시간·(바깥에게만) 진행도 |
+| `IsolationDoor`/`EmergencyDoor` | 신규 코드 없음 | 기존 `doorPhysics` + 컨트롤러 이벤트 배선 |
+
+### 이번에 정한 것 (PRD에 없던 구현 판단)
+
+| 항목 | 정한 값 | 이유 |
+|---|---|---|
+| "완전히 통과" | 트리거를 안쪽 방향(`insideDirection`, 중심 기준 `minDepth` 이상)으로 벗어남 | 문턱에 걸치기만 한 참가자는 후보가 아님 |
+| 동시 통과 판정 순서 | 안쪽으로 깊은 순, 같으면 인스턴스 ID 순 | `OnTriggerExit` 호출 순서가 비결정적이라 "첫 번째"를 고정 |
+| 끼임 판정 | 끼임 1초 이상 지속 또는 6초 안에 못 닫힘 → 막힘 | 스치듯 지나가는 한순간을 막힘으로 보지 않음. 값은 인스펙터에서 조정 |
+| 전원 스위치 | 눌려 있는 동안만 켜짐, 상자(InteractionItem)도 누름으로 침 | 문 패드(`PadTrigger`)와 같은 기준. 상자 고정을 막을지는 기획 결정 |
+| 순서 레버 | `LeverHead` 각도 0.75 이상 도달 시 1회, 0.4 이하로 돌아와야 재무장 | PRD "상태 유지 중 반복 신호 금지". 처음엔 0.9/0.5였으나 실제 플레이어로 밀어 보니 막대가 끝까지 가기 전에 몸이 밀려나 입력이 안 먹어 낮췄다(2026-10-03 실측) |
+| 키 | E (손 채널) | 2026-10-02 키 매핑 통합안과 동일. 컴포넌트마다 `KeyCode` 필드 |
+| 기호 기본값 | 파도=1 / 달=2 / 십자=3 | §4 미확정 콘텐츠 구성안의 원본 예시 그대로 |
+
+### 남은 것
+
+- **참가자 이탈 정책**: 여전히 팀 결정 대기(§5). 이탈 입력은 연결하지 않았다.
+- **정식 레벨 배치**: `Tools > Isolation Rescue > Create Test Room`은 동작 확인용 시험 배치다. 방 배치·비상 동선·실제 콘텐츠는 레벨/기획 확정 후.
+- **상자가 문에 끼는 경우**: `doorPhysics`가 Player 태그만 보므로 진입문 안전검사도 상자는 보지 못한다.
+- **C2-07(구/세모/네모 도형별 끼임)**: 도형별 플레이 시험은 하지 않았다.
+- **사람 플레이**: E 키 반응, 화면 배치, Tab 전환 흐름, 마우스 시점은 Unity 플레이로 확인해야 한다. 레버 밀기는 구와 정육면체로 코드 구동 시험을 했지만 정사면체와 사람 조작은 아직이다.
+
+### 검증 방법
+
+| 방법 | 실행 | 범위 |
+|---|---|---|
+| 컨트롤러 로직 | `Tools > Isolation Rescue > Run Logic Self-Test` | §4 상태 전이, C2-01~06·08 로직 |
+| 씬 컴포넌트 로직 | `Tools > Isolation Rescue > Run Scene Component Self-Test` | 레버 에지, 전원, 진입 판정·동시 통과, 진입문 안전검사, 버튼 거부 사유, 정보 격리, 복귀 선택, 시험 배치 배선 구조 |
+| PlayMode 스모크 | `Tools > Isolation Rescue > Run Play Smoke (enters Play Mode)` | 실제 물리: 통과→확정→문 닫힘→레버→문 열림→전원→성공→재시작, 문틈 끼임 취소 |
+| 시험 씬 | `Tools > Isolation Rescue > Create Test Scene` → `Assets/Scenes/IsolationRescue_Test_local.unity` | 사람이 바로 플레이할 수 있는 씬(플레이어 2명·카메라·리스폰·시험 격리실). 배치모드 검증 `IsolationRescueTestScene.VerifyFromCommandLine`은 **실제 플레이어 오브젝트가 레버를 직접 밀어** 3단계를 끝까지 진행한다 |
+
+배치모드: 앞의 두 개는 `-batchmode -nographic -quit -executeMethod <클래스>.RunFromCommandLine`, 스모크는 `-quit` 없이 `IsolationRescuePlaySmoke.RunFromCommandLine`.
