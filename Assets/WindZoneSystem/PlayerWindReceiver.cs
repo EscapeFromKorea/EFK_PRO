@@ -66,7 +66,7 @@ public class PlayerWindReceiver : MonoBehaviour
     }
 
     /// <summary>WindZone이 겹쳐있는 동안 매 물리 스텝(OnTriggerStay) 호출한다.
-    /// baseWindVelocity = 구역 forward * windSpeed, airMultiplier = 공중일 때 곱할 배율(≥1 권장).</summary>
+    /// baseWindVelocity = 구역 forward * windSpeed(위/아래 성분 포함), airMultiplier = 공중일 때 곱할 배율(≥1 권장).</summary>
     public void SetWindTarget(Vector3 baseWindVelocity, float airMultiplier)
     {
         bool hanging = GetComponent<ConfigurableJoint>() != null;
@@ -106,6 +106,17 @@ public class PlayerWindReceiver : MonoBehaviour
         lastAppliedPush = currentPush;
 
         if (delta.sqrMagnitude < 0.0001f) return;
-        rb.velocity = new Vector3(rb.velocity.x + delta.x, rb.velocity.y, rb.velocity.z + delta.z);
+
+        // 수평 성분은 PlayerMover가 매 물리 프레임 입력 속도로 덮어쓰므로 기존처럼 더한다.
+        // 반면 Y 성분을 같은 방식으로 계속 더하면 중력으로 되돌릴 기회 없이 무한 가속한다.
+        // 바람의 수직 목표 속도를 최소/최대치로 보장하면, 위쪽 바람은 중력보다 빠르게 위로
+        // 떠오르게 하고 아래쪽 바람은 아래로 밀되 점프·낙하의 더 강한 관성은 보존한다.
+        float verticalVelocity = rb.velocity.y;
+        if (currentPush.y > 0f)
+            verticalVelocity = Mathf.Max(verticalVelocity, currentPush.y);
+        else if (currentPush.y < 0f)
+            verticalVelocity = Mathf.Min(verticalVelocity, currentPush.y);
+
+        rb.velocity = new Vector3(rb.velocity.x + delta.x, verticalVelocity, rb.velocity.z + delta.z);
     }
 }
