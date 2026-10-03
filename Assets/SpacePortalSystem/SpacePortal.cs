@@ -353,6 +353,9 @@ public class SpacePortal : MonoBehaviour
         PlayerAccelReceiver accel = rb.GetComponent<PlayerAccelReceiver>();
         if (accel != null) accel.CancelBoost();
 
+        // 출구로 나오는 방향(수평 성분)을 화면이 바라보게 한다 — 안 그러면 카메라는 들어갈 때 방향을 그대로 두어
+        // 출구에서 걸어 나오는 방향과 시점이 어긋난다(직관성, 2026-10-03). 위치 스냅과 같은 프레임에 맞춘다.
+        PlayerFollowCamera.FaceDirection(newVel, rb.transform);
         PlayerFollowCamera.SnapToTarget(rb.transform);
 
         yield return new WaitForFixedUpdate();

@@ -4,9 +4,12 @@ using UnityEngine;
 /// 플레이어 쪽 수신자(리시버는 반드시 이 폴더 안에 둔다 — <c>Assets/PortalSystem/CLAUDE.md</c>가
 /// 이미 지적한 "Player~ 이름이라고 PlayerSystem에 두지 않는다" 함정을 반복하지 않는다).
 ///
-/// 소지(<see cref="CarriedBall"/>)/설치 소유(<see cref="InstalledColor"/>)/조준/회수 상태를 전부
-/// 이 컴포넌트가 갖는다(PRD §4.2). <see cref="EnergyBall"/>이 F 획득 시 그 자리에서 AddComponent한다
+/// 소지(<see cref="CarriedBall"/>)/설치 소유(<see cref="InstalledColor"/>)/조준 상태를 전부
+/// 이 컴포넌트가 갖는다(PRD §4.2). <see cref="EnergyBall"/>이 줍기 시 그 자리에서 AddComponent한다
 /// (리시버는 포탈이 즉석에서 붙이는 <c>Portal.cs</c> 관례와 동일).
+///
+/// R 입력(드랍·회수)은 2026-10-03 제거했다 — 설치하면 볼이 5초 뒤 원래 자리에 재생성돼 불필요하고, R은 리스폰
+/// 전용 키다(키맵 통합안 §6). 포탈을 옮기려면 우클릭 조준으로 다시 설치한다.
 /// </summary>
 [RequireComponent(typeof(PlayerMover))]
 public class PlayerEnergyReceiver : MonoBehaviour
@@ -25,9 +28,6 @@ public class PlayerEnergyReceiver : MonoBehaviour
     [Tooltip("겹침 판정용 박스의 두께(Unit, 포탈 평면 법선 방향).")]
     public float overlapCheckDepth = 0.5f;
 
-    [Header("회수 (R 길게 누름)")]
-    public float recallHoldSeconds = 2f;
-
     /// <summary>지금 들고 있는 볼(없으면 null).</summary>
     public EnergyBall CarriedBall { get; private set; }
 
@@ -40,6 +40,13 @@ public class PlayerEnergyReceiver : MonoBehaviour
     private Renderer[] visualRenderers;
     private MaterialPropertyBlock glowBlock;
 
+    // 몸의 빛은 리스폰 연출 동안 꺼 둔다 — 연출의 페이드는 renderer.materials 인스턴스의 _Color 알파를 보간하는데,
+    // 같은 렌더러에 MaterialPropertyBlock으로 _Color를 덮어 두면 블록이 우선해 알파가 화면에 반영되지 않는다
+    // (볼을 든 채 R을 누르면 페이드 없이 순간이동하던 원인, 2026-10-03). 칠할 색은 따로 기억해 뒀다 복원한다.
+    private EnergyColor? glowColor;
+    private bool glowSuppressed;
+    private RespawnController respawn;
+
     private bool aiming;
     private bool placementValid;
     private PortalSurface aimSurface;
@@ -48,9 +55,6 @@ public class PlayerEnergyReceiver : MonoBehaviour
     private GameObject silhouette;
     private MeshRenderer silhouetteRenderer;
 
-    private float rHoldTimer;
-    private bool rRecallFired;
-
     private void Awake()
     {
         mover = GetComponent<PlayerMover>();
@@ -58,28 +62,46 @@ public class PlayerEnergyReceiver : MonoBehaviour
         glowBlock = new MaterialPropertyBlock();
     }
 
+    private void Start()
+    {
+        respawn = Object.FindObjectOfType<RespawnController>();
+        if (respawn != null) respawn.PlayerRespawned += HandlePlayerRespawned;
+    }
+
     private void OnDestroy()
     {
+        if (respawn != null) respawn.PlayerRespawned -= HandlePlayerRespawned;
         if (silhouette != null) Destroy(silhouette);
+    }
+
+    // 리스폰은 시작 시점에 ExternallyDriven을 먼저 켜고 이 이벤트를 쏜다(연출이 끝나야 꺼진다).
+    private void HandlePlayerRespawned(GameObject player)
+    {
+        if (player != gameObject || glowSuppressed) return;
+        glowSuppressed = true;
+        PaintGlow(null);
     }
 
     private void Update()
     {
+        if (glowSuppressed && !mover.ExternallyDriven)
+        {
+            glowSuppressed = false;
+            PaintGlow(glowColor);
+        }
+
         if (!IsControlledByLocalPlayer)
         {
             // 조작권을 잃은 동안엔 입력을 전부 무시한다(저장소 관용구 — PlayerJump 등과 동일).
             if (aiming) StopAiming();
-            rHoldTimer = 0f;
-            rRecallFired = false;
             return;
         }
 
-        HandleR();
         HandleAim();
     }
 
-    /// <summary>EnergyBall이 근접 F 판정에서 호출한다. 이미 다른 색을 들고 있으면 주울 수 없다
-    /// (기존 동작 그대로 — 재생성은 스왑이 아니라 설치 시점에 건다, <see cref="ConfirmPlacement"/>).</summary>
+    /// <summary>EnergyBall의 E 탭 줍기 액션이 호출한다. 이미 다른 색을 들고 있으면 주울 수 없다
+    /// (재생성은 스왑이 아니라 설치 시점에 건다, <see cref="ConfirmPlacement"/>).</summary>
     public void TryPickup(EnergyBall ball)
     {
         if (ball == null) return;
@@ -93,90 +115,6 @@ public class PlayerEnergyReceiver : MonoBehaviour
         ball.SetCarried(this);
         ApplyGlow(ball.color);
         Debug.Log($"[SpacePortal] {ball.color} 에너지볼 획득.");
-    }
-
-    // ── R: 드랍 / 회수 ───────────────────────────────────────────────────────
-
-    private void HandleR()
-    {
-        if (Input.GetKeyDown(KeyCode.R))
-        {
-            rHoldTimer = 0f;
-            rRecallFired = false;
-        }
-
-        if (Input.GetKey(KeyCode.R))
-        {
-            rHoldTimer += Time.deltaTime;
-            if (!rRecallFired && rHoldTimer >= recallHoldSeconds)
-            {
-                rRecallFired = true;
-                TryRecall();
-            }
-        }
-
-        if (Input.GetKeyUp(KeyCode.R))
-        {
-            if (!rRecallFired) TryDrop();
-            rHoldTimer = 0f;
-            rRecallFired = false;
-        }
-    }
-
-    private void TryDrop()
-    {
-        if (CarriedBall == null) return;
-
-        EnergyBall ball = CarriedBall;
-        CarriedBall = null;
-        ball.SetGround(transform.position + transform.forward * 1f);
-        ApplyGlow(null);
-        Debug.Log($"[SpacePortal] {ball.color} 에너지볼 드랍.");
-    }
-
-    private void TryRecall()
-    {
-        if (!InstalledColor.HasValue) return;
-        if (CarriedBall != null)
-        {
-            // TryPickup과 같은 가드 — 이미 다른 색을 들고 있으면 회수된 볼을 담을 자리가 없다.
-            // 가드 없이 CarriedBall을 덮어쓰면 원래 들고 있던 볼의 참조가 사라져(State는 계속
-            // Carried로 남아 Ground로도 못 돌아옴) 레벨에 유일한 그 색 볼이 영구 봉인된다.
-            Debug.Log($"[SpacePortal] 이미 {CarriedBall.color} 에너지볼을 들고 있어 포탈을 회수할 수 없다. 먼저 드랍하거나 설치해라.");
-            return;
-        }
-
-        EnergyColor color = InstalledColor.Value;
-        EnergyBall ball = FindBallOfColor(color);
-
-        // 설치 후 자동 재생성(EnergyBall.Respawn)된 볼을 다른 플레이어가 이미 주워 간 경우 —
-        // State/Owner를 안 보고 무조건 가져오면 그 플레이어의 CarriedBall 참조가 끊긴 채로 남아
-        // 소지 상태가 꼬인다(2026-09-15 감사에서 발견, Tab 전환만으로도 재현). 이 경우 포탈도
-        // 파괴하지 않고 회수 자체를 취소한다 — 볼을 못 돌려받을 바엔 최소한 포탈이라도 남긴다.
-        if (ball != null && ball.State == EnergyBall.BallState.Carried && ball.Owner != this)
-        {
-            Debug.Log($"[SpacePortal] {color} 에너지볼을 다른 플레이어가 이미 들고 있어 포탈을 회수할 수 없다.");
-            return;
-        }
-
-        SpacePortal portal = color == EnergyColor.Orange ? SpacePortal.Orange : SpacePortal.Blue;
-        InstalledColor = null;
-        if (portal != null) Destroy(portal.gameObject);
-
-        if (ball != null)
-        {
-            CarriedBall = ball;
-            ball.SetCarried(this);
-            ApplyGlow(color);
-        }
-        Debug.Log($"[SpacePortal] {color} 포탈 회수 완료.");
-    }
-
-    private static EnergyBall FindBallOfColor(EnergyColor color)
-    {
-        foreach (EnergyBall b in Object.FindObjectsOfType<EnergyBall>())
-            if (b.color == color) return b;
-        return null;
     }
 
     // ── 조준 / 설치 ──────────────────────────────────────────────────────────
@@ -399,6 +337,12 @@ public class PlayerEnergyReceiver : MonoBehaviour
     private static readonly int ColorId = Shader.PropertyToID("_Color");
 
     private void ApplyGlow(EnergyColor? color)
+    {
+        glowColor = color;
+        if (!glowSuppressed) PaintGlow(color);
+    }
+
+    private void PaintGlow(EnergyColor? color)
     {
         foreach (Renderer r in visualRenderers)
         {
