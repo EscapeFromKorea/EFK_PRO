@@ -127,14 +127,29 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
 
     private System.Action onInteract;
 
+    private static readonly System.Collections.Generic.List<CatapultLoadController> all =
+        new System.Collections.Generic.List<CatapultLoadController>();
+
+    /// <summary>이 플레이어가 어느 투석기 당김 줄에든 연결돼 있는가. 마우스 휠을 같이 쓰는 다른 기믹(태엽 축)이
+    /// 연결 중엔 휠을 양보하게 하는 창구.</summary>
+    public static bool IsConnectedTo(PlayerMover m)
+    {
+        if (m == null) return false;
+        for (int i = 0; i < all.Count; i++)
+            if (all[i].state == State.Connected && all[i].connectedMover == m) return true;
+        return false;
+    }
+
     void OnEnable()
     {
+        all.Add(this);
         InteractionController.Register(this);
         RespawnController.ReleaseHoldRequested += HandleReleaseHold;
     }
 
     void OnDisable()
     {
+        all.Remove(this);
         InteractionController.Unregister(this);
         RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
         DestroyLeash();

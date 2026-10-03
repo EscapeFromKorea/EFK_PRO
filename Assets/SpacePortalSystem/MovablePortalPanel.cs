@@ -57,7 +57,8 @@ public class MovablePortalPanel : MonoBehaviour
     public Collider riderSensor;
 
     [Header("ponytail: 테스트용 임시 드라이버 (§13-8 범위 밖 — 실제 레버/전력/물리력 구현 전까지만)")]
-    [Tooltip("켜면 Q/E 키로 직접 ApplyDrive를 호출해 플레이테스트할 수 있다. 실제 드라이버가 붙으면 꺼라.")]
+    [Tooltip("켜면 ]/[ 키로 직접 ApplyDrive를 호출해 플레이테스트할 수 있다. 실제 드라이버가 붙으면 꺼라. " +
+             "(E/Q는 중앙 상호작용 키라 쓰지 않는다 — 같은 자리의 E 기믹과 같이 반응한다.)")]
     public bool debugKeyboardDrive = false;
 
     public float Progress { get; private set; }
@@ -122,8 +123,8 @@ public class MovablePortalPanel : MonoBehaviour
     private void Update()
     {
         if (!debugKeyboardDrive) return;
-        if (Input.GetKey(KeyCode.E)) ApplyDrive(1f);
-        if (Input.GetKey(KeyCode.Q)) ApplyDrive(-1f);
+        if (Input.GetKey(KeyCode.RightBracket)) ApplyDrive(1f);
+        if (Input.GetKey(KeyCode.LeftBracket)) ApplyDrive(-1f);
     }
 
     private void FixedUpdate()
