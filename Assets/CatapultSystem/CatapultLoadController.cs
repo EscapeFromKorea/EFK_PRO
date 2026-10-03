@@ -6,9 +6,23 @@ using UnityEngine;
 ///
 /// [DreamThreadController와의 차이 — ConfigurableJoint 대신 거리→비율 계산]
 /// `DreamThreadController`의 F 연결/해제 상태머신·동시 1인 연결 게이트 패턴을 이식하되, 실타래처럼
-/// 플레이어 몸에 조인트를 물리지 않는다. 스윙 물리가 필요 없으므로 실타래가 겪은 "로프 물리 안정화가
-/// 최상위 리스크"를 애초에 지지 않는다(PRD §3). 연결된 플레이어는 평소처럼 자유롭게 걸어 다니고,
-/// 이 컨트롤러는 매 프레임 앵커와의 거리만 재서 비율로 변환해 `CatapultArm.BeginPull`에 넘긴다.
+/// 몸을 매달아 스윙시키지 않는다. 스윙 물리가 필요 없으므로 실타래가 겪은 "로프 물리 안정화가
+/// 최상위 리스크"를 애초에 지지 않는다(PRD §3). 연결된 플레이어는 평소처럼 자유롭게 걸어 다니되
+/// `maxTetherDistance` 밖으로는 나가지 못한다(아래 "이동 제한").
+///
+/// [이동 제한 — 2026-10-03, 앵커 XZ 기준 수평 원통형 하드 리밋 조인트]
+/// 연결 중에는 정사면체 몸에 월드 고정 `ConfigurableJoint`(x/y/z 같은 선형 리밋)를 달아 앵커 XZ 중심
+/// 반지름 `maxTetherDistance` 안에 가둔다 — `DreamThreadController`의 로프 구속과 같은 기법이지만
+/// 몸을 `ExternallyDriven`으로 잡지 않으므로 안쪽에서는 `PlayerMover`가 평소처럼 걷게 한다.
+///
+/// **조인트 앵커의 높이를 매 스텝 몸의 높이에 맞춘다**(`(앵커.x, 몸.y, 앵커.z)`). 앵커 높이 그대로 둔 3D 구로
+/// 만들면 앵커가 몸보다 높은 투석기(실측 5.8U 위)에서 수평으로 한계를 밀 때 몸이 구면을 따라 위로 미끄러져
+/// 구의 적도(앵커 높이)까지 떠오른다 — 2026-10-03 Loki 실측(vel.y가 0→7.6, 수평 거리 12.0에서 dy≈0).
+/// 중심을 몸 높이로 따라가게 하면 구속이 수평 반경만 막고 위아래는 자유롭다. velocity를
+/// 직접 깎지 않는 이유: `PlayerMover`가 매 FixedUpdate 속도를 하드 대입하므로 스크립트가 같은 값을
+/// 건드리면 순서 경합으로 구멍이 난다(저장소가 여러 번 치른 함정). 조인트는 솔버가 위치를 되돌린다.
+/// 몸이 외부에 붙잡힌 동안(`ExternallyDriven` — 복귀 연출·탑승·매달림 / `isKinematic` — 굴리기·벽 부착)에는
+/// 조인트를 풀고, 범위 안이면 다시 이어 붙인다. 복귀 순간이동이 조인트에 끌려가 몸이 튕기는 걸 막는다.
 /// 그래서 연결 중에도 `PlayerMover.ExternallyDriven`을 세우지 않는다 — 조준자의 이동 자체가 장전
 /// 메커니즘의 입력이라 막으면 안 된다(실타래의 매달림과 근본적으로 다른 지점).
 ///
@@ -49,7 +63,7 @@ using UnityEngine;
 ///   씬 튜닝 전 임시값 `[TBD]`(정확한 수치·정책은 실측 필요, 아래 필드 툴팁 참고).
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
-public class CatapultLoadController : MonoBehaviour
+public class CatapultLoadController : MonoBehaviour, IInteractionProvider
 {
     private enum State { Idle, Connected }
 
@@ -75,6 +89,13 @@ public class CatapultLoadController : MonoBehaviour
              "임시값(정책 자체가 미확정).")]
     public bool resetRatioOnDisconnect = true;
 
+    [Header("이동 제한 (2026-10-03, 신규) [TBD, 임시값]")]
+    [Tooltip("연결 중 정사면체가 앵커에서 수평(XZ)으로 이 거리(Unit)보다 멀리 가지 못한다. 높이는 제한하지 " +
+             "않는다. 0 이하면 제한하지 않는다. 앵커의 connectRange보다 작게 두면 connectRange로 올려 쓴다" +
+             "(연결하자마자 끌려가지 않게). 씬 튜닝 전 임시값.")]
+    public float maxTetherDistance = 12f;
+
+    private ConfigurableJoint leash;
     private State state = State.Idle;
     private PlayerMover connectedMover;
     private Rigidbody connectedBody;
@@ -104,16 +125,146 @@ public class CatapultLoadController : MonoBehaviour
         lr.enabled = false;
     }
 
+    private System.Action onInteract;
+
+    void OnEnable()
+    {
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    void OnDisable()
+    {
+        InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+        DestroyLeash();
+    }
+
+    // 복귀 대상이 되면 순간이동 전에 조인트부터 푼다. Destroy는 프레임 끝에 반영되고 다음 물리 스텝 전에
+    // 끝나므로, 같은 프레임에 이어지는 위치 이동이 조인트에 끌려가지 않는다. 연결 상태 자체는 유지한다.
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (connectedMover != null && connectedMover == mover) DestroyLeash();
+    }
+
+    void FixedUpdate() => UpdateLeash();
+
+    private void UpdateLeash()
+    {
+        bool want = state == State.Connected && maxTetherDistance > 0f
+                    && connectedBody != null && connectedMover != null && anchor != null
+                    && !connectedMover.ExternallyDriven && !connectedBody.isKinematic;
+        if (!want)
+        {
+            DestroyLeash();
+            return;
+        }
+
+        float limit = Mathf.Max(maxTetherDistance, anchor.connectRange);
+        if (leash == null)
+        {
+            // 복귀 직후처럼 이미 범위 밖이면 안으로 들어올 때까지 잇지 않는다 — 잇는 순간 끌려간다.
+            if (FlatDistance(connectedBody.position, anchor.transform.position) > limit) return;
+            CreateLeash(limit);
+            return;
+        }
+
+        // 앵커는 조향으로 투석기와 함께 움직이고 인스펙터 값도 바뀔 수 있으니 매 스텝 따라간다.
+        // 높이는 몸에 맞춘다 — 수평 반경만 막고 수직으로는 구속하지 않으려는 것(위 "이동 제한" 주석).
+        leash.connectedAnchor = LeashCenter();
+        if (!Mathf.Approximately(leash.linearLimit.limit, limit))
+            leash.linearLimit = new SoftJointLimit { limit = limit, bounciness = 0f, contactDistance = 0.02f };
+    }
+
+    private static float FlatDistance(Vector3 a, Vector3 b) =>
+        Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
+
+    private Vector3 LeashCenter()
+    {
+        Vector3 a = anchor.transform.position;
+        return new Vector3(a.x, connectedBody.position.y, a.z);
+    }
+
+    private void CreateLeash(float limit)
+    {
+        leash = connectedBody.gameObject.AddComponent<ConfigurableJoint>();
+        leash.autoConfigureConnectedAnchor = false;
+        leash.connectedBody = null;                               // 월드 고정 앵커
+        leash.connectedAnchor = LeashCenter();
+        leash.anchor = Vector3.zero;                              // 몸 중심에 건다
+        // x/y/z를 같은 리밋으로 → 중심 반지름 limit의 구속(회전 대칭). 중심 높이를 몸에 맞춰 따라가므로
+        // 실제로는 수평 반경 구속이 된다. 안으로는 느슨한 로프형 하드 리밋.
+        leash.xMotion = ConfigurableJointMotion.Limited;
+        leash.yMotion = ConfigurableJointMotion.Limited;
+        leash.zMotion = ConfigurableJointMotion.Limited;
+        leash.angularXMotion = ConfigurableJointMotion.Free;      // 회전은 건드리지 않는다
+        leash.angularYMotion = ConfigurableJointMotion.Free;
+        leash.angularZMotion = ConfigurableJointMotion.Free;
+        leash.linearLimit = new SoftJointLimit { limit = limit, bounciness = 0f, contactDistance = 0.02f };
+        leash.enablePreprocessing = false;
+    }
+
+    private void DestroyLeash()
+    {
+        if (leash != null) Destroy(leash);
+        leash = null;
+    }
+
+    // 키를 직접 읽지 않는다 — 연결 중인 정사면체에게는 해제(발사), 그 외엔 정사면체가 앵커 범위 안일 때
+    // 연결을 E 탭 액션으로 올린다. 다른 플레이어가 연결 중이면 회색 사유로 막는다(키맵 통합안 §2-1).
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null || anchor == null || arm == null) return;
+        onInteract ??= HandleInput;
+
+        if (state == State.Connected)
+        {
+            if (connectedMover == mover)
+            {
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "당김 줄 해제(발사)", enabled = true,
+                    priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteract,
+                    allowWhenGripped = true,
+                });
+            }
+            else if (Vector3.Distance(mover.transform.position, anchor.transform.position) <= anchor.connectRange)
+            {
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "당김 줄 연결", enabled = false,
+                    reason = "다른 플레이어가 당김 줄에 연결되어 있습니다 — Tab으로 그 플레이어를 조작해 해제하세요.",
+                    priority = InteractionPriority.Panel, distance = 0f, execute = onInteract,
+                });
+            }
+            return;
+        }
+
+        PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
+        if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Tetrahedron) return;
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+
+        float d = Vector3.Distance(body.position, anchor.transform.position);
+        if (d > anchor.connectRange) return;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "당김 줄 연결", enabled = true,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+        });
+    }
+
     void Update()
     {
-        HandleInput();
         if (state == State.Connected) UpdatePull();
     }
 
     private void HandleInput()
     {
-        if (!Input.GetKeyDown(KeyCode.C)) return;
-
         if (state == State.Connected)
         {
             if (connectedMover != null && !connectedMover.IsControlled)
@@ -140,7 +291,9 @@ public class CatapultLoadController : MonoBehaviour
 
         // 9차 개편 — 조준자와 앵커 사이의 거리는 더 이상 당김 비율에 관여하지 않는다(클래스 상단
         // "9차 개편" 주석 참고). 휠 스크롤 누적값만이 유일한 입력이다.
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        // 휠은 전역 입력이라, 연결자가 Tab으로 파킹된 동안 다른 플레이어의 스티커·실타래 휠이 이 팔을 같이
+        // 당기던 문제를 막는다(키맵 통합안 §3 휠 소비 규칙) — 지금 연결자를 조작 중일 때만 받는다.
+        float scroll = connectedMover != null && connectedMover.IsControlled ? Input.GetAxis("Mouse ScrollWheel") : 0f;
         wheelRatio = Mathf.Clamp01(wheelRatio + scroll * wheelSensitivity);
 
         if (arm != null) arm.BeginPull(wheelRatio);
@@ -226,6 +379,7 @@ public class CatapultLoadController : MonoBehaviour
         state = State.Idle;
         connectedMover = null;
         connectedBody = null;
+        DestroyLeash();
         line.enabled = false;
         if (resetRatioOnDisconnect) wheelRatio = 0f; // 다음 연결은 새로 시작(정책, 클래스 상단 주석 참고).
 

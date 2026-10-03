@@ -15,7 +15,7 @@ using UnityEngine;
 /// 광산차 몸체)은 전부 자식 오브젝트의 로컬 스케일로만 표현한다(`RailCartMenuItem` 참고). 그래서
 /// 탑승자를 카트 루트에 직접 부모화해도 전단이 생기지 않는다.
 /// </summary>
-public class RailCartRider : MonoBehaviour
+public class RailCartRider : MonoBehaviour, IInteractionProvider
 {
     [Tooltip("탑승/하차 대상 카트. 비워두면 이 컴포넌트가 붙은 오브젝트의 RailCart를 찾는다.")]
     public RailCart cart;
@@ -39,8 +39,52 @@ public class RailCartRider : MonoBehaviour
 
     // 탑승자가 복귀 대상이 되면(추격자·레이저 피격, 장외, R) 먼저 내려놓는다 — 붙잡힌 채로는
     // RespawnController가 복귀를 거절해 영영 돌아가지 못한다.
-    void OnEnable() => RespawnController.ReleaseHoldRequested += HandleReleaseHold;
-    void OnDisable() => RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+    private System.Action onInteract;
+
+    void OnEnable()
+    {
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+        InteractionController.Register(this);
+    }
+
+    void OnDisable()
+    {
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+        InteractionController.Unregister(this);
+    }
+
+    // 키를 직접 읽지 않는다 — 탑승 중인 플레이어에게는 하차(붙잡힌 상태에서도 허용), 그 외엔 탑승 범위
+    // 안일 때 탑승을 E 탭 액션으로 올린다(키맵 통합안 §2-1). 도형 제한 없음.
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        onInteract ??= OnInteract;
+
+        if (occupantBody != null)
+        {
+            if (occupantMover != mover) return; // 다른 사람이 탄 카트는 건드리지 못한다.
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "하차", enabled = true,
+                priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteract,
+                allowWhenGripped = true,
+            });
+            return;
+        }
+
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+        float d = Vector3.Distance(body.position, transform.position);
+        if (d > boardRange) return;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "레일카 탑승", enabled = true,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+        });
+    }
 
     private void HandleReleaseHold(PlayerMover mover)
     {
@@ -53,9 +97,10 @@ public class RailCartRider : MonoBehaviour
         // 자기 몫만큼은 자가 치유한다 — RailCartRider의 이전 버전이 겪은 것과 같은 소유권 경합
         // 방지(`RailCartRider.cs` 이력 참고).
         if (occupantMover != null) occupantMover.ExternallyDriven = true;
+    }
 
-        if (!Input.GetKeyDown(KeyCode.C)) return;
-
+    private void OnInteract()
+    {
         if (occupantBody != null)
         {
             // occupantMover가 지금 조작 대상이 아니면(Tab으로 다른 도형으로 넘어갔거나, 다른

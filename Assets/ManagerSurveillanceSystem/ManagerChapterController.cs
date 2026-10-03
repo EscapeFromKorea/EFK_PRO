@@ -219,7 +219,7 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
         if (usePoint != null)
         {
             usePoint.SetFeedback("관리자가 잠들었습니다.");
-            usePoint.available = false; // 같은 키(LeftControl)를 쓰는 열쇠와 겹치지 않게.
+            usePoint.available = false; // 같은 키(E)를 쓰는 열쇠와 겹치지 않게.
         }
         if (keyPoint != null) keyPoint.Reveal();
         Debug.Log("[Manager] 완성물 사용 수락 — 관리자 수면 확정.", this);

@@ -413,6 +413,26 @@ public class PlayerFollowCamera : MonoBehaviour
             instance.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
     }
 
+    /// <summary>시점(궤도 yaw)을 월드 방향의 수평 성분으로 돌린다 — 포탈 출구처럼 몸이 어느 쪽을 향해 나오는지
+    /// 화면이 따라가야 할 때 쓴다. 카메라 위치가 <c>타깃 + Euler(pitch, yaw, 0) * offset</c>(offset.z &lt; 0)이라
+    /// yaw 0이면 +Z를 바라보므로 <c>yaw = atan2(d.x, d.z)</c>다. pitch는 건드리지 않는다.
+    ///
+    /// 수평 성분이 거의 없으면(바닥·천장을 향하는 방향) 바꿀 방향이 없으니 무시한다. onlyForTarget을 주면 그
+    /// 대상이 지금 따라가는 타깃일 때만 돌린다(<see cref="SnapToTarget"/>과 같은 이유 — 조작 중이 아닌 플레이어
+    /// 때문에 화면이 돌면 안 된다). 즉시 대입이므로 <see cref="SnapToTarget"/> 직전에 부르면 같은 프레임에
+    /// 위치와 시선이 함께 맞는다.</summary>
+    public static void FaceDirection(Vector3 worldDirection, Transform onlyForTarget = null)
+    {
+        if (instance == null || instance.target == null) return;
+        if (onlyForTarget != null && instance.target != onlyForTarget) return;
+
+        Vector2 horizontal = new Vector2(worldDirection.x, worldDirection.z);
+        const float minHorizontal = 0.1f;
+        if (horizontal.sqrMagnitude < minHorizontal * minHorizontal) return;
+
+        instance.orbitYaw = Mathf.Atan2(horizontal.x, horizontal.y) * Mathf.Rad2Deg;
+    }
+
     // ─── [mnppi 추가] 커서 락 헬퍼 ───
     private static void SetCursorLocked(bool locked)
     {

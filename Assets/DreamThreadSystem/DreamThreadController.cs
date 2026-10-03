@@ -40,7 +40,7 @@ using UnityEngine;
 /// 입력값으로 덮어써 발사 자체가 사라지기 때문이다(아래 Launching).
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
-public class DreamThreadController : MonoBehaviour
+public class DreamThreadController : MonoBehaviour, IInteractionProvider
 {
     [Header("실 길이 (마우스 휠 조절)")]
     [Tooltip("실의 최대 길이(Unit). PRD 진자 수치표가 실 8을 기준으로 한다.")]
@@ -142,34 +142,90 @@ public class DreamThreadController : MonoBehaviour
         lr.enabled = false;
     }
 
-    void Update()
+    private System.Action onInteract;
+
+    void OnEnable() => InteractionController.Register(this);
+
+    // 키를 직접 읽지 않는다(키맵 통합안 §2-1, F → E 탭). 매달린 당사자에게는 "실 놓기"(붙잡힌 상태에서도 허용),
+    // 그 외엔 범위 안에 앵커가 있을 때 "실 연결"을 올린다. 막히는 이유는 회색 사유로 보여 준다.
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
     {
-        if (Input.GetKeyDown(KeyCode.F))
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        onInteract ??= HandleInteract;
+
+        if (state == ThreadState.Hanging)
         {
-            if (state == ThreadState.Hanging)
+            if (activeMover == mover)
             {
-                // 매달린 당사자가 조작 대상일 때만 F로 놓는다. 이 게이트가 없으면 A가 매달린 채
-                // 파킹돼 있고 B를 조작 중일 때 **B가 누른 F로 A의 실이 끊긴다** — 이 컴포넌트는 씬
-                // 싱글턴이라 입력이 누구 것인지 스스로 구분하지 못하기 때문이다. 같은 함수의
-                // HandleWheel과 FixedUpdate의 펌핑·접지이동에는 원래 같은 게이트가 있었고, F만
-                // 빠져 있었다. 설계 의도는 "실을 강제로 끊는 경우는 대상/고리 소멸과 무게 초과
-                // 유예 소진뿐"이다(폴더 CLAUDE.md).
-                //
-                // 여기서 TryConnect로 흘려보내면 안 된다: BeginHang이 activeMover를 B로 덮어써
-                // A는 조인트가 붙고 ExternallyDriven이 true인 채 추적에서 사라진다 = 영구 조작 불능.
-                // 매달림은 동시 1명이므로(단일 state/joint) B는 A가 놓을 때까지 기다린다.
-                if (activeMover == null || activeMover.IsControlled)
-                    Release(intoLaunch: true);
-                else
-                    Debug.Log("[DreamThread] 다른 플레이어가 매달려 있습니다 — Tab으로 그 플레이어를 " +
-                              "조작해 F로 놓으세요(매달림은 동시 1명).");
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "실 놓기", enabled = true,
+                    priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteract,
+                    allowWhenGripped = true,
+                });
+                return;
             }
-            else
+
+            // 매달림은 동시 1명이다 — 다른 플레이어가 매달려 있으면 그가 놓을 때까지 기다린다.
+            float otherDist = NearestAnchorDistance(mover.transform.position);
+            if (otherDist >= 0f)
             {
-                TryConnect(); // Idle 또는 Launching 중 재연결 시도(실패해도 상태 유지)
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "실 연결", enabled = false,
+                    reason = "다른 플레이어가 매달려 있습니다 — Tab으로 그 플레이어를 조작해 놓으세요(매달림은 동시 1명).",
+                    priority = InteractionPriority.Panel, distance = otherDist, execute = onInteract,
+                });
             }
+            return;
         }
 
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+        float d = NearestAnchorDistance(body.position);
+        if (d < 0f) return;
+
+        float weight = PlayerWeight.Of(body);
+        string reason = weight >= hangWeightThreshold
+            ? $"무거워서 실에 매달릴 수 없습니다 (무게 {weight:0.##} ≥ {hangWeightThreshold})."
+            : null;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "실 연결", enabled = reason == null, reason = reason,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+            // 발사(Launching) 중에는 착지 전까지 ExternallyDriven이 켜져 있다 — 이 상태의 재연결을 허용한다
+            // (TryConnect가 먼저 FinishLaunch로 정리한다).
+            allowWhenGripped = state == ThreadState.Launching && activeMover == mover,
+        });
+    }
+
+    private void HandleInteract()
+    {
+        if (state == ThreadState.Hanging)
+        {
+            // 매달린 당사자가 조작 대상일 때만 놓는다. 이 게이트가 없으면 A가 매달린 채 파킹돼 있고 B를
+            // 조작 중일 때 **B가 누른 키로 A의 실이 끊긴다** — 이 컴포넌트는 씬 싱글턴이라 입력이 누구
+            // 것인지 스스로 구분하지 못하기 때문이다. 여기서 TryConnect로 흘려보내면 안 된다: BeginHang이
+            // activeMover를 B로 덮어써 A는 조인트가 붙고 ExternallyDriven이 true인 채 추적에서 사라진다
+            // = 영구 조작 불능. 매달림은 동시 1명이므로 B는 A가 놓을 때까지 기다린다.
+            if (activeMover == null || activeMover.IsControlled)
+                Release(intoLaunch: true);
+            else
+                Debug.Log("[DreamThread] 다른 플레이어가 매달려 있습니다 — Tab으로 그 플레이어를 " +
+                          "조작해 놓으세요(매달림은 동시 1명).");
+        }
+        else
+        {
+            TryConnect(); // Idle 또는 Launching 중 재연결 시도(실패해도 상태 유지)
+        }
+    }
+
+    void Update()
+    {
         if (state == ThreadState.Hanging)
         {
             // 대상이나 고리가 사라진 경우에만 강제로 떼어낸다. **Tab으로 조작권이 넘어가도 실은
@@ -369,6 +425,7 @@ public class DreamThreadController : MonoBehaviour
     // 매단 채 컨트롤러가 꺼지거나 파괴되면 플레이어를 영구 구속/외부주도 상태로 남기지 않도록 원복한다.
     void OnDisable()
     {
+        InteractionController.Unregister(this);
         if (joint != null) Destroy(joint);
         if (activeBody != null) activeBody.constraints = savedConstraints;
         ReturnBodyToMover();
@@ -555,11 +612,18 @@ public class DreamThreadController : MonoBehaviour
         return null;
     }
 
+    // 범위 안 가장 가까운 앵커까지의 거리. 없으면 -1.
+    private static float NearestAnchorDistance(Vector3 from)
+    {
+        ThreadAnchor a = FindNearestAnchorInRange(from);
+        return a != null ? Vector3.Distance(a.transform.position, from) : -1f;
+    }
+
     private static ThreadAnchor FindNearestAnchorInRange(Vector3 from)
     {
         ThreadAnchor best = null;
         float bestSqr = float.PositiveInfinity;
-        foreach (ThreadAnchor a in Object.FindObjectsOfType<ThreadAnchor>())
+        foreach (ThreadAnchor a in ThreadAnchor.All)
         {
             float sqr = (a.transform.position - from).sqrMagnitude;
             if (sqr <= a.connectRange * a.connectRange && sqr < bestSqr)

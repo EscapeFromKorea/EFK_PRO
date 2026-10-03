@@ -33,23 +33,35 @@ using UnityEngine;
 /// 도약("Jump" 입력)과 일반 점프의 이중 발화를 원천 차단한다(부착 중엔 비접지라 PlayerJump가 어차피
 /// 안 뛰지만, 명시적으로 꺼 안전하게 만든다). 탈착 시 다시 켠다.
 ///
-/// [F(로프 매달림)와 벽부착 상호배제]
-/// - 부착 중 F → DreamThreadController보다 먼저 실행되도록(DefaultExecutionOrder -50) 이 컴포넌트가
-///   벽에서 dynamic으로 떼어낸 뒤(도약 없이), 같은 프레임 컨트롤러가 근처 고리에 정상적으로 매단다.
-///   키네마틱 바디에 컨트롤러가 조인트를 붙이면 스윙이 깨지므로, F 순간 반드시 dynamic으로 되돌린다.
-/// - 로프 매달림/발사 중(컨트롤러가 mover.enabled=false로 관리)엔 G를 무시한다 — 그 세모에 키네마틱을
-///   걸면 조인트/스윙과 충돌한다. 판별: 조작 중 플레이어의 mover.enabled==false면 컨트롤러가 소유 중.
+/// [입력 — 2026-10-03, F·G·T → E 탭/홀드 (키맵 통합안 §2-1)]
+/// 키를 직접 읽지 않고 <see cref="InteractionController"/>에 액션을 올린다: 핀 박기+벽 부착 = E 탭, 핀 전부 회수 =
+/// E 홀드, 벽에서 떼기 = E 탭(부착 중, 붙잡힌 상태에서도 허용). 점프 도약 탈착은 Space 그대로다.
+/// - 핀 박기는 벽에 거의 닿았을 때(placeRange 안)에만 올라오고, 그때는 DreamThreadController의 "실 연결"보다
+///   **한 단계 높다**(Panel + 10). 처음엔 같은 순위에서 거리로 가렸는데(벽 타기 루프가 최하위로는 깨지기 때문),
+///   핀이 벽에서 0.2U 띄워 박혀 벽 앞 0.4U의 몸에서는 방금 박은 핀이 벽보다 가까워 **연타하면 자기 핀에 매달려
+///   튕겨 나갔다**(2026-10-03 Loki 실측: 연타 직후 ExternallyDriven + 옆 속도). 핀에 매달리려면 벽에서 placeRange
+///   밖으로 물러난다.
+/// - 벽 부착 중 탭은 **떼기만** 한다. 예전엔 F 한 번이 "떼기 + 근처 고리에 매달기"를 연쇄했지만 입력 하나는
+///   동작 하나다 — 매달리려면 한 번 더 누른다. 키네마틱 바디에 컨트롤러가 조인트를 붙이면 스윙이 깨지므로
+///   매달리기 전에 반드시 dynamic으로 되돌려져야 하는 점은 그대로다(부착 중 연결 액션은 붙잡힘 필터가 막는다).
+/// - 로프 매달림/발사 중(컨트롤러가 ExternallyDriven을 세움)엔 핀 박기를 올리지 않는다 — 그 세모에 키네마틱을
+///   걸면 조인트/스윙과 충돌한다.
 ///
 /// [하드룰] 핀 생성/회수·벽부착·클라이밍 전부 이 폴더 안에서 끝난다. PlayerSystem은 IsControlled/
 /// Kind/Rigidbody를 읽고, mover의 enabled는 건드리지 않으며(부착은 키네마틱이라), PlayerJump.enabled만
 /// 런타임 토글한다 — 파일 수정 없음.
 /// </summary>
 [DefaultExecutionOrder(-50)]
-public class ThreadPinPlacer : MonoBehaviour
+public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
 {
     [Header("레이캐스트 (벽 탐지)")]
     [Tooltip("세모 중심에서 이동 방향으로 쏘는 레이의 최대 사거리(Unit). 이 안에 벽이 없으면 핀 생성 실패.")]
     public float rayRange = 6f;
+    [Tooltip("핀 박기를 올리는(그리고 실제로 박는) 최대 거리(Unit) — 세모 중심에서 벽 표면까지. 벽에 거의 닿았을 때만 " +
+             "활성화되게 좁게 둔다(2026-10-03, 6U 사거리에선 공중에서도 박혀 연속으로 누르면 벽에 끼는 문제가 있었다). " +
+             "rayRange와 이 값 중 작은 쪽이 실제 사거리다. 세모 반크기가 있으므로 몸이 벽에 붙었을 때 중심 거리가 " +
+             "이미 그만큼이라 너무 작게 두면 영영 안 박힌다.")]
+    public float placeRange = 1.2f;
     [Tooltip("핀을 박을 수 있는 '벽' 레이어. 기본 전체(~0). 플레이어(자신·타 도형) 콜라이더는 레이어가 " +
              "아니라 계층(PlayerMover 보유)으로 판별해 제외하므로, 벽이 플레이어와 같은 레이어(흔한 Default)여도 박힌다.")]
     public LayerMask wallLayer = ~0;
@@ -88,62 +100,144 @@ public class ThreadPinPlacer : MonoBehaviour
     private Rigidbody attachedBody;
     private PlayerJump attachedJump;
 
+    // 벽 탐지 캐시 — 액션이 "지금 벽 앞이라 박을 수 있나"를 알아야 하는데 레이캐스트를 매 프레임 쏘면 낭비라
+    // probeInterval마다만 갱신한다. 실제 박을 때(ExecutePlace)는 그 순간 새로 쏜다.
+    private const float ProbeInterval = 0.1f;
+    private float nextProbeTime;
+    private bool probeWallValid;
+    private float probeWallDistance;
+
+    private System.Action onPlace, onDetach, onRetrieve;
+
+    void OnEnable() => InteractionController.Register(this);
+
     void Update()
     {
-        PlayerMover controlled = FindControlledPlayer();
+        PlayerMover controlled = InteractionController.Controlled;
         CacheMoveDir(controlled);
 
-        // 부착 중이면 부착 세모의 입력(F 탈착 / 점프 도약탈착)만 처리하고 다른 처리는 막는다.
-        // 파킹(부착 세모가 조작 대상이 아님) 시엔 아무것도 안 한다 — UpdateWhileAttached의 IsControlled 가드.
+        // 부착 중이면 부착 세모의 입력(점프 도약탈착)만 처리한다. 파킹(부착 세모가 조작 대상이 아님) 시엔
+        // 아무것도 안 한다 — UpdateWhileAttached의 IsControlled 가드.
         if (wallAttached)
         {
+            probeWallValid = false;
             UpdateWhileAttached();
             return;
         }
 
-        bool place = Input.GetKeyDown(KeyCode.G);
-        bool retrieve = Input.GetKeyDown(KeyCode.T);
-        if (!place && !retrieve) return;
+        RefreshWallProbe(controlled);
+    }
 
-        if (controlled == null)
+    private static bool IsTetrahedron(PlayerMover mover)
+    {
+        PlayerShapeIdentity identity = mover != null ? mover.GetComponent<PlayerShapeIdentity>() : null;
+        return identity != null && identity.Kind == PlayerShapeStats.ShapeKind.Tetrahedron;
+    }
+
+    private void RefreshWallProbe(PlayerMover controlled)
+    {
+        if (Time.time < nextProbeTime) return;
+        nextProbeTime = Time.time + ProbeInterval;
+
+        probeWallValid = false;
+        if (controlled == null || controlled.ExternallyDriven || !IsTetrahedron(controlled)) return;
+        Rigidbody body = controlled.GetComponent<Rigidbody>();
+        if (body == null || body.isKinematic) return;
+
+        if (TryRaycastWall(body, out RaycastHit wall))
         {
-            Debug.Log("[DreamThread] 조작 중인 플레이어를 찾지 못했습니다(핀).");
+            probeWallValid = true;
+            probeWallDistance = wall.distance;
+        }
+    }
+
+    private bool AnyPin()
+    {
+        foreach (GameObject p in pins)
+            if (p != null) return true;
+        return false;
+    }
+
+    // 벽 부착 중에는 떼기(탭)와 핀 전체 회수(홀드)를, 아니면 세모가 벽 앞일 때 핀 박기(탭)를 올린다. 핀이 있으면
+    // 회수(홀드)가 가능해지므로 이 세모의 E 탭은 "뗄 때" 실행으로 밀린다(통합안 §2-1 탭/홀드 규칙).
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        PlayerMover controlled = InteractionController.Controlled;
+        if (controlled == null) return;
+
+        onPlace ??= ExecutePlace;
+        onDetach ??= () => DetachFromWall(withLeap: false);
+        onRetrieve ??= ExecuteRetrieve;
+
+        if (wallAttached)
+        {
+            if (attachedMover != controlled) return;
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "벽에서 떼기", enabled = true,
+                priority = InteractionPriority.StateOwner, distance = 0f, execute = onDetach,
+                allowWhenGripped = true,
+            });
+            if (AnyPin())
+            {
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Hold,
+                    verb = "핀 전부 회수", enabled = true,
+                    priority = InteractionPriority.Block, distance = 0f, execute = onRetrieve,
+                    allowWhenGripped = true,
+                });
+            }
             return;
         }
 
-        // 핀 박기·벽부착·회수는 세모 전용 — Kind로 판정(질량/태그 하드코딩 금지).
-        PlayerShapeIdentity identity = controlled.GetComponent<PlayerShapeIdentity>();
-        if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Tetrahedron)
-        {
-            Debug.Log("[DreamThread] 핀은 세모만 다룰 수 있습니다(Kind 게이트).");
-            return;
-        }
+        if (!IsTetrahedron(controlled)) return;
 
+        if (probeWallValid)
+        {
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "핀 박고 벽에 붙기", enabled = true,
+                priority = InteractionPriority.Panel + 10, distance = probeWallDistance, execute = onPlace,
+            });
+        }
+        if (AnyPin())
+        {
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Hold,
+                verb = "핀 전부 회수", enabled = true,
+                priority = InteractionPriority.Block, distance = 0f, execute = onRetrieve,
+            });
+        }
+    }
+
+    private void ExecutePlace()
+    {
+        PlayerMover controlled = InteractionController.Controlled;
+        if (controlled == null || controlled.ExternallyDriven || !IsTetrahedron(controlled)) return;
         Rigidbody body = controlled.GetComponent<Rigidbody>();
         if (body == null) return;
-
-        // T = 수동 회수(전용 키). 범위 제한 없이 박은 핀을 **전부** 제거한다. G(박기)와 분리돼 있어
-        // 핀 근처에서 G를 눌러도 회수되지 않는다. 자동 회수(3번째 박을 때 가장 오래된 것)는 별개로 유지.
-        if (retrieve)
-        {
-            int removed = RetrieveAllPins();
-            Debug.Log(removed > 0
-                ? $"[DreamThread] 핀 {removed}개를 모두 회수했습니다(T)."
-                : "[DreamThread] 회수할 핀이 없습니다(T).");
-            return;
-        }
-
-        // G = 항상 박기+부착. 컨트롤러가 로프로 매달거나 발사 중인 세모면 무시 — 그 세모에 키네마틱을
-        // 걸면 조인트/스윙과 충돌한다. 판별은 `ExternallyDriven`으로 한다(예전엔 컨트롤러가 mover를
-        // 아예 꺼서 `!enabled`가 신호였는데, 이제는 로스터를 유지하려고 끄지 않고 플래그만 세운다).
-        if (controlled.ExternallyDriven) return;
         TryPlacePinAndAttach(controlled, body);
+    }
+
+    // 범위 제한 없이 박은 핀을 **전부** 제거한다. 벽 부착은 풀지 않는다. 자동 회수(3번째 박을 때 가장 오래된
+    // 것)는 별개로 유지.
+    private void ExecuteRetrieve()
+    {
+        int removed = RetrieveAllPins();
+        Debug.Log(removed > 0
+            ? $"[DreamThread] 핀 {removed}개를 모두 회수했습니다."
+            : "[DreamThread] 회수할 핀이 없습니다.");
     }
 
     // 매단 채 컨트롤러가 꺼지듯, 부착 채로 이 컴포넌트가 꺼지면 플레이어를 키네마틱·점프불가로
     // 남기지 않도록 원복한다.
     void OnDisable()
     {
+        InteractionController.Unregister(this);
         if (wallAttached) DetachFromWall(withLeap: false);
     }
 
@@ -158,14 +252,7 @@ public class ThreadPinPlacer : MonoBehaviour
         }
         if (!attachedMover.IsControlled) return;
 
-        // F: 벽에서 dynamic으로 떼어낸다(도약 없이). 실행 순서 -50라 이 detach가 먼저 끝난 뒤
-        // 같은 프레임 DreamThreadController가 근처 고리에 정상 매단다. F 입력은 소비하지 않는다.
-        if (Input.GetKeyDown(KeyCode.F))
-        {
-            DetachFromWall(withLeap: false);
-            return;
-        }
-
+        // 떼기(E 탭)는 중앙 입력이 처리한다(CollectActions). 여기는 점프 도약 탈착만 읽는다.
         // 점프: 위로 도약하며 탈착. 고리는 박은 자리에 남는다.
         if (Input.GetButtonDown("Jump"))
         {
@@ -251,7 +338,7 @@ public class ThreadPinPlacer : MonoBehaviour
     {
         wall = default;
         if (dir.sqrMagnitude < 1e-4f) return false;
-        RaycastHit[] hits = Physics.RaycastAll(origin, dir.normalized, rayRange, wallLayer, QueryTriggerInteraction.Ignore);
+        RaycastHit[] hits = Physics.RaycastAll(origin, dir.normalized, Mathf.Min(rayRange, placeRange), wallLayer, QueryTriggerInteraction.Ignore);
         float bestDist = float.PositiveInfinity;
         foreach (RaycastHit h in hits)
         {
@@ -273,6 +360,7 @@ public class ThreadPinPlacer : MonoBehaviour
         body.isKinematic = true; // 중력·힘·mover velocity 전부 무시 → 그 자리에 완전 고정(미세 이동 없음).
         if (attachedJump != null) attachedJump.enabled = false;
         wallAttached = true;
+
         Debug.Log("[DreamThread] 세모가 벽에 붙어 고정됐습니다. 점프로 위로 도약하며 탈착합니다.");
     }
 
@@ -348,10 +436,4 @@ public class ThreadPinPlacer : MonoBehaviour
         return pinMaterial;
     }
 
-    private static PlayerMover FindControlledPlayer()
-    {
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
-            if (m.IsControlled) return m;
-        return null;
-    }
 }
