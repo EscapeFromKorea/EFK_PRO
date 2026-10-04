@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90b9ad9c885c39d419b163538ac49a07, type: 3}
+  m_Name: Lab_TetrahedronProfile
+  m_EditorClassIdentifier: 
+  shapeKind: 2
+  statsAsset: {fileID: 11400000, guid: bf34ef7ad036c1e4ea74aa2ae2f70beb, type: 2}
+  constraints: 112
+  angularDrag: 0.5
+  maxAngularVelocity: 30
+  interpolation: 1
+  collisionDetectionMode: 2
+  solverIterations: 12
+  solverVelocityIterations: 4
+  airControlMultiplierOverride: -1
+  rollRadiusOverride: -1
+  groundCheckRadiusOverride: -1
+  groundCheckDistanceOverride: -1
+  penetrationThreshold: 0.02
+  stuckFrameThreshold: 5
+  recoveryFrameThreshold: 30
+  safePositionBufferSize: 20
+  safePositionSampleInterval: 0.5
+  overlapCheckRadius: 1
+  cleanFramesToResetStuck: 5
+  safeSampleMaxVerticalSpeed: 0.5
