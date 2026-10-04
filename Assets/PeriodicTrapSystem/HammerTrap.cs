@@ -69,13 +69,23 @@ public class HammerTrap : PeriodicTrapBase
         topPosition = body.position;
         bottomPosition = topPosition + Vector3.down * dropDistance;
         phase = Phase.TopWait;
-        phaseElapsed = Mathf.Repeat(startPhase, Mathf.Max(0.05f, topWaitSeconds));
+        phaseElapsed = 0f;
         mpb = new MaterialPropertyBlock();
     }
 
-    private bool IsDangerous => phase == Phase.Descending || phase == Phase.BottomWait;
+    private bool IsDangerous => IsRunning && (phase == Phase.Descending || phase == Phase.BottomWait);
 
-    private void FixedUpdate()
+    protected override void StartRun()
+    {
+        phase = Phase.TopWait;
+        phaseElapsed = Mathf.Repeat(startPhase, Mathf.Max(0.05f, topWaitSeconds));
+    }
+
+    protected override bool StepReturn() => MoveToward(topPosition, ascendSpeed);
+
+    protected override void OnRunStopped() => ApplyTelegraph(false);
+
+    protected override void StepRun()
     {
         UpdateTelegraph();
 
@@ -135,7 +145,12 @@ public class HammerTrap : PeriodicTrapBase
     private void UpdateTelegraph()
     {
         if (telegraphMarker == null) return;
-        bool warn = phase == Phase.TopWait && (topWaitSeconds - phaseElapsed) <= telegraphLeadSeconds;
+        ApplyTelegraph(phase == Phase.TopWait && (topWaitSeconds - phaseElapsed) <= telegraphLeadSeconds);
+    }
+
+    private void ApplyTelegraph(bool warn)
+    {
+        if (telegraphMarker == null) return;
         mpb.SetColor("_Color", warn ? telegraphColor : idleColor);
         telegraphMarker.SetPropertyBlock(mpb);
     }

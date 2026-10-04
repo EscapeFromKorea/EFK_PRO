@@ -41,6 +41,7 @@ public class AxeTrap : PeriodicTrapBase
 
     private Rigidbody body;
     private Quaternion restRotation;
+    private Quaternion currentRotation; // 마지막으로 MoveRotation에 넘긴 값(정지 복귀가 여기서 이어받는다)
     private float swingClock;
     private float warmupElapsed;
     private bool warmupDone;
@@ -63,12 +64,40 @@ public class AxeTrap : PeriodicTrapBase
         body.isKinematic = true;
         body.useGravity = false;
         restRotation = body.rotation;
-        swingClock = startPhase;
+        currentRotation = restRotation;
+        swingClock = 0f;
     }
 
-    private bool IsDangerous => warmupDone; // 예고를 지나면 왕복 내내 위험(사양 §4 표).
+    private bool IsDangerous => IsRunning && warmupDone; // 예고를 지나면 왕복 내내 위험(사양 §4 표).
 
-    private void FixedUpdate()
+    protected override void StartRun()
+    {
+        swingClock = startPhase;
+        warmupElapsed = 0f;
+        warmupDone = false;
+        lastCycle = -1;
+    }
+
+    /// <summary>중립 자세로 되돌아간다. 속도는 왕복 중 최대 각속도(A·2π/P)와 같다 — 평소 움직임보다 빠르지
+    /// 않게. 무피해 이동이라 끼임 안전 정지를 지지대 기준으로 그대로 적용한다.</summary>
+    protected override bool StepReturn()
+    {
+        float speed = maxAngleDegrees * 2f * Mathf.PI / Mathf.Max(0.05f, period);
+        Quaternion next = Quaternion.RotateTowards(currentRotation, restRotation, speed * Time.fixedDeltaTime);
+
+        if (supportCollider != null)
+        {
+            Vector3 localCenter = Vector3.Scale(supportCollider.center, transform.lossyScale);
+            Vector3 delta = next * localCenter - currentRotation * localCenter;
+            if (!CanAdvance(supportCollider, delta)) return false;
+        }
+
+        currentRotation = next;
+        body.MoveRotation(next);
+        return Quaternion.Angle(next, restRotation) < 0.01f;
+    }
+
+    protected override void StepRun()
     {
         if (!warmupDone)
         {
@@ -95,6 +124,7 @@ public class AxeTrap : PeriodicTrapBase
         if (canAdvance)
         {
             swingClock += Time.fixedDeltaTime;
+            currentRotation = nextRot;
             body.MoveRotation(nextRot);
         }
         // 압착 중이면 swingClock을 그대로 둔다 — 다음 프레임 같은 각도에서 재판정, 벗어나면 자연 재개.

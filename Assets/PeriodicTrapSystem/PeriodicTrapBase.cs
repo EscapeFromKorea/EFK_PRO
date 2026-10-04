@@ -43,6 +43,83 @@ public abstract class PeriodicTrapBase : MonoBehaviour
              "받는 구간이면 이 값도 늘려야 한다.")]
     public float squeezeCheckDistance = 0.7f;
 
+    [Header("공통 — 시작/정지 (docs/PRD/ZoneEntry.md §3)")]
+    [Tooltip("씬 시작과 동시에 작동을 시작한다(기본, 기존 배치의 동작 그대로). 끄면 외부(구역 진입 감지 등)가 " +
+             "Activate()를 부를 때까지 초기 자세로 정지해 있다.")]
+    public bool autoActivateOnStart = true;
+
+    // Idle = 초기 자세로 정지 / Running = 주기 동작 중 / Returning = 정지 요청 후 초기 자세로 되돌아가는 중
+    private enum RunState { Idle, Running, Returning }
+    private RunState runState = RunState.Idle;
+    private bool pendingActivate;
+
+    /// <summary>주기 동작 중인가. 서브클래스의 IsDangerous가 이걸 함께 본다 — 정지·복귀 중에는 피해가 꺼진다.</summary>
+    protected bool IsRunning => runState == RunState.Running;
+
+    /// <summary>작동을 시작한다. 이미 작동 중이면 무시한다(중복 입력 무시). 초기 자세로 되돌아가는 중이면
+    /// 복귀가 끝난 직후 시작한다 — 항상 초기 자세의 첫 상태(도끼=예고, 망치=상부 대기, 가시=수납)에서
+    /// 시작한다는 규칙(PRD H-06 "다음 시작은 예고 단계부터")을 지키기 위해서다.</summary>
+    public void Activate()
+    {
+        if (runState == RunState.Running) return;
+        if (runState == RunState.Returning) { pendingActivate = true; return; }
+        BeginRun();
+    }
+
+    /// <summary>작동을 멈추고 초기 자세로 되돌아간다. 피해는 즉시 꺼지고 복귀 내내 꺼져 있다. 복귀는
+    /// 평소 이동 속도로 하며 끼임 안전 정지를 그대로 적용한다. 작동 중이 아니면 보류 중인 Activate()만
+    /// 취소한다.</summary>
+    public void Deactivate()
+    {
+        pendingActivate = false;
+        if (runState != RunState.Running) return;
+
+        runState = RunState.Returning;
+        ResetHitWindow();
+        OnRunStopped();
+    }
+
+    private void BeginRun()
+    {
+        runState = RunState.Running;
+        ResetHitWindow();
+        StartRun();
+    }
+
+    private void Start()
+    {
+        if (autoActivateOnStart) Activate();
+    }
+
+    private void FixedUpdate()
+    {
+        if (runState == RunState.Running)
+        {
+            StepRun();
+        }
+        else if (runState == RunState.Returning && StepReturn())
+        {
+            runState = RunState.Idle;
+            if (pendingActivate)
+            {
+                pendingActivate = false;
+                BeginRun();
+            }
+        }
+    }
+
+    /// <summary>작동 시작 시 상태 기계를 첫 상태로 돌린다(자세는 이미 초기 자세다).</summary>
+    protected abstract void StartRun();
+
+    /// <summary>작동 중 한 물리 스텝.</summary>
+    protected abstract void StepRun();
+
+    /// <summary>초기 자세로 한 스텝 되돌아간다. 도착하면 true. 피해는 꺼진 상태다.</summary>
+    protected abstract bool StepReturn();
+
+    /// <summary>정지 요청 시 호출 — 예고 표시처럼 작동 중에만 켜져 있던 것을 끈다.</summary>
+    protected virtual void OnRunStopped() { }
+
     private readonly HashSet<Rigidbody> hitThisActivation = new HashSet<Rigidbody>();
     private static readonly Collider[] overlapBuffer = new Collider[8];
 

@@ -57,13 +57,23 @@ public class SpikeTrap : PeriodicTrapBase
         retractedPosition = body.position;
         extendedPosition = retractedPosition + Vector3.up * popDistance;
         phase = Phase.Retracted;
-        phaseElapsed = Mathf.Repeat(startPhase, Mathf.Max(0.05f, retractedWaitSeconds));
+        phaseElapsed = 0f;
         mpb = new MaterialPropertyBlock();
     }
 
-    private bool IsDangerous => phase == Phase.Rising || phase == Phase.Extended;
+    private bool IsDangerous => IsRunning && (phase == Phase.Rising || phase == Phase.Extended);
 
-    private void FixedUpdate()
+    protected override void StartRun()
+    {
+        phase = Phase.Retracted;
+        phaseElapsed = Mathf.Repeat(startPhase, Mathf.Max(0.05f, retractedWaitSeconds));
+    }
+
+    protected override bool StepReturn() => MoveToward(retractedPosition, retractingSpeed);
+
+    protected override void OnRunStopped() => ApplyTelegraph(false);
+
+    protected override void StepRun()
     {
         UpdateTelegraph();
 
@@ -121,8 +131,12 @@ public class SpikeTrap : PeriodicTrapBase
 
     private void UpdateTelegraph()
     {
+        ApplyTelegraph(phase == Phase.Retracted && (retractedWaitSeconds - phaseElapsed) <= telegraphLeadSeconds);
+    }
+
+    private void ApplyTelegraph(bool warn)
+    {
         if (telegraphMarker == null) return;
-        bool warn = phase == Phase.Retracted && (retractedWaitSeconds - phaseElapsed) <= telegraphLeadSeconds;
         mpb.SetColor("_Color", warn ? telegraphColor : idleColor);
         telegraphMarker.SetPropertyBlock(mpb);
     }
