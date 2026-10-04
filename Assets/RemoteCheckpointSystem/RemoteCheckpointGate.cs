@@ -63,14 +63,27 @@ public class RemoteCheckpointGate : MonoBehaviour
     {
         unlocked = false;
         stored = false;
-        RespawnController.RestartCheckpoint(restartReturnZone, restartClearZones);
+
+        // B는 다른 씬(CH4)에 있어 인스펙터 참조로 못 담는다 — 지울 구역 목록에 ID로 찾은 B를 더한다.
+        // 로드돼 있지 않거나 ID가 겹치면 건너뛴다(그 경우 저장도 된 적이 없다).
+        List<RespawnZone> clear = new List<RespawnZone>();
+        if (restartClearZones != null) clear.AddRange(restartClearZones);
+        if (TryFindTarget(out RespawnZone b, warn: false)) clear.Add(b);
+        RespawnController.RestartCheckpoint(restartReturnZone, clear);
     }
 
     private void OnEntry()
     {
-        if (!unlocked || stored) return;
+        if (stored) return;
+        if (!unlocked)
+        {
+            // 잠긴 A에 닿는다 = 성공 신호가 안 왔거나 실패 출구에서 A에 접근할 수 있는 배치 오류다.
+            Debug.LogWarning($"[RemoteCheckpointGate] '{name}': 잠겨 있어 '{targetCheckpointId}'를 저장하지 않는다 — " +
+                             "CH2 성공 신호(onSuccess→SetUnlocked)가 연결됐는지, 실패 출구에서 A에 닿지 않는지 확인해라.", this);
+            return;
+        }
 
-        if (!TryFindTarget(out RespawnZone target)) return;
+        if (!TryFindTarget(out RespawnZone target, warn: true)) return;
 
         // 저장에 실패하면 stored를 세우지 않는다 — B가 나중에 로드되거나 배선이 고쳐진 뒤 재진입하면 다시 시도된다.
         if (!RespawnController.TryStoreCheckpoint(target))
@@ -85,12 +98,12 @@ public class RemoteCheckpointGate : MonoBehaviour
     }
 
     /// <summary>ID가 같은 활성 RespawnZone이 정확히 하나일 때만 성공한다. "첫 번째 B"를 임의로 고르지 않는다.</summary>
-    private bool TryFindTarget(out RespawnZone target)
+    private bool TryFindTarget(out RespawnZone target, bool warn)
     {
         target = null;
         if (string.IsNullOrEmpty(targetCheckpointId))
         {
-            Debug.LogWarning($"[RemoteCheckpointGate] '{name}': targetCheckpointId가 비어 있어 저장하지 않는다.", this);
+            if (warn) Debug.LogWarning($"[RemoteCheckpointGate] '{name}': targetCheckpointId가 비어 있어 저장하지 않는다.", this);
             return false;
         }
 
@@ -100,7 +113,7 @@ public class RemoteCheckpointGate : MonoBehaviour
 
         if (matches.Count != 1)
         {
-            Debug.LogWarning($"[RemoteCheckpointGate] '{name}': checkpointId '{targetCheckpointId}'인 활성 RespawnZone이 " +
+            if (warn) Debug.LogWarning($"[RemoteCheckpointGate] '{name}': checkpointId '{targetCheckpointId}'인 활성 RespawnZone이 " +
                              $"{matches.Count}개라 저장하지 않는다(정확히 1개여야 한다 — B 씬이 안 로드됐거나 ID가 없거나 겹침).", this);
             return false;
         }
