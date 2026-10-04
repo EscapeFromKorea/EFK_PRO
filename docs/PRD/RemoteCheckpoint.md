@@ -3,7 +3,8 @@
 > 기존 `RespawnSystem` 확장 + 신규 감지 컴포넌트. 실험실 CH2 → CH4 연결 전용.
 > 출처: Notion "요구사항명세서" — `[실험실 CH2] 원격 체크포인트 — CH4 지름길 복귀`
 > (`https://app.notion.com/p/3ef473544adf80bfa8c0f4a04c00dfbb`).
-> 상태: **기획 단계 — PRD 작성만 완료, 구현 전.** 확정 사항은 2026-10-04 사용자 확인.
+> 상태: **1차 구현 완료(2026-10-04) — 테스트 씬 플레이 시험 통과(R-01·03·05·08·10·11, R-09는 겹침 문제 없음 확인).** 확정 사항은 2026-10-04 사용자 확인.
+> 시험 씬: `Assets/Scenes/RemoteCheckpointTest.unity`(§9). 구현 파일: `Assets/RemoteCheckpointSystem/`, `RespawnSystem` 최소 변경.
 > 의존: `docs/PRD/IsolationRescue.md`(성공 신호), `docs/PRD/ZoneEntry.md`(A의 진입 판정).
 
 ## 1. 기획 의도 / 목적
@@ -123,11 +124,11 @@ CH2 격리 퍼즐을 **제한시간 안에** 끝낸 팀이 CH4 지름길 문을 
 |---|---|
 | 재시작 후 팀 체크포인트는 **지정 구역으로 되돌림** | 확정 (2026-10-04) |
 | A의 진입 판정은 `ZoneEntryDetector` 재사용 | 확정 (2026-10-04) |
-| 폴더 `RemoteCheckpointSystem`, 컴포넌트명 `RemoteCheckpointGate` | **초안** — 구현 시 확인 |
-| ID는 문자열 `checkpointId`, 순서는 정수 `progressOrder` | **초안** — 원문은 "ID", "진행 순서"만 말함 |
-| 순서를 쓰는 구역과 안 쓰는 구역이 섞였을 때 | 원문은 "순서가 빠진 맵4 구역은 덮어쓰지 않고 배치 오류"까지만 말함. 반대(현재가 순서 없음, 새 구역이 순서 있음) 처리는 미정 |
-| 재시작 시 되돌릴 구역·지울 구역 목록 | 미정 — 맵 담당 배선 |
-| 동시 복귀 분산 방식 | 미정 — 실측 후 결정 |
+| 폴더 `RemoteCheckpointSystem`, 컴포넌트명 `RemoteCheckpointGate` | 구현됨(2026-10-04) |
+| ID는 문자열 `checkpointId`, 순서는 정수 `progressOrder`(+`useProgressOrder`) | 구현됨(2026-10-04) |
+| 순서를 쓰는 구역과 안 쓰는 구역이 섞였을 때 | **결정(2026-10-04): 현재가 순서 없음 + 새 구역이 순서 있음 → 저장 허용**(기존 "마지막 구역이 이긴다" 유지). 반대(순서 있는 현재를 순서 없는 구역이 덮음)와 순서 중복은 배치 오류로 거절 |
+| 재시작 시 되돌릴 구역·지울 구역 목록 | 게이트 인스펙터 `restartReturnZone`·`restartClearZones`로 열어 둠 — 채우는 건 맵 담당 |
+| 동시 복귀 분산 방식 | **미구현** — R-09 실측 후 결정(현재는 세 도형이 같은 중앙점) |
 | `R` 안내 문구 표시 방식 | 미정 — 원문 문구: "R을 누르면 CH4 시작으로 이동" |
 | 실제 CH2·CH4 씬 | 현재 브랜치에 없다(`Assets/Scenes`에는 `Lab_CH1`·`Lab_CH2`만). CH4 씬이 들어온 뒤 시험 |
 
@@ -146,6 +147,35 @@ CH2 격리 퍼즐을 **제한시간 안에** 끝낸 팀이 CH4 지름길 문을 
 | R-09 | 세 도형이 B로 동시 복귀 | 서로 겹친 채 조작 불능이 되지 않는다 |
 | R-10 | 챕터 전체 재시작 | A 잠금, B 활성 해제, 팀 체크포인트가 지정 구역으로 복귀. 이전 시도의 상태가 남지 않는다 |
 | R-11 | 순서 없는 구역이 순서 있는 활성 체크포인트를 덮어쓰려 함 | 덮어쓰지 않고 배치 오류가 남는다 |
+
+## 9. 구현 요약과 시험 씬 (2026-10-04)
+
+**`RespawnSystem` 변경(허가받음, 필요한 부분만)**
+- `RespawnZone`: `checkpointId`·`useProgressOrder`·`progressOrder` 필드만 추가.
+- `RespawnController`: `TryStoreCheckpoint`(저장 성공 여부 반환), `PassesProgressOrder`, `RestartCheckpoint(returnTo, clearZones)` 추가.
+  `StoreCheckpoint`는 bool을 반환한다. 순서 거절은 `claimed`에 넣지 않는다. 기존 `SetCheckpoint`·`RespawnPlayer` 시그니처는 그대로다.
+- `RestartCheckpoint`: 현재 체크포인트 깃발을 내리고 `clearZones`의 잡음 기록·깃발을 지운 뒤 `returnTo`를 팀 체크포인트로 저장한다(순서 비교 없음). `returnTo`가 null이면 체크포인트 없음 상태.
+
+**`RemoteCheckpointGate`**: `ZoneEntryDetector`(새 진입마다) 필수, Awake에서 코드로 `OnValidEntry`에 연결.
+`SetUnlocked(bool)`·`RestartChapter()`·`OnCheckpointStored`. 저장 실패 시 `stored`를 세우지 않아 재시도된다.
+
+**시험 씬 `RemoteCheckpointTest`** — `Tools > RemoteCheckpointSystem > Create Test Scene`으로 다시 만들 수 있다(기존 씬은 건드리지 않음).
++X 방향 일직선: `CH2_Start`(순서10) → `CH2_Mid`(20) → `CH2_Back`(5, 안 밟은 과거 구역) → **A**(x=0, 폭 20 전체) →
+`Legacy_NoOrder`(순서 없음) → `B_CH4Start`(순서100, id `CH4_Start`). 세 도형은 `CH2_Start`에서 시작한다.
+화면 패널/키로 CH2 신호를 흉내 낸다: **F1** 성공(해금) / **F2** 실패(잠금) / **F3** 챕터 재시작.
+
+| 시험 | 조작 | 기대 |
+|---|---|---|
+| R-08 | 해금 없이 A 통과 | 저장 안 됨, `Stored: False`, 안내 없음 |
+| R-01·R-05 | F1 → A 진입 → `R` / 다른 도형도 A 진입 | B 깃발 초록, 안내 1회, `R` 누른 도형만 B로 이동 |
+| R-03 | B 활성 뒤 `CH2_Back` 진입 | 복귀점은 B 유지(조용히 거절) |
+| R-11 | B 활성 뒤 `Legacy_NoOrder` 진입 | 콘솔 배치 오류, B 유지 |
+| R-04 | (다른 씬) 순서 안 쓰는 일반 구역 | 기존 저장 동작 그대로 |
+| R-07 | 씬에서 B의 id를 지우거나 둘로 복제 → A 진입 | 저장 안 됨, 경고에 A 이름·ID |
+| R-10 | F3 | A 잠금, B 깃발 해제, 팀 체크포인트가 `CH2_Start`로 |
+| R-09 | 세 도형이 B에서 동시에 `R`(Tab 전환 후 연속) | **실측 항목** — 겹침 여부 확인 |
+
+R-02·R-06(B 씬 지연 로드)은 단일 씬이라 이 씬으로는 못 본다.
 
 ## 전체 재시작 처리
 
