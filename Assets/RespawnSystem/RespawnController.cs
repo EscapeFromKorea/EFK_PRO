@@ -178,7 +178,63 @@ public class RespawnController : MonoBehaviour
         instance.StoreCheckpoint(zone);
     }
 
-    private void StoreCheckpoint(RespawnZone zone)
+    /// <summary>SetCheckpoint와 같은 저장 경로이되 <b>실제로 저장됐는지</b>를 돌려준다(RemoteCheckpointGate용).
+    /// 이미 잡은 구역·순서 역행·배치 오류·컨트롤러 없음은 false.</summary>
+    public static bool TryStoreCheckpoint(RespawnZone zone)
+    {
+        if (zone == null || instance == null) return false;
+        return instance.StoreCheckpoint(zone);
+    }
+
+    /// <summary>챕터 전체 재시작용(RemoteCheckpointGate.RestartChapter가 부른다). 현재 체크포인트를 비우고
+    /// clearZones의 잡음 기록·깃발을 지운 뒤, returnTo가 있으면 그 구역을 팀 체크포인트로 되돌린다
+    /// (순서 비교는 비운 뒤라 적용되지 않는다). returnTo가 null이면 체크포인트 없음 상태가 된다.</summary>
+    public static void RestartCheckpoint(RespawnZone returnTo, IEnumerable<RespawnZone> clearZones)
+    {
+        if (instance == null)
+        {
+            Debug.LogWarning("[Respawn] 씬에 RespawnController가 없어 체크포인트를 되돌리지 못했다.");
+            return;
+        }
+
+        if (instance.currentZone != null) instance.currentZone.SetFlagState(RespawnZone.FlagState.Hidden);
+        if (clearZones != null)
+            foreach (RespawnZone z in clearZones)
+            {
+                if (z == null) continue;
+                instance.claimed.Remove(z);
+                z.SetFlagState(RespawnZone.FlagState.Hidden);
+            }
+
+        instance.currentZone = null;
+        instance.hasCheckpoint = false;
+        if (returnTo == null) return;
+        instance.claimed.Remove(returnTo);
+        instance.StoreCheckpoint(returnTo);
+    }
+
+    /// <summary>진행 순서 규칙. 현재 체크포인트가 순서를 쓸 때만 개입한다 — 순서를 안 쓰는 기존 맵은 항상 통과다.
+    /// 현재가 순서 없음이고 새 구역이 순서 있음이면 통과(마지막 구역이 이기는 기존 규칙 그대로).</summary>
+    private bool PassesProgressOrder(RespawnZone zone)
+    {
+        if (currentZone == null || !currentZone.useProgressOrder) return true;
+
+        if (!zone.useProgressOrder)
+        {
+            Debug.LogError($"[Respawn] 배치 오류: 진행 순서가 없는 '{zone.name}'이 순서 있는 체크포인트 " +
+                           $"'{currentZone.name}'을 덮으려 해 거절했다. 이 구역에도 progressOrder를 줘라.", zone);
+            return false;
+        }
+        if (zone.progressOrder == currentZone.progressOrder)
+        {
+            Debug.LogError($"[Respawn] 배치 오류: '{zone.name}'과 '{currentZone.name}'의 progressOrder가 " +
+                           $"{zone.progressOrder}로 같아 어느 쪽이 뒤인지 알 수 없다. 거절했다.", zone);
+            return false;
+        }
+        return zone.progressOrder > currentZone.progressOrder; // 작으면 과거 구역 — 조용히 거절
+    }
+
+    private bool StoreCheckpoint(RespawnZone zone)
     {
         // **한 번 잡은 구역은 다시 활성화되지 않는다.** 뒤로 걸어가 이전 체크포인트를 다시 밟으면
         // 복귀 지점이 뒤로 밀려 진행이 되감기고, 어려운 구간을 통과한 직후에 죽으면 그 구간을 다시
@@ -190,7 +246,12 @@ public class RespawnController : MonoBehaviour
         //
         // 파괴된 구역이 목록에 남지만 정리하지 않는다 — 파괴 후 재생성된 구역은 다른 인스턴스라
         // 새로 잡히고, 씬에 미리 배치되는 오브젝트라 목록이 자라지 않는다.
-        if (!claimed.Add(zone)) return;
+        if (claimed.Contains(zone)) return false;
+
+        // 순서 거절은 claimed에 넣지 않는다 — 거절된 구역이 나중에 정당하게 앞 순서가 될 수도 있어서다
+        // (재시작으로 현재가 되돌려진 뒤 등).
+        if (!PassesProgressOrder(zone)) return false;
+        claimed.Add(zone);
 
         // 초록 깃발은 씬에서 정확히 하나 — 직전 체크포인트는 "지나온 경로"인 흰 깃발로 내린다.
         // 잡은 곳을 전부 초록으로 두면 실제 저장된 체크포인트는 하나뿐인데 여러 개가 켜져 있어
@@ -204,6 +265,7 @@ public class RespawnController : MonoBehaviour
         hasCheckpoint = true;
         warnedNoCheckpoint = false;
         Debug.Log($"[Respawn] 체크포인트 갱신: '{zone.name}' (낙하 {DropPosition}, 페이드 바닥 {groundPoint})");
+        return true;
     }
 
     /// <summary>외부 기믹이 리스폰을 강제 발동하는 진입점(낙석 피격 등). 인자는 맞은 플레이어의 Root.

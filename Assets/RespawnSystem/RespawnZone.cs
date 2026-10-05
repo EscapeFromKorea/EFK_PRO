@@ -44,6 +44,19 @@ public class RespawnZone : MonoBehaviour
              "띄워 배치해도 바닥을 찾게 해주는 여유분이다.")]
     public float groundRayExtra = 2f;
 
+    [Header("원격 체크포인트 / 진행 순서 (선택 — 안 쓰면 기존 동작 그대로. docs/PRD/RemoteCheckpoint.md)")]
+    [Tooltip("RemoteCheckpointGate가 이 구역을 찾는 ID. 비워 두면 원격 저장 대상이 아니다. 씬 전체에서 " +
+             "유일해야 한다(둘 이상이면 게이트가 저장하지 않는다).")]
+    public string checkpointId;
+
+    [Tooltip("켜면 progressOrder로 진행 순서를 비교한다. 현재 체크포인트가 순서를 쓰는 동안은 순서가 " +
+             "더 큰 구역만 저장된다(아직 안 밟은 과거 구역이 덮어쓰지 못한다). 순서 없는 구역이 순서 있는 " +
+             "체크포인트를 덮으려 하면 배치 오류로 거절된다.")]
+    public bool useProgressOrder;
+
+    [Tooltip("진행 순서(클수록 뒤). 같은 진행 구간에서 중복되면 배치 오류다.")]
+    public int progressOrder;
+
     [Header("깃발 (시각화 — 비워 두면 깃발 없이 동작한다)")]
     [Tooltip("게양될 깃발의 Renderer. 막대(Pole) 아래에 두고, 인스펙터에 배치한 위치가 '게양 완료' " +
              "지점이 된다(게양 연출은 아래 raiseFromLocalY에서 여기까지 올라온다).")]
