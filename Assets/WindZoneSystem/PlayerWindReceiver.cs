@@ -101,6 +101,20 @@ public class PlayerWindReceiver : MonoBehaviour
             : Vector3.zero; // 구역을 벗어나 이번 스텝에 갱신이 없었으면 즉시 제거
         insideZoneThisStep = false;
 
+        // 비조작(Tab 파킹)/입력잠금 도형은 PlayerMover가 수평 속도를 재대입하지 않고 DampWhenUncontrolled로
+        // 감쇠만 한다. 이때 아래 가산 경로를 타면 push가 매 스텝 누적돼 조작 중보다 2~3배 빠르게 밀린다
+        // (2026-10-10 코드 리뷰 중-3). 조작 중 입력이 없을 때와 같은 결과(수평 속도 = push)로 맞춘다.
+        // 매달림(ExternallyDriven)은 진자라 건드리지 않는다.
+        bool damped = mover != null && !mover.useTorqueRolling && !mover.ExternallyDriven
+                      && (!mover.IsControlled || mover.InputLocked);
+        if (damped)
+        {
+            if (currentPush.sqrMagnitude > 0.0001f)
+                rb.velocity = new Vector3(currentPush.x, rb.velocity.y, currentPush.z);
+            lastAppliedPush = currentPush;
+            return;
+        }
+
         bool accumulates = mover != null && mover.useTorqueRolling;
         Vector3 delta = accumulates ? (currentPush - lastAppliedPush) : currentPush;
         lastAppliedPush = currentPush;
