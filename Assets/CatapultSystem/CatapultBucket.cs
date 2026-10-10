@@ -285,6 +285,9 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
     {
         InteractionController.Unregister(this);
         RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+        // 비활성화로 갱신이 멈추면 탑승자가 부모화+isKinematic인 채(또는 착지 대기 ExternallyDriven인 채)
+        // 영구히 남는다 — 복귀 훅과 같은 경로로 놓는다(2026-10-10 점검).
+        HandleReleaseHold(occupantMover != null ? occupantMover : launchingMover);
     }
 
     // 복귀가 이 몸을 지목하면 순간이동 전에 버킷에서 스스로 내려놓는다. 탑승 중엔 부모화+isKinematic이라

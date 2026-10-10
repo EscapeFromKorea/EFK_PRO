@@ -185,6 +185,8 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
     {
         InteractionController.Unregister(this);
         RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+        // 비활성화로 갱신이 멈추면 도킹된 몸이 isKinematic+ExternallyDriven인 채 영구히 남는다(2026-10-10 점검).
+        if (dockedMover != null) Undock();
     }
 
     // 복귀가 도킹된 구를 지목하면 순간이동 전에 스스로 해제한다(2026-10-10 B안, docs/PRD/Respawn.md §310).
