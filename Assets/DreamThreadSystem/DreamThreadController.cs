@@ -144,7 +144,21 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
 
     private System.Action onInteract;
 
-    void OnEnable() => InteractionController.Register(this);
+    void OnEnable()
+    {
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    // 복귀(R·위험 피격)가 이 몸을 지목하면 순간이동 전에 스스로 놓는다. 이 훅이 없으면 매달린 몸은
+    // RespawnController가 거절해 위험 장치의 피격 카운터만 소진되고 면역이 됐다(2026-10-10 B안,
+    // docs/PRD/Respawn.md §310). 발사 중(Launching)은 조인트가 이미 없고 ExternallyDriven만 남아 있다.
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (activeMover == null || activeMover != mover) return;
+        if (state == ThreadState.Hanging) Release(false);
+        else if (state == ThreadState.Launching) FinishLaunch();
+    }
 
     // 키를 직접 읽지 않는다(키맵 통합안 §2-1, F → E 탭). 매달린 당사자에게는 "실 놓기"(붙잡힌 상태에서도 허용),
     // 그 외엔 범위 안에 앵커가 있을 때 "실 연결"을 올린다. 막히는 이유는 회색 사유로 보여 준다.
@@ -426,6 +440,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
     void OnDisable()
     {
         InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
         if (joint != null) Destroy(joint);
         if (activeBody != null) activeBody.constraints = savedConstraints;
         ReturnBodyToMover();
