@@ -259,6 +259,13 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
                    (carrier != null && carrier.Carried != null ? carriedSnapDistance : snapDistance) + "칸 안, 나란히 맞대세요.";
         if (CountStructureWith(candBlock, aimedBlock) > maxBlocksPerStructure)
             return $"구조물이 최대 {maxBlocksPerStructure}개를 넘어 결합할 수 없습니다.";
+        // 정렬된 자세가 플레이어·지형과 겹치면 결합 순간 물리가 밀어내며 튕긴다 — 미리 막는다.
+        // 든 블록은 들고 있는 정육면체 자신과 겹쳐도 막지 않는다 — 들고 있다는 건 바로 그 옆이라는 뜻이고,
+        // 겹침은 PlayerBlockCarrier가 결합 뒤 몸이 빠져나올 때까지 충돌을 무시해 풀어 준다.
+        Transform ignoreRoot = carrier != null && carrier.Carried == aimedBlock && controlledPlayer != null
+            ? controlledPlayer.transform : null;
+        if (aimedBlock.AlignedPoseBlockedBy(candBlock, aimedFace, candFace, out Collider blocker, ignoreRoot))
+            return $"결합하면 '{blocker.name}'과(와) 겹칩니다 — 자리를 비키거나 다른 면을 맞대세요.";
         return null;
     }
 
