@@ -170,12 +170,19 @@ public class SpacePortal : MonoBehaviour
 
     private bool IsInFront(Vector3 worldPos) => transform.InverseTransformPoint(worldPos).z >= 0f;
 
-    private void OnTriggerEnter(Collider other)
+    private void OnTriggerEnter(Collider other) => TryTrack(other);
+
+    // 쿨다운 중에 이미 겹쳐 있던 바디는 Enter가 다시 오지 않아 추적이 안 됐다 — 출구 트리거 안에 머문 채
+    // 쿨다운이 끝나면 되돌아가기가 안 먹었다(2026-10-10 코드 리뷰 중-19). Stay가 같은 판정을 이어 한다.
+    private void OnTriggerStay(Collider other) => TryTrack(other);
+
+    private void TryTrack(Collider other)
     {
         if (Partner == null) return;
 
         Rigidbody body = other.attachedRigidbody;
         if (body == null) return;
+        if (tracked.ContainsKey(body)) return; // Stay가 매 스텝 부르므로 가장 싼 검사를 먼저.
 
         PlayerShapeIdentity identity = body.GetComponentInParent<PlayerShapeIdentity>();
         if (identity != null)
@@ -303,6 +310,11 @@ public class SpacePortal : MonoBehaviour
         PlayerShapeIdentity identity = body.GetComponentInParent<PlayerShapeIdentity>();
         if (identity != null)
         {
+            // 굴리기 텀블 도중이면 AdvanceTumble이 순간이동 직후 몸을 옛 피벗 쪽으로 되끌어간다
+            // (2026-10-10 코드 리뷰 중-22). 순간이동은 모드 규칙과 양립하지 않으므로 모드를 끝내고 보낸다.
+            PlayerRollModeReceiver roll = body.GetComponent<PlayerRollModeReceiver>();
+            if (roll != null && roll.RollModeActive) roll.SetRollMode(false);
+
             // 플레이어는 몸 회전을 건드리지 않는다(§2 — FreezeRotation이라 회전이라는 물리량이 없다).
             StartCoroutine(TeleportPlayerRoutine(identity.GetComponent<PlayerMover>(), body, newPos, newVel, partner.exitControlLockSeconds));
         }
