@@ -76,6 +76,14 @@ public class PlayerAccelReceiver : MonoBehaviour
     {
         if (state == State.None) return;
 
+        // 실타래 매달림·투석기 탑승/착지 대기·레일카·복귀 연출처럼 몸을 외부가 소유한 동안에는 부스트가
+        // velocity를 통째 대입해 소유자의 이동을 덮어쓴다(2026-10-10 코드 리뷰 중-14). 부스트를 버린다.
+        if ((mover != null && mover.ExternallyDriven) || rb.isKinematic)
+        {
+            CancelBoost();
+            return;
+        }
+
         float currentY = rb.velocity.y; // 중력/점프는 건드리지 않음
 
         Vector3 inputVel = Vector3.zero;
