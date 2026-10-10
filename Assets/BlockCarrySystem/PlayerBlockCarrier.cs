@@ -128,6 +128,8 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
 
     private void Update()
     {
+        if (pendingBlockCol != null) UpdatePendingIgnore();
+
         // 조작권이 없어도 자동 드롭 조건은 계속 감시한다(다른 도형 조작 중 이 몸이 리스폰될 수 있다).
         // 순간이동·크기 변화는 "직전 프레임 대비"라, 감시 후 이번 프레임 스냅샷을 항상 갱신한다
         // (안 그러면 픽업 직후 첫 프레임에 오래된 lastPos와 비교해 오탐 드롭이 난다).
@@ -175,7 +177,13 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
     public SnapBlock Carried => carried;
 
     /// <summary>든 블록을 지금 위치에 그대로 놓는다(공간 검사 없음). 같은 프레임에 결합하기 직전에 부른다.</summary>
-    public void ReleaseInPlace() => DropInPlace("결합을 위해 들기 해제");
+    public void ReleaseInPlace()
+    {
+        // 결합 자세가 이 몸과 겹칠 수 있다 — 충돌 무시를 바로 풀지 않고 몸이 빠져나올 때까지 유지한다.
+        keepIgnoreUntilClear = true;
+        DropInPlace("결합을 위해 들기 해제");
+        keepIgnoreUntilClear = false;
+    }
 
     private void OnInteractTap()
     {
@@ -225,7 +233,8 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         }
 
         carriedBody.transform.SetPositionAndRotation(
-            transform.position + Vector3.up * carryHeight, carriedRotation);
+            transform.position + Vector3.up * EffectiveCarryHeight(), carriedRotation);
+
     }
 
     // ── 타겟팅 ────────────────────────────────────────────────
@@ -302,7 +311,8 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
 
         carried = aimed;
         carriedBody = rb;
-        carriedRotation = rb.transform.rotation;
+        // 움직이는(굴러가는) 블록을 집어도 비스듬한 채 얹히지 않게, 가장 가까운 축 정렬 자세로 고정한다.
+        carriedRotation = SnapToAxes(rb.rotation);
 
         // SnapBlock 컴포넌트를 비활성화 — SnapBlockController(용접 대상 탐색)와 PlayerCubeDock
         // (도킹 대상 탐색)는 전부 FindObjectsOfType<SnapBlock>()로 후보를 찾는데, 비활성 컴포넌트는
@@ -333,7 +343,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
     // 바라보는 방향 앞쪽 상단에 내려놓는다. 공간이 막혀 있으면 거부.
     private void TryDropForward()
     {
-        Vector3 target = transform.position + LookDir() * dropDistance + Vector3.up * carryHeight;
+        Vector3 target = transform.position + LookDir() * EffectiveDropDistance() + Vector3.up * EffectiveCarryHeight();
 
         if (!IsDropSpaceClear(target, carriedRotation))
         {
@@ -349,8 +359,28 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
     {
         if (carried == null) return;
         Vector3 here = carriedBody != null ? carriedBody.transform.position
-                                           : transform.position + Vector3.up * carryHeight;
+                                           : transform.position + Vector3.up * EffectiveCarryHeight();
         PlaceCarriedAt(here, carriedRotation, reason);
+    }
+
+    // 결합 직후 겹침을 푸는 중인 충돌 무시 쌍. 블록 콜라이더와 몸 콜라이더가 더 이상 겹치지 않으면 푼다.
+    private bool keepIgnoreUntilClear;
+    private Collider pendingBlockCol;
+    private readonly System.Collections.Generic.List<Collider> pendingPlayerCols =
+        new System.Collections.Generic.List<Collider>();
+
+    private void UpdatePendingIgnore()
+    {
+        if (pendingBlockCol == null) { pendingPlayerCols.Clear(); return; }
+
+        Bounds bb = pendingBlockCol.bounds;
+        foreach (Collider pc in pendingPlayerCols)
+            if (pc != null && pc.enabled && bb.Intersects(pc.bounds)) return;
+
+        foreach (Collider pc in pendingPlayerCols)
+            if (pc != null) Physics.IgnoreCollision(pendingBlockCol, pc, false);
+        pendingPlayerCols.Clear();
+        pendingBlockCol = null;
     }
 
     private void PlaceCarriedAt(Vector3 pos, Quaternion rot, string reason)
@@ -367,7 +397,15 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
             rb.angularVelocity = Vector3.zero;
         }
 
-        if (block != null)
+        if (block != null && keepIgnoreUntilClear)
+        {
+            pendingBlockCol = block.GetComponent<Collider>();
+            pendingPlayerCols.Clear();
+            pendingPlayerCols.AddRange(ignoredWithPlayer);
+            ignoredWithPlayer.Clear();
+            block.enabled = true;
+        }
+        else if (block != null)
         {
             IgnoreCollisionWithPlayer(block, false);
             block.enabled = true; // 다시 용접·도킹 대상 탐색에 보이게.
@@ -467,6 +505,45 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         return true;
     }
 
+    private static Quaternion SnapToAxes(Quaternion q)
+    {
+        Vector3 up = NearestAxis(q * Vector3.up);
+        Vector3 fwd = Vector3.ProjectOnPlane(q * Vector3.forward, up);
+        if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.ProjectOnPlane(q * Vector3.right, up);
+        return Quaternion.LookRotation(NearestAxis(fwd), up);
+    }
+
+    private static Vector3 NearestAxis(Vector3 v)
+    {
+        float ax = Mathf.Abs(v.x), ay = Mathf.Abs(v.y), az = Mathf.Abs(v.z);
+        if (ax >= ay && ax >= az) return new Vector3(Mathf.Sign(v.x), 0f, 0f);
+        if (ay >= az) return new Vector3(0f, Mathf.Sign(v.y), 0f);
+        return new Vector3(0f, 0f, Mathf.Sign(v.z));
+    }
+
+    // 든 블록이 정육면체 몸과 겹치지 않도록 인스펙터 값을 "최소값"으로 쓰고, 두 몸의 크기가 더 크면 그만큼
+    // 띄운다. 블록이 크거나 정육면체가 커진/작아진 상태여도 머리 위·앞쪽에서 서로 파고들지 않는다.
+    private Vector3 PlayerHalfExtents()
+    {
+        Collider pc = shapeId != null ? shapeId.solidCollider : null;
+        return pc != null ? pc.bounds.extents : Vector3.one * 0.5f;
+    }
+
+    // 기준은 루트 피벗이 아니라 몸 콜라이더의 윗면이다 — 루트 피벗이 콜라이더 중심보다 아래(실측 0.5U)라서
+    // "피벗 + 두 반높이"로 재면 0.5U만큼 겹쳤다(2026-10-10 Loki dbg_carry_tick: 높이 오차로 intersect=True).
+    private float EffectiveCarryHeight()
+    {
+        Collider pc = shapeId != null ? shapeId.solidCollider : null;
+        float top = pc != null ? pc.bounds.max.y - transform.position.y : PlayerHalfExtents().y;
+        return Mathf.Max(carryHeight, top + CarriedHalfExtents().y + 0.05f);
+    }
+
+    private float EffectiveDropDistance()
+    {
+        Vector3 p = PlayerHalfExtents(), b = CarriedHalfExtents();
+        return Mathf.Max(dropDistance, Mathf.Max(p.x, p.z) + Mathf.Max(b.x, b.z) + 0.1f);
+    }
+
     private Vector3 CarriedHalfExtents()
     {
         Collider col = carriedBody != null ? carriedBody.GetComponent<Collider>() : null;
@@ -509,7 +586,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
 
         if (carried != null)
         {
-            Vector3 target = transform.position + LookDir() * dropDistance + Vector3.up * carryHeight;
+            Vector3 target = transform.position + LookDir() * EffectiveDropDistance() + Vector3.up * EffectiveCarryHeight();
             pos = target;
             dropClear = IsDropSpaceClear(target, carriedRotation);
             c = dropClear ? colorOk : colorReject;
