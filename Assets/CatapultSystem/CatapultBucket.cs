@@ -275,8 +275,48 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
 
     private System.Action onInteract;
 
-    void OnEnable() => InteractionController.Register(this);
-    void OnDisable() => InteractionController.Unregister(this);
+    void OnEnable()
+    {
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    void OnDisable()
+    {
+        InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+    }
+
+    // 복귀가 이 몸을 지목하면 순간이동 전에 버킷에서 스스로 내려놓는다. 탑승 중엔 부모화+isKinematic이라
+    // 이 훅이 없으면 RespawnController가 거절하고, 풀리는 길은 발사(정사면체가 당김 앵커에 닿아야 함)뿐이라
+    // 투석기가 장외로 떨어지면 영영 복귀하지 못했다(2026-10-10 B안, docs/PRD/Respawn.md §310).
+    // 발사 스윙 도중이면 CatapultArm이 램프 종료 시 빈 버킷으로 처리한다(탑승자 null이면 속도 대입만 생략).
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (mover == null) return;
+
+        // 발사 직후 착지 대기 중(ExternallyDriven)인 몸 — 이미 버킷에서 분리된 뒤다.
+        if (launching && launchingMover == mover)
+        {
+            mover.ExternallyDriven = false;
+            launching = false;
+            launchingMover = null;
+            launchingShape = null;
+            return;
+        }
+
+        if (occupantBody == null || occupantMover != mover) return;
+
+        occupantBody.transform.SetParent(occupantOriginalParent, true);
+        occupantBody.isKinematic = false;
+        occupantBody.interpolation = occupantOriginalInterpolation;
+
+        occupantBody = null;
+        occupantMover = null;
+        occupantShapeController = null;
+        occupantOriginalParent = null;
+        overlapCount = 0;
+    }
 
     // 키를 직접 읽지 않는다 — 정육면체가 탑승 범위 안이면 E 탭 액션을 올리고, 막힌 이유는 회색 사유로
     // 보여 준다(키맵 통합안 §2-1). 탑승 중에는 하차 키가 없다(발사로만 내린다).

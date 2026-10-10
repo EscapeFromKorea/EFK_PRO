@@ -175,8 +175,24 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
 
     private System.Action onInteract;
 
-    void OnEnable() => InteractionController.Register(this);
-    void OnDisable() => InteractionController.Unregister(this);
+    void OnEnable()
+    {
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    void OnDisable()
+    {
+        InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+    }
+
+    // 복귀가 도킹된 구를 지목하면 순간이동 전에 스스로 해제한다(2026-10-10 B안, docs/PRD/Respawn.md §310).
+    // 도킹은 isKinematic+ExternallyDriven이라 이 훅이 없으면 위험 피격 복귀가 거절된다.
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (dockedMover != null && dockedMover == mover) Undock();
+    }
 
     // 키를 직접 읽지 않는다 — 도킹 중인 구에게는 해제(붙잡힌 상태에서도 허용), 그 외엔 구가 범위 안일 때
     // 도킹을 E 탭 액션으로 올린다. 다른 플레이어가 도킹 중이면 회색 사유로 막는다(키맵 통합안 §2-1).
