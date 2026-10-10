@@ -120,6 +120,10 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
 
     private static PlayerMover FindControlledPlayer()
     {
+        // 조작 대상은 InteractionController가 이미 매 프레임 한 번 찾아 둔다 — 여기서 또 전체 스캔하지
+        // 않는다(2026-10-10 코드 리뷰 중-4). 컨트롤러가 없는 씬에서만 예전 스캔으로 폴백한다.
+        PlayerMover cached = InteractionController.Controlled;
+        if (cached != null) return cached.ExternallyDriven ? null : cached;
         foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
             if (m.IsControlled && !m.ExternallyDriven) return m;
         return null;
