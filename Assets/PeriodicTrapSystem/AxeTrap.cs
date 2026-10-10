@@ -99,14 +99,31 @@ public class AxeTrap : PeriodicTrapBase
 
     protected override void StepRun()
     {
+        float periodSafe = Mathf.Max(0.05f, period);
+
         if (!warmupDone)
         {
+            // 예고 동안 중립(0°)에서 왕복의 시작 각도(-A)로 최대 각속도 이하로 이동한다. 예전엔 중립에
+            // 정지해 있다가 예고 종료 순간 한 스텝에 -A로 순간이동했다(순간 방향 전환 금지 위반).
+            // 이 이동은 무피해 구간이므로 끼임 안전 정지를 그대로 적용한다.
             warmupElapsed += Time.fixedDeltaTime;
-            if (warmupElapsed < warmupSeconds) return;
+            Quaternion target = RotationAt(swingClock, periodSafe);
+            float speed = maxAngleDegrees * 2f * Mathf.PI / periodSafe;
+            Quaternion next = Quaternion.RotateTowards(currentRotation, target, speed * Time.fixedDeltaTime);
+
+            if (supportCollider != null)
+            {
+                Vector3 localCenter = Vector3.Scale(supportCollider.center, transform.lossyScale);
+                Vector3 delta = next * localCenter - currentRotation * localCenter;
+                if (!CanAdvance(supportCollider, delta)) return;
+            }
+
+            currentRotation = next;
+            body.MoveRotation(next);
+            if (warmupElapsed < warmupSeconds || Quaternion.Angle(next, target) > 0.01f) return;
             warmupDone = true;
         }
 
-        float periodSafe = Mathf.Max(0.05f, period);
         Quaternion currentRot = RotationAt(swingClock, periodSafe);
         Quaternion nextRot = RotationAt(swingClock + Time.fixedDeltaTime, periodSafe);
 
