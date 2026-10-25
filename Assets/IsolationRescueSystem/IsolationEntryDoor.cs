@@ -86,7 +86,8 @@ public class IsolationEntryDoor : MonoBehaviour
         // 그 사이 컨트롤러가 준비 상태를 벗어났다(취소·중단 등) — 결과를 보고할 대상이 없다.
         if (controller == null || controller.Current != IsolationRescueController.State.Preparing)
         {
-            Current = Phase.Open;
+            // Phase만 Open으로 돌리면 문은 닫히는 채로 남는다(Open 배선을 안 건 경로) — 문도 함께 연다.
+            Open();
             return;
         }
 
