@@ -16,6 +16,8 @@ public class IsolationReadyButton : IsolationInteractZone
     [Tooltip("true = 안쪽 준비 확인(READY_IN), false = 바깥쪽 준비 확인(READY_OUT).")]
     public bool inside;
 
+    protected override string Verb => inside ? "준비 확인 (안쪽)" : "준비 확인 (바깥쪽)";
+
     public override void Press()
     {
         if (controller == null)
