@@ -428,6 +428,10 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
     {
         why = null;
 
+        // 포탈 통과는 몸 고정·붙잡힘·순간이동을 전부 건드리지만 든 블록은 몸을 따라 같이 건너가야 한다
+        // (LateUpdate 추종이 새 위치로 데려간다). 통과 중에는 아래 조건들을 보지 않는다.
+        if (SpacePortal.IsTraversing(mover)) return false;
+
         if (mover != null && mover.ExternallyDriven)
         {
             why = "몸이 외부 기믹에 붙잡힘(실타래 등)";
