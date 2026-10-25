@@ -371,6 +371,9 @@ public class CloudTrampoline : MonoBehaviour
                 supportCollider.enabled = alpha > 0.001f;
                 if (alpha <= 0.001f)
                 {
+                    // 콜라이더를 끄면 Exit가 안 올 수 있다 — 승객 목록을 비워 유령 하중/운반을 막는다
+                    // (2026-10-10 코드 리뷰 중-13). 복귀 후 Stay가 다시 채운다.
+                    riders.Clear();
                     state = State.Hidden;
                     reappearTimer = reappearDelaySec;
                 }

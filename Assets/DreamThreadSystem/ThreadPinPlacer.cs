@@ -109,7 +109,19 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
 
     private System.Action onPlace, onDetach, onRetrieve;
 
-    void OnEnable() => InteractionController.Register(this);
+    void OnEnable()
+    {
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    // 복귀가 벽에 붙은 세모를 지목하면 순간이동 전에 스스로 뗀다. 벽 부착은 isKinematic으로만 고정하므로
+    // 이 훅이 없으면 RespawnController가 거절하고(키네마틱인 채 공중에 서는 소프트락 방지), 위험 피격은
+    // 면역이 됐다(2026-10-10 B안, docs/PRD/Respawn.md §310).
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (wallAttached && attachedMover == mover) DetachFromWall(withLeap: false);
+    }
 
     void Update()
     {
@@ -238,6 +250,7 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
     void OnDisable()
     {
         InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
         if (wallAttached) DetachFromWall(withLeap: false);
     }
 

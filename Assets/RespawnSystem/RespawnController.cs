@@ -104,10 +104,12 @@ public class RespawnController : MonoBehaviour
     /// 컨트롤러가 알 필요가 없도록 이벤트로만 열어 둔다.</summary>
     public event System.Action<GameObject> PlayerRespawned;
 
-    /// <summary>복귀 직전, "붙잡힘" 판정(IsHeld) 전에 발신한다. 좌석형으로 몸을 붙잡는 기믹(레일카 탑승 등)이
-    /// 구독해 그 참가자를 스스로 내려놓는다 — 탑승은 매달림·벽 부착과 달리 R로 풀 수 없고, 탑승 중
-    /// 추격자에게 잡히는 것이 CH1의 정상 경로라 거절하면 영영 복귀하지 못한다. 구독자를 이 컨트롤러가
-    /// 알 필요가 없도록 static 이벤트로만 연다.</summary>
+    /// <summary>복귀 직전, "붙잡힘" 판정(IsHeld) 전에 발신한다. 몸을 붙잡는 기믹이 구독해 그 참가자를
+    /// 스스로 놓는다 — 탑승은 R로 풀 수 없고 탑승 중 추격자에게 잡히는 것이 CH1의 정상 경로라 거절하면
+    /// 영영 복귀하지 못한다. 구독자: RailCartRider·CatapultLoadController(원래), DreamThreadController·
+    /// ThreadPinPlacer·CatapultBucket·CatapultSteerHandle(2026-10-10 — 구독자가 없는 붙잡힘은 위험 피격을
+    /// 면역으로 만들었다, docs/PRD/Respawn.md §310). 자동 장외(킬 라인) 경로는 이 이벤트 전에 IsHeld로
+    /// 미루므로 영향이 없다. 구독자를 이 컨트롤러가 알 필요가 없도록 static 이벤트로만 연다.</summary>
     public static event System.Action<PlayerMover> ReleaseHoldRequested;
 
     private static RespawnController instance;

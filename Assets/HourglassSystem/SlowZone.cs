@@ -172,7 +172,13 @@ public class SlowZone : MonoBehaviour
         if (rb == null) return;
 
         PlayerGravityOverride body = rb.GetComponent<PlayerGravityOverride>();
-        if (body == null) body = rb.gameObject.AddComponent<PlayerGravityOverride>();
+        if (body == null)
+        {
+            // 중력이 없는/키네마틱 바디(회전판·투사체 등)는 감속할 중력이 없다. 오버라이드를 붙이면 그 바디가
+            // 이 구역에서 중력을 받기 시작하고, 떠난 뒤에도 useGravity=true로 남는다(2026-10-10 코드 리뷰 중-10).
+            if (!rb.useGravity || rb.isKinematic) return;
+            body = rb.gameObject.AddComponent<PlayerGravityOverride>();
+        }
 
         // 두 번째 1f는 drag 배율(건드리지 않는다 - 위 클래스 주석의 maxFallSpeed 사유), 세 번째 0f는
         // 추가 상승 가속(감속 구역은 밀어 올리지 않는다), 마지막 1f는 점프 높이 배율 — 감속 구역은

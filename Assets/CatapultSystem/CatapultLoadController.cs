@@ -155,11 +155,15 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
         DestroyLeash();
     }
 
-    // 복귀 대상이 되면 순간이동 전에 조인트부터 푼다. Destroy는 프레임 끝에 반영되고 다음 물리 스텝 전에
-    // 끝나므로, 같은 프레임에 이어지는 위치 이동이 조인트에 끌려가지 않는다. 연결 상태 자체는 유지한다.
+    // 복귀 대상이 되면 순간이동 전에 연결을 통째로 끊는다(발사 없이). 조인트만 풀고 Connected를 남기면
+    // 복귀 뒤에도 줄이 연결된 채로 남아(실선·휠 누적·팔 당김 유지) 멀리 떨어진 체크포인트에서도 장전
+    // 상태가 이어졌다(2026-10-10 실측). 탑승자가 이미 장전돼 있으면 팔은 그대로 둔다 — 빈 버킷일
+    // 때만 팔을 원위치시킨다.
     private void HandleReleaseHold(PlayerMover mover)
     {
-        if (connectedMover != null && connectedMover == mover) DestroyLeash();
+        if (state != State.Connected || connectedMover == null || connectedMover != mover) return;
+        Disconnect(fire: false);
+        if (arm != null && (arm.bucket == null || !arm.bucket.HasOccupant)) arm.Fire(0f);
     }
 
     void FixedUpdate() => UpdateLeash();

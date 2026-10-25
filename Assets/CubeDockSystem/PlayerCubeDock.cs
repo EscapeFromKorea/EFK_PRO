@@ -365,8 +365,12 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         if (snapAlignOnDock)
         {
             // 면 법선 방향으로만 밀어 두 면을 같은 평면에 맞춘다(측면 위치·회전 미변경 → FreezeRotation과 무충돌).
-            float gap = Vector3.Dot(aimBlockFaceCenter - aimSelfFaceCenter, aimBlockFaceNormal);
-            transform.position += aimBlockFaceNormal * gap;
+            // 가능하면 면 중심끼리 완전히 맞춘다(옆으로 치우친 채 결합돼 어긋나 보이던 문제). 옮긴 자리가
+            // 벽·바닥·다른 블록과 겹치면 예전처럼 법선 방향만 맞춘다.
+            Vector3 full = aimBlockFaceCenter - aimSelfFaceCenter;
+            float gap = Vector3.Dot(full, aimBlockFaceNormal);
+            Vector3 move = IsDockPoseClear(full) ? full : aimBlockFaceNormal * gap;
+            transform.position += move;
         }
 
         body.velocity = Vector3.zero;
@@ -425,6 +429,40 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         aimed = null;
         hasCandidate = false;
         Debug.Log($"[CubeDock] '{dockedBlock.name}' 구조물에 도킹했습니다.");
+    }
+
+    // 정육면체를 offset만큼 옮긴 자리가 비어 있는가. 자기 몸·도킹 대상 구조물은 무시한다(면이 맞닿아 있으므로
+    // 5% 줄여 검사). 정육면체는 회전이 고정이라 축 정렬 박스로 충분하다.
+    private bool IsDockPoseClear(Vector3 offset)
+    {
+        if (selfBox == null || aimed == null) return false;
+        Bounds b = selfBox.bounds;
+        Collider[] hits = Physics.OverlapBox(b.center + offset, b.extents * 0.95f, Quaternion.identity,
+                                             ~0, QueryTriggerInteraction.Ignore);
+        foreach (Collider h in hits)
+        {
+            if (h.transform.IsChildOf(transform) || transform.IsChildOf(h.transform)) continue;
+            SnapBlock sb = h.GetComponentInParent<SnapBlock>();
+            if (sb != null && IsInStructure(sb, aimed)) continue;
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsInStructure(SnapBlock candidate, SnapBlock seed)
+    {
+        if (candidate == seed) return true;
+        var seen = new System.Collections.Generic.HashSet<SnapBlock> { seed };
+        var q = new System.Collections.Generic.Queue<SnapBlock>();
+        q.Enqueue(seed);
+        while (q.Count > 0)
+            foreach (SnapBlock n in q.Dequeue().ConnectedBlocks)
+                if (n != null && seen.Add(n))
+                {
+                    if (n == candidate) return true;
+                    q.Enqueue(n);
+                }
+        return false;
     }
 
     private void Undock(string reason)

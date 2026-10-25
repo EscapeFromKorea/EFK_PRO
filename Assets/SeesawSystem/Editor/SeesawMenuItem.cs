@@ -93,7 +93,13 @@ public static class SeesawMenuItem
 
         GameObject fulcrum = new GameObject("Seesaw_Fulcrum");
         Undo.RegisterCreatedObjectUndo(fulcrum, "Create Seesaw");
-        fulcrum.transform.position = pivotPos - new Vector3(0f, height * 0.5f, 0f);
+        // 능선이 판 중심(피벗) 높이에 오면 판 아랫면(반두께 0.15)을 0.15U 파고들어 "Fulcrum 박힘"이 재발한다
+        // (2026-10-10 코드 리뷰 중-6, 재생성 시 숨어 있던 결함). 판 아랫면보다 plankHalfThickness + 여유만큼
+        // 아래에 능선을 둔다. 여유 0.05는 최대 각도(35°)에서 판 아랫면이 능선 쪽으로 기우는 양
+        // 0.15·(1-cos35°)≈0.027U보다 크다.
+        const float plankHalfThickness = 0.15f;
+        const float ridgeClearance = 0.05f;
+        fulcrum.transform.position = pivotPos - new Vector3(0f, plankHalfThickness + ridgeClearance + height * 0.5f, 0f);
         fulcrum.transform.localScale = new Vector3(width, height, depth);
 
         Mesh wedge = CreateWedgeMesh();
