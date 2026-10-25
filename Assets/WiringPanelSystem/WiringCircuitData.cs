@@ -57,6 +57,7 @@ public class WiringCircuitData : ScriptableObject
         if (pairs == null || pairs.Length == 0) { error = "pairs가 비어 있다."; return false; }
 
         var seenOutputs = new System.Collections.Generic.HashSet<string>();
+        var seenInputs = new System.Collections.Generic.HashSet<string>();
         foreach (PortPair p in pairs)
         {
             if (string.IsNullOrEmpty(p.outputId) || string.IsNullOrEmpty(p.inputId))
@@ -77,6 +78,12 @@ public class WiringCircuitData : ScriptableObject
             if (!seenOutputs.Add(p.outputId))
             {
                 error = $"'{circuitId}' — 출력 포트 '{p.outputId}'에 정답이 중복 지정됐다.";
+                return false;
+            }
+            // 한 입력을 두 정답이 가리키면 패널이 입력 중복 점유를 막아 완료가 영원히 불가능해진다.
+            if (!seenInputs.Add(p.inputId))
+            {
+                error = $"'{circuitId}' — 입력 포트 '{p.inputId}'가 여러 정답에 중복 지정됐다.";
                 return false;
             }
         }
