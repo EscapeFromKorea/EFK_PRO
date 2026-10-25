@@ -92,7 +92,7 @@ public class RespawnZone : MonoBehaviour
         if (!zoneCollider.isTrigger)
             Debug.LogError("[RespawnZone] Collider가 Trigger가 아니다. isTrigger를 켜라.", this);
 
-        if (flagRenderer == null) return;
+        if (flagRenderer == null || flagBlock != null) return; // 이미 SetFlagState가 먼저 초기화했으면 상태를 덮지 않는다
         // 인스펙터에 배치된 위치가 게양 완료 지점이다. 게양 전에는 밑동으로 내려 두고 숨긴다
         // (에디터에서 깃발이 보이는 채로 저장됐을 수 있어 런타임에 강제로 끈다).
         flagRaisedLocalPos = flagRenderer.transform.localPosition;
@@ -104,6 +104,13 @@ public class RespawnZone : MonoBehaviour
     public void SetFlagState(FlagState next)
     {
         if (flagRenderer == null || flagState == next) return;
+
+        // 구역 오브젝트가 비활성이라 Awake 전에 불리면 flagBlock이 null이다 — 여기서 먼저 초기화한다.
+        if (flagBlock == null)
+        {
+            flagRaisedLocalPos = flagRenderer.transform.localPosition;
+            flagBlock = new MaterialPropertyBlock();
+        }
 
         bool wasHidden = flagState == FlagState.Hidden;
         flagState = next;
