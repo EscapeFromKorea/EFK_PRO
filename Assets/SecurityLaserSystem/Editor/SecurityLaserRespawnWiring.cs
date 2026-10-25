@@ -61,8 +61,10 @@ public static class SecurityLaserRespawnWiring
     private static bool AlreadyWired(UnityEventBase evt, RespawnController controller)
     {
         for (int i = 0; i < evt.GetPersistentEventCount(); i++)
-            if (ReferenceEquals(evt.GetPersistentTarget(i), controller) &&
-                evt.GetPersistentMethodName(i) == nameof(RespawnController.RespawnPlayer))
+            // SectionHitCounter에 이미 배선된 장치는 구간 복귀가 맡으므로 RespawnPlayer를 얹지 않는다(이중 복귀 방지).
+            if (evt.GetPersistentTarget(i) is SectionHitCounter ||
+                (ReferenceEquals(evt.GetPersistentTarget(i), controller) &&
+                 evt.GetPersistentMethodName(i) == nameof(RespawnController.RespawnPlayer)))
                 return true;
         return false;
     }
