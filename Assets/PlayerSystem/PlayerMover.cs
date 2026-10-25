@@ -597,7 +597,14 @@ public class PlayerMover : MonoBehaviour
         lastTravelVelocity = Vector3.zero;
         float k = Mathf.Clamp01(uncontrolledDamping * Time.fixedDeltaTime);
         Vector3 vel = rb.velocity;
-        rb.velocity = new Vector3(vel.x * (1f - k), vel.y, vel.z * (1f - k));
+        // 움직이는 발판 위에서는 월드 0이 아니라 발판 속도로 수렴시킨다 — 발판 속도까지 깎으면 몸이
+        // 발판에서 미끄러지고, 시소처럼 반응하는 판에는 그 어긋남이 토크로 되먹임된다(GroundVelocity
+        // 설명 참고). GroundVelocity는 공중에서 초기화되지 않으므로 접지 중일 때만 쓴다.
+        Vector3 groundVel = groundContact != null && groundContact.IsGrounded ? groundContact.GroundVelocity : Vector3.zero;
+        rb.velocity = new Vector3(
+            groundVel.x + (vel.x - groundVel.x) * (1f - k),
+            vel.y,
+            groundVel.z + (vel.z - groundVel.z) * (1f - k));
         rb.angularVelocity *= (1f - k);
     }
 
