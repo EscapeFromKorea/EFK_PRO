@@ -24,7 +24,9 @@ public class PathChaserCatchZone : MonoBehaviour
     [Tooltip("영역 안에 머무는 동안 잡힘을 다시 알리는 간격(초).")]
     public float retryInterval = 0.25f;
 
-    private float nextRetryTime;
+    // 참가자별로 센다 — 타이머가 하나면 영역 안의 두 번째 참가자는 매번 첫 번째가 타이머를 먼저 써서 재시도를 못 받는다.
+    private readonly System.Collections.Generic.Dictionary<PlayerMover, float> nextRetryTime =
+        new System.Collections.Generic.Dictionary<PlayerMover, float>();
 
     private void Reset()
     {
@@ -37,10 +39,14 @@ public class PathChaserCatchZone : MonoBehaviour
 
     private void OnTriggerStay(Collider other)
     {
-        if (Time.time < nextRetryTime) return;
-        nextRetryTime = Time.time + retryInterval;
+        PlayerMover mover = other.CompareTag(playerTag) ? other.GetComponentInParent<PlayerMover>() : null;
+        if (mover == null) return;
+        if (nextRetryTime.TryGetValue(mover, out float next) && Time.time < next) return;
+        nextRetryTime[mover] = Time.time + retryInterval;
         TryCatch(other);
     }
+
+    private void OnDisable() => nextRetryTime.Clear();
 
     private void TryCatch(Collider other)
     {
