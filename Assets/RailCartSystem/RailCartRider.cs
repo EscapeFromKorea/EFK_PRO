@@ -51,6 +51,8 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
     {
         RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
         InteractionController.Unregister(this);
+        // 탑승 중에 꺼지면 탑승자가 부모화·키네마틱·ExternallyDriven 상태로 영구히 남는다.
+        if (occupantBody != null && occupantMover != null) Unboard();
     }
 
     // 키를 직접 읽지 않는다 — 탑승 중인 플레이어에게는 하차(붙잡힌 상태에서도 허용), 그 외엔 탑승 범위
