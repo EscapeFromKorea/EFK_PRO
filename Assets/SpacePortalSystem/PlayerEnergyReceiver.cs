@@ -34,7 +34,7 @@ public class PlayerEnergyReceiver : MonoBehaviour
     /// <summary>이 플레이어가 설치해 필드에 살아있는 포탈의 색(없으면 null).</summary>
     public EnergyColor? InstalledColor { get; private set; }
 
-    public bool IsControlledByLocalPlayer => mover == null || mover.IsControlled;
+    public bool IsControlledByLocalPlayer => mover == null || (mover.IsControlled && !mover.InputLocked);
 
     private PlayerMover mover;
     private Renderer[] visualRenderers;
