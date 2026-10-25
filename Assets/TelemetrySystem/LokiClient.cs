@@ -19,6 +19,7 @@ using UnityEngine.Networking;
 public class LokiClient : MonoBehaviour
 {
     const float FlushIntervalSeconds = 10f;
+    const int RequestTimeoutSeconds = 5;
     const string JobLabel = "efk-pro";
 
     static LokiClient _instance;
@@ -212,6 +213,7 @@ public class LokiClient : MonoBehaviour
         req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
+        req.timeout = RequestTimeoutSeconds; // 오프라인/블랙홀 망에서 종료 시 스핀 대기가 무한히 걸리지 않게
         if (useAuth)
         {
             var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_config.user}:{_config.token}"));
