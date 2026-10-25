@@ -124,6 +124,13 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         carrier = GetComponent<PlayerBlockCarrier>();
     }
 
+    // PlayerBlockCarrier는 BlockCarryController가 런타임에 AddComponent하므로 Awake 캐시가 비어 있을 수 있다.
+    private PlayerBlockCarrier ResolveCarrier()
+    {
+        if (carrier == null) carrier = GetComponent<PlayerBlockCarrier>();
+        return carrier;
+    }
+
     private void OnEnable()
     {
         InteractionController.Register(this);
@@ -208,7 +215,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
                 priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteractTap,
             });
         }
-        else if (aimed != null && (carrier == null || carrier.Carried == null))
+        else if (aimed != null && (ResolveCarrier() == null || carrier.Carried == null))
         {
             string reason = !hasCandidate
                 ? $"맞물릴 면이 없습니다 — 블록 면을 {snapDistance}칸 안, 나란히 맞대세요."
