@@ -26,6 +26,7 @@ public class PlayerGravityOverride : MonoBehaviour
 {
     private Rigidbody rb;
     private float defaultDrag;
+    private bool defaultUseGravity = true;
 
     private bool overriding;
     private float currentScale = 1f;
@@ -50,6 +51,8 @@ public class PlayerGravityOverride : MonoBehaviour
     public void SetGravityScale(float scale, float dragMultiplier, float uplift, float transitionTime,
                                 float jumpMultiplier)
     {
+        // 처음 오버라이드를 거는 순간의 useGravity를 기억해 복원 때 그대로 돌려준다(무중력 바디에 true를 박지 않게).
+        if (!overriding) defaultUseGravity = rb.useGravity;
         overriding = true;
         rb.useGravity = false;
         targetScale = scale;
@@ -107,13 +110,16 @@ public class PlayerGravityOverride : MonoBehaviour
 
     private void ForceRestoreImmediate()
     {
+        bool wasOverriding = overriding;
         overriding = false;
         currentScale = 1f;
         targetScale = 1f;
         uplift = 0f;
         jumpMultiplier = 1f;
         if (rb == null) rb = GetComponent<Rigidbody>();
-        rb.useGravity = true;
+        if (rb == null) return; // OnDestroy 경로에서 바디가 이미 사라진 경우
+        // 오버라이드를 건 적이 없으면(OnEnable 등) 바디의 useGravity를 건드리지 않는다.
+        if (wasOverriding) rb.useGravity = defaultUseGravity;
         rb.drag = defaultDrag;
     }
 }

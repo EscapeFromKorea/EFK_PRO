@@ -39,6 +39,11 @@ public class WiringPanel : MonoBehaviour
              "인스펙터에서 동적 인자로 구독한다.")]
     public CompletionEvent OnCircuitCompleted;
 
+    [Tooltip("씬 시작 때 한 번 자동으로 배정할 회로. 입구 배선(W_ENTRY)처럼 컨트롤러가 회로를 돌려주지 않는 " +
+             "패널용이다 — 비워 두면 PowerMaintenanceController 같은 호출자가 AssignCircuit으로 배정할 때까지 " +
+             "모든 포트 입력이 무시되고 패널이 영원히 잠기지 않는다.")]
+    public WiringCircuitData initialCircuit;
+
     private WiringCircuitData currentCircuit;
     private int assignmentNumber;
     private int attemptCount;
@@ -52,6 +57,13 @@ public class WiringPanel : MonoBehaviour
     public WiringCircuitData CurrentCircuit => currentCircuit;
     public WiringPort SelectedOutput => selectedOutput;
     public IReadOnlyDictionary<string, string> Connections => connections;
+
+    private void Start()
+    {
+        // 이미 누가 배정했으면 덮지 않는다(Start 순서와 무관하게 호출자의 배정이 우선).
+        if (initialCircuit != null && currentCircuit == null)
+            AssignCircuit(initialCircuit, 1);
+    }
 
     /// <summary>새 회로를 배정한다 — 연결 0/선택 0/배정번호 갱신으로 리셋한다(§4 "완료 후 잠금":
     /// 유지 패널은 다음 배정 전까지 잠금, 다음 배정 시 리셋). 콘텐츠가 유효하지 않으면 거부하고

@@ -87,7 +87,8 @@ public class PlayerAccelReceiver : MonoBehaviour
         float currentY = rb.velocity.y; // 중력/점프는 건드리지 않음
 
         Vector3 inputVel = Vector3.zero;
-        if (mover != null && mover.IsControlled)
+        // 패널·UI 등으로 입력이 잠긴 동안(InputLocked)에는 조향도 받지 않는다(2026-10-25 리뷰 G1).
+        if (mover != null && mover.IsControlled && !mover.InputLocked)
         {
             float h = Input.GetAxis("Horizontal");
             float v = Input.GetAxis("Vertical");

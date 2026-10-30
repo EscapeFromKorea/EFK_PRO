@@ -24,8 +24,9 @@ public class ScalePad : MonoBehaviour
         "통통 튀는 물리로 트리거가 연속 재진입할 때 연달아 토글되는 것을 막습니다.")]
     public float cooldownSeconds = 1f;
 
-    // 마지막으로 토글한 시각. 쿨다운 판정에 사용.
-    private float lastToggleTime = -999f;
+    // 도형별 마지막 토글 시각. 쿨다운 판정에 사용 — 패드 하나로 묶으면 한 도형의 토글이 다른 도형의 첫 밟기를 막는다.
+    private readonly System.Collections.Generic.Dictionary<PlayerShapeController, float> lastToggleTime =
+        new System.Collections.Generic.Dictionary<PlayerShapeController, float>();
 
     [Tooltip("플레이어 오브젝트의 태그 (기본값: Player)")]
     public string playerTag = "Player";
@@ -41,14 +42,13 @@ public class ScalePad : MonoBehaviour
     // 머티리얼 누수 방지용 — Start에서 인스턴스를 하나만 생성해 재사용
     private Material padMaterialInstance;
 
-    // 현재 이 패드를 밟고 있는 PlayerShapeController (null이면 아무도 없음)
-    private PlayerShapeController currentPlayer = null;
-
     // ③ [정정 — 2026-09-15] Player_Root는 콜라이더가 없다. 실제로 두 번씩 겹쳐 들어오는 건
     // Player_Mesh(트리거)·Player_Collider(솔리드) 둘 다 Tag: Player라서다(DoorSystem/PadTrigger·
-    // ExitWeightPlate와 같은 원인). 카운터로 실제로 몇 개의 Collider가 겹쳐있는지 추적하여
-    // 중복 해제 방지
-    private int overlapCount = 0;
+    // ExitWeightPlate와 같은 원인). 도형(PlayerShapeController)별로 몇 개의 Collider가 겹쳐있는지
+    // 추적하여 중복 토글을 막는다 — 패드 하나에 카운터 하나면 다른 도형이 이미 올라서 있을 때
+    // 두 번째 도형의 첫 밟기가 토글되지 않는다.
+    private readonly System.Collections.Generic.Dictionary<PlayerShapeController, int> overlapCounts =
+        new System.Collections.Generic.Dictionary<PlayerShapeController, int>();
 
     void Start()
     {
@@ -78,8 +78,7 @@ public class ScalePad : MonoBehaviour
     private void OnDisable()
     {
         // 비활성화 시 상태 초기화 및 색상 복원 (크기 토글은 플레이어 쪽에 남으므로 건드리지 않음)
-        overlapCount = 0;
-        currentPlayer = null;
+        overlapCounts.Clear();
         SetPadColor(defaultColor);
     }
 
@@ -94,19 +93,20 @@ public class ScalePad : MonoBehaviour
             return;
         }
 
-        overlapCount++;
+        overlapCounts.TryGetValue(shapeController, out int count);
+        overlapCounts[shapeController] = count + 1;
 
         // ③ Player_Mesh(트리거)·Player_Collider(솔리드)가 둘 다 Player 태그라 Enter가 여러 번
-        // 호출되므로, 실제로 밟기 시작한 첫 번째 Enter일 때만 처리한다(중복 토글 방지).
-        if (overlapCount == 1)
+        // 호출되므로, 그 도형이 실제로 밟기 시작한 첫 번째 Enter일 때만 처리한다(중복 토글 방지).
+        if (count == 0)
         {
-            currentPlayer = shapeController;
             SetPadColor(activateColor);
 
             // 쿨다운 이내의 재진입(통통 튀며 반복 Enter/Exit)은 토글하지 않는다.
-            if (Time.time - lastToggleTime >= cooldownSeconds)
+            if (!lastToggleTime.TryGetValue(shapeController, out float last) ||
+                Time.time - last >= cooldownSeconds)
             {
-                lastToggleTime = Time.time;
+                lastToggleTime[shapeController] = Time.time;
                 shapeController.ToggleScale(PadTypeToState(padType));
             }
         }
@@ -119,13 +119,11 @@ public class ScalePad : MonoBehaviour
         PlayerShapeController shapeController = FindShapeController(other);
         if (shapeController == null) return;
 
-        // ③ 카운터를 줄이고, 0이 됐을 때만 색상 복원 (크기는 유지, 토글은 다음 Enter에서)
-        overlapCount = Mathf.Max(0, overlapCount - 1);
-        if (overlapCount == 0 && currentPlayer == shapeController)
-        {
-            currentPlayer = null;
-            SetPadColor(defaultColor);
-        }
+        // ③ 그 도형의 카운터를 줄이고, 아무도 안 밟게 됐을 때만 색상 복원 (크기는 유지, 토글은 다음 Enter에서)
+        if (!overlapCounts.TryGetValue(shapeController, out int count)) return;
+        if (count <= 1) overlapCounts.Remove(shapeController);
+        else overlapCounts[shapeController] = count - 1;
+        if (overlapCounts.Count == 0) SetPadColor(defaultColor);
     }
 
     /// <summary>EPadType → PlayerShapeController.EScaleState 변환</summary>

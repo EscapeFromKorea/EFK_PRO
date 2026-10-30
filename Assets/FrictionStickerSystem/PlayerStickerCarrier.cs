@@ -138,6 +138,8 @@ public class PlayerStickerCarrier : MonoBehaviour, IInteractionProvider
         {
             Collider col = s != null ? s.ResolvedCollider : null;
             if (col == null) continue;
+            // 비볼록 MeshCollider는 ClosestPoint가 지원되지 않아 매 프레임 에러 로그가 난다 — 대상에서 뺀다.
+            if (col is MeshCollider mesh && !mesh.convex) continue;
 
             Vector3 near = col.ClosestPoint(me);
             float sqr = (near - me).sqrMagnitude;

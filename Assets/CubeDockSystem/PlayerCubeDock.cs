@@ -124,13 +124,45 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         carrier = GetComponent<PlayerBlockCarrier>();
     }
 
+    // PlayerBlockCarrier는 BlockCarryController가 런타임에 AddComponent하므로 Awake 캐시가 비어 있을 수 있다.
+    private PlayerBlockCarrier ResolveCarrier()
+    {
+        if (carrier == null) carrier = GetComponent<PlayerBlockCarrier>();
+        return carrier;
+    }
+
     private void OnEnable()
     {
         InteractionController.Register(this);
+        SpacePortal.PlayerTeleporting += OnPortalTeleporting;
+    }
+
+    // 포탈로 몸이 순간이동하면 도킹된 구조물 전체를 같은 양만큼 옮긴다 — 몸만 가면 조인트가 끊기거나 끌려간다.
+    // 회전은 옮기지 않는다(플레이어가 FreezeRotation이라 회전이 바뀌지 않는다). 출구 쪽 지형과 겹치는지는 보지 않는다.
+    private void OnPortalTeleporting(PlayerMover who, Vector3 delta)
+    {
+        if (who != mover || joint == null || dockedBlock == null) return;
+
+        var seen = new System.Collections.Generic.HashSet<SnapBlock> { dockedBlock };
+        var q = new System.Collections.Generic.Queue<SnapBlock>();
+        q.Enqueue(dockedBlock);
+        while (q.Count > 0)
+        {
+            SnapBlock b = q.Dequeue();
+            Rigidbody rb = b.Body;
+            if (rb != null)
+            {
+                rb.position += delta;
+                rb.transform.position += delta; // 렌더/즉시 조회 쪽도 같은 프레임에 맞춘다
+            }
+            foreach (SnapBlock n in b.ConnectedBlocks)
+                if (n != null && seen.Add(n)) q.Enqueue(n);
+        }
     }
 
     private void OnDisable()
     {
+        SpacePortal.PlayerTeleporting -= OnPortalTeleporting;
         InteractionController.Unregister(this);
         interactable = false;
         if (joint != null) Undock("컴포넌트 비활성화");
@@ -208,7 +240,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
                 priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteractTap,
             });
         }
-        else if (aimed != null && (carrier == null || carrier.Carried == null))
+        else if (aimed != null && (ResolveCarrier() == null || carrier.Carried == null))
         {
             string reason = !hasCandidate
                 ? $"맞물릴 면이 없습니다 — 블록 면을 {snapDistance}칸 안, 나란히 맞대세요."
@@ -485,6 +517,9 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
     private bool ShouldAutoRelease(out string why)
     {
         why = null;
+
+        // 포탈 통과 중에는 몸 고정·붙잡힘·순간이동으로 보지 않는다 — 구조물은 OnPortalTeleporting이 같이 옮긴다.
+        if (SpacePortal.IsTraversing(mover)) return false;
 
         if (mover != null && mover.ExternallyDriven)
         {

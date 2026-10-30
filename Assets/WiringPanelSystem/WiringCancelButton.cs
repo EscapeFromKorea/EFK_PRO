@@ -11,18 +11,24 @@ public class WiringCancelButton : MonoBehaviour, IInteractionProvider
     [Tooltip("취소를 적용할 패널.")]
     public WiringPanel panel;
 
-    private readonly List<PlayerMover> occupants = new List<PlayerMover>();
+    // 참가자별 겹친 콜라이더 수 — 플레이어는 트리거(Player_Mesh)와 솔리드(Player_Collider)를 함께 가져
+    // 참가자 단위 목록이면 콜라이더 하나가 빠지는 순간 아직 안에 있는 참가자가 사라진다(WiringPort와 동일).
+    private readonly Dictionary<PlayerMover, int> occupants = new Dictionary<PlayerMover, int>();
 
     private void OnTriggerEnter(Collider other)
     {
         PlayerMover mover = other.GetComponentInParent<PlayerMover>();
-        if (mover != null && !occupants.Contains(mover)) occupants.Add(mover);
+        if (mover == null) return;
+        occupants.TryGetValue(mover, out int n);
+        occupants[mover] = n + 1;
     }
 
     private void OnTriggerExit(Collider other)
     {
         PlayerMover mover = other.GetComponentInParent<PlayerMover>();
-        if (mover != null) occupants.Remove(mover);
+        if (mover == null || !occupants.TryGetValue(mover, out int n)) return;
+        if (n > 1) occupants[mover] = n - 1;
+        else occupants.Remove(mover);
     }
 
     private System.Action cancel;
@@ -34,7 +40,7 @@ public class WiringCancelButton : MonoBehaviour, IInteractionProvider
     public void CollectActions(List<InteractionAction> into)
     {
         PlayerMover p = InteractionController.Controlled;
-        if (p == null || !occupants.Contains(p)) return;
+        if (p == null || !occupants.ContainsKey(p)) return;
         cancel ??= Cancel;
         into.Add(new InteractionAction
         {
@@ -50,7 +56,11 @@ public class WiringCancelButton : MonoBehaviour, IInteractionProvider
 
     private void Cancel()
     {
-        occupants.RemoveAll(m => m == null);
+        // 트리거 안에서 파괴된 참가자(Exit가 오지 않음)를 정리한다.
+        List<PlayerMover> dead = null;
+        foreach (PlayerMover m in occupants.Keys)
+            if (m == null) (dead ?? (dead = new List<PlayerMover>())).Add(m);
+        if (dead != null) foreach (PlayerMover m in dead) occupants.Remove(m);
 
         if (panel == null)
         {

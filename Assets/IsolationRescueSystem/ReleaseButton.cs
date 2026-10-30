@@ -12,6 +12,8 @@ public class ReleaseButton : IsolationInteractZone
     [Tooltip("격리 컨트롤러.")]
     public IsolationRescueController controller;
 
+    protected override string Verb => "격리 해제";
+
     public override void Press()
     {
         if (controller == null)

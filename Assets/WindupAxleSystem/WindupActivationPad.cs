@@ -22,7 +22,30 @@ public class WindupActivationPad : MonoBehaviour
 
     /// <summary>지금 이 발판을 밟고 있는 몸이 하나 이상 있는가. <see cref="latchOnFirstPress"/>가 켜져 있으면
     /// 한 번이라도 밟힌 뒤로는 계속 true다.</summary>
-    public bool IsHeld => overlaps.Count > 0 || (latchOnFirstPress && latched);
+    public bool IsHeld
+    {
+        get
+        {
+            PruneDestroyed();
+            return overlaps.Count > 0 || (latchOnFirstPress && latched);
+        }
+    }
+
+    /// <summary>래치를 풀어 다시 밟아야 눌린 상태가 되게 한다(챕터 재시작 등 외부 호출용).</summary>
+    public void ResetLatch() => latched = false;
+
+    // 발판 위에서 파괴·비활성화된 몸은 Exit가 오지 않아 눌림이 영구히 남는다.
+    private void PruneDestroyed()
+    {
+        if (overlaps.Count == 0) return;
+        List<Rigidbody> dead = null;
+        foreach (Rigidbody rb in overlaps.Keys)
+            if (rb == null || !rb.gameObject.activeInHierarchy)
+                (dead ?? (dead = new List<Rigidbody>())).Add(rb);
+        if (dead != null) foreach (Rigidbody rb in dead) overlaps.Remove(rb);
+    }
+
+    void OnDisable() => overlaps.Clear();
 
     void Reset()
     {

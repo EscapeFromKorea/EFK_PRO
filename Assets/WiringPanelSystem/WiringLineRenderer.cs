@@ -66,7 +66,13 @@ public class WiringLineRenderer : MonoBehaviour
         line.startWidth = lineWidth;
         line.endWidth = lineWidth;
         line.useWorldSpace = true;
-        if (lineMaterial != null) line.material = lineMaterial;
+        // 머티리얼 없이는 Built-in RP에서 분홍색으로 렌더링된다 — 비워 뒀으면 기본 스프라이트 셰이더로 만든다.
+        if (lineMaterial == null)
+        {
+            lineMaterial = new Material(Shader.Find("Sprites/Default"));
+            lineMaterial.color = Color.yellow;
+        }
+        line.material = lineMaterial;
         return line;
     }
 

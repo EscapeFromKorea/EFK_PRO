@@ -137,6 +137,11 @@ public class RespawnController : MonoBehaviour
     // 연출이 진행 중인 플레이어. 연출 중 재입력(R 연타)과 중복 발동을 막는다.
     private readonly HashSet<PlayerMover> busy = new HashSet<PlayerMover>();
 
+    // 연출 도중 컨트롤러가 꺼질 때 되돌릴 것들 — 코루틴 지역 변수는 OnDisable에서 닿지 않아 필드로 든다.
+    private readonly List<List<FadeMaterial>> activeFades = new List<List<FadeMaterial>>();
+    private readonly Dictionary<Rigidbody, RigidbodyInterpolation> savedInterpolation =
+        new Dictionary<Rigidbody, RigidbodyInterpolation>();
+
     private static readonly int ColorId = Shader.PropertyToID("_Color");
 
     private void Awake()
@@ -166,6 +171,13 @@ public class RespawnController : MonoBehaviour
             if (rb != null) rb.isKinematic = false;
         }
         busy.Clear();
+
+        // 몸이 투명한 Fade 머티리얼 채로, 또는 interpolation이 None인 채로 남지 않게 되돌린다.
+        foreach (List<FadeMaterial> fade in new List<List<FadeMaterial>>(activeFades)) EndFade(fade);
+        activeFades.Clear();
+        foreach (var pair in savedInterpolation)
+            if (pair.Key != null) pair.Key.interpolation = pair.Value;
+        savedInterpolation.Clear();
     }
 
     /// <summary>RespawnZone이 플레이어 진입 시 호출한다. 컨트롤러가 없으면 저장되지 않는다.</summary>
@@ -440,7 +452,8 @@ public class RespawnController : MonoBehaviour
         Vector3? sectionPoint = null;
         if (destination != null)
         {
-            if (!destination.TryGetAvailablePoint(mover, out Vector3 point))
+            // 예약 시간 = 페이드 아웃 + 순간이동 여유. 실제 도착 뒤엔 몸이 겹침 검사에 직접 잡힌다.
+            if (!destination.TryGetAvailablePoint(mover, out Vector3 point, fadeOutSeconds + 0.5f))
             {
                 Debug.LogWarning($"[Respawn] '{destination.sectionId}' 안전점(및 보조 지점)이 전부 다른 " +
                                  $"참가자로 막혀 있어 '{ShapeLabel(mover)}' 구간 복귀를 건너뛴다 " +
@@ -565,6 +578,7 @@ public class RespawnController : MonoBehaviour
         // 위치로 길게 늘어나 보인다. "암전 없이 자연스럽게"가 이 시스템의 전부인데 정확히 그 한
         // 프레임이 깨지므로, 물리 스텝 하나가 지나 보간 버퍼가 새 위치로 갱신될 때까지 꺼 둔다.
         RigidbodyInterpolation prevInterpolation = rb.interpolation;
+        savedInterpolation[rb] = prevInterpolation;
         rb.interpolation = RigidbodyInterpolation.None;
 
         rb.velocity = Vector3.zero;
@@ -596,6 +610,7 @@ public class RespawnController : MonoBehaviour
 
         yield return new WaitForFixedUpdate();
         if (rb != null) rb.interpolation = prevInterpolation;
+        savedInterpolation.Remove(rb);
     }
 
     /// <summary>낙하 리스폰 시작 지점 — 체크포인트 구역 상단 + dropExtraHeight. 저장 시점에 더해
@@ -695,12 +710,14 @@ public class RespawnController : MonoBehaviour
                 SetTransparent(m);
             }
         }
+        activeFades.Add(list);
         return list;
     }
 
     private void EndFade(List<FadeMaterial> mats)
     {
         if (mats == null) return;
+        activeFades.Remove(mats);
         foreach (FadeMaterial fm in mats)
         {
             if (fm.mat == null) continue;

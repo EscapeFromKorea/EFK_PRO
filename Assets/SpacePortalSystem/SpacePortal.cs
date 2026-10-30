@@ -170,6 +170,28 @@ public class SpacePortal : MonoBehaviour
 
     private bool IsInFront(Vector3 worldPos) => transform.InverseTransformPoint(worldPos).z >= 0f;
 
+    // ── 통과 중 알림 (몸에 물린 것들이 순간이동을 이상 상황으로 오판하지 않게) ───────────────
+    // 든 블록(BlockCarrySystem)·도킹 구조물(CubeDockSystem)은 "몸이 붙잡힘/고정됨/순간이동함"이면 스스로
+    // 놓는다 — 리스폰·실타래용 안전장치인데 포탈 통과가 세 조건을 전부 건드려 통과 순간 블록을 놓아 버렸다.
+    // 통과 중인 몸을 IsTraversing으로 알리고, 순간이동 직전 이동량을 PlayerTeleporting으로 알려
+    // 도킹 구조물이 같은 양만큼 따라오게 한다.
+    private static readonly HashSet<PlayerMover> traversing = new HashSet<PlayerMover>();
+
+    /// <summary>이 몸이 지금 포탈을 통과하는 중인가(순간이동 직전부터 조작 잠금이 풀릴 때까지).</summary>
+    public static bool IsTraversing(PlayerMover mover) => mover != null && traversing.Contains(mover);
+
+    /// <summary>플레이어 몸을 순간이동시키기 직전에 발행한다(몸, 월드 이동량). 몸에 물린 구조물을 같은 양만큼
+    /// 옮기려는 쪽이 구독한다. 회전은 전달하지 않는다 — 플레이어는 FreezeRotation이라 회전이 바뀌지 않는다.</summary>
+    public static event System.Action<PlayerMover, Vector3> PlayerTeleporting;
+
+    // 도메인 리로드를 끈 Enter Play Mode에서 이전 세션 잔재(구독자 포함)가 남지 않게 비운다.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        traversing.Clear();
+        PlayerTeleporting = null;
+    }
+
     private void OnTriggerEnter(Collider other) => TryTrack(other);
 
     // 쿨다운 중에 이미 겹쳐 있던 바디는 Enter가 다시 오지 않아 추적이 안 됐다 — 출구 트리거 안에 머문 채
@@ -351,12 +373,19 @@ public class SpacePortal : MonoBehaviour
     {
         if (rb == null) yield break;
 
+        // 코루틴이 중간에 끊겨도(몸 파괴 등) 통과 표시가 남지 않게 finally에서 지운다.
+        if (mover != null) traversing.Add(mover);
+        try
+        {
         bool prevKinematic = rb.isKinematic;
         bool prevDriven = mover != null && mover.ExternallyDriven;
         RigidbodyInterpolation prevInterp = rb.interpolation;
         rb.interpolation = RigidbodyInterpolation.None; // 순간이동 한 프레임 늘어짐 방지(RespawnController와 동일 이유)
         rb.isKinematic = true;
         if (mover != null) mover.ExternallyDriven = true;
+
+        // 몸에 물린 구조물(도킹 등)을 같은 양만큼 옮기도록 알린다 — 몸만 옮기면 조인트가 끊기거나 끌려간다.
+        if (mover != null) PlayerTeleporting?.Invoke(mover, newPos - rb.position);
 
         rb.position = newPos;
         if (mover != null) mover.transform.position = newPos;
@@ -385,6 +414,11 @@ public class SpacePortal : MonoBehaviour
             yield return new WaitForSeconds(controlLockSeconds);
 
         if (mover != null) mover.ExternallyDriven = prevDriven;
+        }
+        finally
+        {
+            if (mover != null) traversing.Remove(mover);
+        }
     }
 
     // ── 클론 렌더링 ──────────────────────────────────────────────────────────

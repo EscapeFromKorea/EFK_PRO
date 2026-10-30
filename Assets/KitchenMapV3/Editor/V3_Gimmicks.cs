@@ -40,7 +40,7 @@ public static class V3Gimmicks {
   try{
    var group=V3.Group("V3_Gimmicks");if(group.transform.childCount>0)throw new Exception("Create a new scene to rebuild team gimmicks.");
    // Existing team door mechanics and default weight/latch. No custom P5 timer/sensors.
-   RemoveVisual("StartMat");
+   RemoveVisual("Start_Mat"); // V3_Build가 만드는 이름은 "Start_Mat_무게판2.75" — "StartMat"으로는 prefix가 안 맞아 지워지지 않았다
    WeightDoor(group.transform,"Start",new Vector3(63,.08f,13),new Vector3(63,3.936f,18));
    RemoveVisual("GOAL_Gate");RemoveVisual("PlateA");RemoveVisual("PlateB");RemoveVisual("PlateC");
    WeightDoor(group.transform,"Goal",new Vector3(49,.08f,104),new Vector3(49,3.936f,109));
