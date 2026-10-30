@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -46,26 +47,26 @@ public class SectionSafePoint : MonoBehaviour
                              "감지가 동작하지 않는다(참가자를 물리적으로 막을 수도 있다). isTrigger를 켜라.", this);
     }
 
+    // 복귀 요청부터 실제 순간이동까지(페이드 아웃) 몸은 아직 옛 위치라 겹침 검사에 안 잡힌다 —
+    // 그 사이 같은 안전점을 요청한 다른 참가자가 "비었음"으로 통과해 둘이 겹쳐 나타난다.
+    // 그래서 고른 지점을 만료 시각과 함께 예약해 두고 점유로 친다. 만료제라 복귀가 중간에
+    // 거절·중단돼도 풀어 주는 호출이 따로 필요 없다.
+    private readonly Dictionary<PlayerMover, (Vector3 point, float until)> reservations =
+        new Dictionary<PlayerMover, (Vector3, float)>();
+
     /// <summary>가용한 순간이동 좌표를 찾는다. 주 지점 → 보조 지점 순으로 점유 여부를 검사한다.
-    /// excluding은 지금 복귀시키려는 당사자 — 자기 자신과의 겹침은 점유로 치지 않는다.</summary>
-    public bool TryGetAvailablePoint(PlayerMover excluding, out Vector3 point)
+    /// excluding은 지금 복귀시키려는 당사자 — 자기 자신과의 겹침은 점유로 치지 않는다.
+    /// reserveSeconds를 주면 찾은 지점을 그 시간 동안 excluding 몫으로 예약한다(순간이동 전 이중 배정 방지).</summary>
+    public bool TryGetAvailablePoint(PlayerMover excluding, out Vector3 point, float reserveSeconds = 0f)
     {
-        if (!IsOccupied(transform.position, excluding))
-        {
-            point = transform.position;
-            return true;
-        }
+        if (TryPick(transform.position, excluding, reserveSeconds, out point)) return true;
 
         if (backupPoints != null)
         {
             foreach (Transform backup in backupPoints)
             {
                 if (backup == null) continue;
-                if (!IsOccupied(backup.position, excluding))
-                {
-                    point = backup.position;
-                    return true;
-                }
+                if (TryPick(backup.position, excluding, reserveSeconds, out point)) return true;
             }
         }
 
@@ -73,8 +74,23 @@ public class SectionSafePoint : MonoBehaviour
         return false;
     }
 
+    private bool TryPick(Vector3 worldPoint, PlayerMover excluding, float reserveSeconds, out Vector3 point)
+    {
+        point = worldPoint;
+        if (IsOccupied(worldPoint, excluding)) return false;
+        if (reserveSeconds > 0f && excluding != null)
+            reservations[excluding] = (worldPoint, Time.time + reserveSeconds);
+        return true;
+    }
+
     private bool IsOccupied(Vector3 worldPoint, PlayerMover excluding)
     {
+        foreach (var pair in reservations)
+        {
+            if (pair.Key == excluding || pair.Key == null || Time.time >= pair.Value.until) continue;
+            if ((pair.Value.point - worldPoint).sqrMagnitude < occupancyRadius * occupancyRadius) return true;
+        }
+
         Collider[] hits = Physics.OverlapSphere(worldPoint, occupancyRadius);
         foreach (Collider hit in hits)
         {
