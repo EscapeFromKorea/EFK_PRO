@@ -105,8 +105,6 @@ public class PlayerWindReceiver : MonoBehaviour
         Vector3 delta = accumulates ? (currentPush - lastAppliedPush) : currentPush;
         lastAppliedPush = currentPush;
 
-        if (delta.sqrMagnitude < 0.0001f) return;
-
         // 수평 성분은 PlayerMover가 매 물리 프레임 입력 속도로 덮어쓰므로 기존처럼 더한다.
         // 반면 Y 성분을 같은 방식으로 계속 더하면 중력으로 되돌릴 기회 없이 무한 가속한다.
         // 바람의 수직 목표 속도를 최소/최대치로 보장하면, 위쪽 바람은 중력보다 빠르게 위로
@@ -116,6 +114,9 @@ public class PlayerWindReceiver : MonoBehaviour
             verticalVelocity = Mathf.Max(verticalVelocity, currentPush.y);
         else if (currentPush.y < 0f)
             verticalVelocity = Mathf.Min(verticalVelocity, currentPush.y);
+
+        // 토크 이동에서는 램프가 끝나면 delta가 0이어도 수직 바람은 계속 적용해야 한다.
+        if (delta.sqrMagnitude < 0.0001f && Mathf.Approximately(verticalVelocity, rb.velocity.y)) return;
 
         rb.velocity = new Vector3(rb.velocity.x + delta.x, verticalVelocity, rb.velocity.z + delta.z);
     }
