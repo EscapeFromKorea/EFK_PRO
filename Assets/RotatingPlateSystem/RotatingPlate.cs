@@ -101,6 +101,8 @@ public class RotatingPlate : MonoBehaviour
         ApplyConfig();
     }
 
+    private void Start() => SeesawWeightTilt.TryUpgrade(this);
+
     private void OnValidate()
     {
         // 에디터에서 값을 바꾸면 바로 반영(플레이 중이 아니어도).

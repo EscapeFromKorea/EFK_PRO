@@ -2,13 +2,10 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Tools > SeesawSystem > Create Seesaw 메뉴. 판 하나(Rigidbody + BoxCollider + HingeJoint)만 놓으면
-/// 끝나는 시소 생성기 — `docs/PRD/Seesaw.md`의 핵심 결정대로 물리 로직을 짜는 런타임 스크립트는
-/// 없다(`SeesawTuningNotes`는 인스펙터 hover 설명용 주석 컴포넌트일 뿐 Update/FixedUpdate가 없다).
-/// 양쪽 무게 차이/
-/// 충격 발사/쐐기 고정 전부 이 HingeJoint 하나가 PhysX로 자동 처리한다(RotatingPlateMenuItem과 같은
-/// 구조지만, RotatingPlate와 달리 useGravity를 켜 실제 하중으로 기울게 한다 — 태엽 신호로 도는
-/// 회전판과 달리 시소는 스스로 물리로 반응해야 하는 "자유 물리 장치"이기 때문). 받침대(Fulcrum)·
+/// Tools > SeesawSystem > Create Seesaw 메뉴. 판 하나(Rigidbody + BoxCollider + HingeJoint)와
+/// SeesawWeightTilt를 함께 놓는 시소 생성기. 기본 물리 하중/충격은 HingeJoint가 처리하고,
+/// SeesawWeightTilt가 플레이어 이동 코드·회전 저항 때문에 하중이 약해지는 배치에서도 한쪽이
+/// 제한 각도까지 확실히 내려가도록 실제 하중 방향의 토크만 보강한다. 받침대(Fulcrum)·
 /// 좌석 손잡이는 전부 순수 시각/정적 장식(콜라이더는 있어도 Rigidbody 없음)이라 물리 설계에는
 /// 관여하지 않는다. 무게·충격 테스트용 계단은 이 메뉴가 만들지 않는다 — 필요할 때만 씬에 따로
 /// 배치한다(2026-09-07, 매번 자동으로 딸려 나오지 않게 분리).
@@ -38,9 +35,9 @@ public static class SeesawMenuItem
 
         Rigidbody rb = plank.AddComponent<Rigidbody>();
         rb.mass = 5f;
-        // 0.5는 무게가 오르내릴 때 판이 스스로 좌우로 왔다갔다 계속 흔들리는(감쇠 부족) 문제가
-        // 실측으로 확인됐다(2026-09-07) — 회전 저항을 6배 올려 진동이 빠르게 잦아들게 했다.
-        rb.angularDrag = 3f;
+        // SeesawWeightTilt가 실제 하중 토크를 보강한다. 과도한 angularDrag는 한쪽 하중에도
+        // 판이 거의 안 기울게 하므로, 흔들림은 보정 스크립트의 제한 각도로 제어한다.
+        rb.angularDrag = 0.75f;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
@@ -55,11 +52,12 @@ public static class SeesawMenuItem
         hinge.useMotor = false;
         hinge.useSpring = false;
         hinge.useLimits = true;
-        hinge.limits = new JointLimits { min = -35f, max = 35f };
+        hinge.limits = new JointLimits { min = -45f, max = 45f };
 
         // 물리 값은 전부 위 Rigidbody/HingeJoint가 들고 있고, 이 컴포넌트는 그 옆에서 hover로
         // "왜 이 값인지"만 보여준다(런타임 로직 없음, SeesawTuningNotes.cs 참고).
         plank.AddComponent<SeesawTuningNotes>();
+        plank.AddComponent<SeesawWeightTilt>();
 
         // 탑승자가 기운 판 위에서 미끄러지지 않을 만큼 마찰을 높게 잡는다(RailCartSystem의
         // CreateLowFrictionMaterial과 반대 방향 — 여기는 오히려 안 미끄러져야 한다).

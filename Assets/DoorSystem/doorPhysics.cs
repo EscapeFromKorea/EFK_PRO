@@ -2,9 +2,14 @@ using UnityEngine;
 
 public class doorPhysics : MonoBehaviour
 {
-    [Header("Door 설정")]
+    [Header("Door 이동 설정")]
     private Rigidbody doorRigidbody;
+    [Tooltip("문이 열릴 때 시작 위치에서 월드 X축으로 이동할 거리입니다. 음수면 왼쪽, 양수면 오른쪽으로 이동합니다.")]
+    public float doorTargetXOffset = 0f;
+    [Tooltip("문이 열릴 때 시작 위치에서 월드 Y축으로 이동할 거리입니다. 기존 세로 문은 이 값만 설정하면 됩니다.")]
     public float doorTargetYOffset = 3f;
+    [Tooltip("문이 열릴 때 시작 위치에서 월드 Z축으로 이동할 거리입니다. 음수면 뒤쪽, 양수면 앞쪽으로 이동합니다.")]
+    public float doorTargetZOffset = 0f;
     public float doorSpeed = 2f;
 
     [Header("레버 설정")]
@@ -31,8 +36,9 @@ public class doorPhysics : MonoBehaviour
             doorRigidbody.isKinematic = true;
             doorRigidbody.useGravity = false;
             doorStartPosition = doorRigidbody.transform.position;
-            doorTargetPosition = doorStartPosition + new Vector3(0, doorTargetYOffset, 0);
-            doorBottomPosition = doorStartPosition - new Vector3(0, doorTargetYOffset, 0);
+            Vector3 openOffset = new Vector3(doorTargetXOffset, doorTargetYOffset, doorTargetZOffset);
+            doorTargetPosition = doorStartPosition + openOffset;
+            doorBottomPosition = doorStartPosition - openOffset;
 
             currentTargetPosition = doorStartPosition;
         }
