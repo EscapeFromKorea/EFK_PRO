@@ -62,6 +62,70 @@ docker-compose down
 > 기준으로 재구성했다. 100% 동일하진 않을 수 있다 — 팀 회의에서 다른 패널/쿼리가 필요하다고
 > 나오면 `provisioning/dashboards/efk-pro-telemetry.json`만 고쳐서 다시 커밋하면 된다.
 
+## HW 부하 대시보드 (macOS / Windows 분리)
+
+플레이어가 Unity로 플레이할 때 **PC에 얼마나 부하가 걸리는지**를 OS별로 따로 본다.
+
+| 대시보드 | uid | 쓰는 라벨 |
+|---|---|---|
+| EFK-PRO HW 부하 (macOS) | `efk-pro-hw-macos` | `os="macos"` |
+| EFK-PRO HW 부하 (Windows) | `efk-pro-hw-windows` | `os="windows"` |
+
+**왜 둘로 나눴나**: Apple Silicon은 통합 메모리(VRAM 별도 한도 없음), Windows는 dGPU(VRAM 별도 풀)라
+봐야 할 지표가 다르다. macOS는 칩/통합 RAM 분포, Windows는 VRAM·GPU 벤더 분포를 본다.
+
+### 수집 (`Assets/TelemetrySystem/HardwareProfiler.cs`)
+
+5초마다 Loki로 보낸다. 모든 스트림에 `os`(LokiClient가 부착)와 `build`(`editor`/`player`) 라벨이 붙는다.
+
+| name | 의미 |
+|---|---|
+| `fps` | 5초 윈도우 평균 FPS |
+| `frame_ms_max` | 윈도우 안에서 가장 느렸던 한 프레임(ms) — 끊김 탐지 |
+| `cpu_frame_ms` / `cpu_main_ms` / `cpu_render_ms` | CPU 전체 / 메인 스레드 / 렌더 스레드 프레임타임(ms) |
+| `gpu_frame_ms` | GPU 프레임타임(ms) |
+| `sys_mem_mb` / `gfx_mem_mb` | 시스템 / 그래픽 메모리 사용량(MB) |
+| `hw_info` (event) | 세션 시작 시 1회, CPU/GPU명·RAM·VRAM·그래픽 API·해상도 등 사양 JSON |
+| `gpu_timing_unavailable` (event) | GPU 프레임타임이 안 잡히는 환경에서 1회 |
+
+> **CPU/GPU "사용률(%)"이 아니다.** Unity는 크로스플랫폼 사용률을 제공하지 않아서,
+> 부하의 대리 지표로 **프레임타임(ms)**을 쓴다. 16.7ms = 60FPS 한계, 33.4ms = 30FPS 한계.
+
+### 알아둘 것
+
+- **Frame Timing Stats 설정 필요**: `ProjectSettings`의 `enableFrameTimingStats`가 `0`이면
+  `FrameTimingManager`가 꺼져서 CPU/GPU 프레임타임이 안 나온다(FPS·메모리만 나옴).
+  Player Settings → Other Settings → *Frame Timing Stats* 를 켜야 한다. (이 변경은 팀 전체에
+  영향을 주는 공유 파일이라 코드 변경과 분리해서 합의 후 반영한다.)
+- **GPU 프레임타임은 환경에 따라 0으로 나올 수 있다.** 그럴 땐 값을 0ms로 보내지 않고
+  `gpu_timing_unavailable` 이벤트만 남긴다(대시보드 우상단 "진단" 패널). 0ms로 찍혀서
+  "부하가 낮다"고 오해하는 걸 막기 위함이다.
+- 대시보드 상단 **빌드 종류** 변수 기본값은 `player`다. 에디터 플레이는 에디터 오버헤드가 섞여
+  있어 플레이어 PC 부하로 볼 수 없기 때문이다. 에디터에서 테스트할 땐 `editor`나 `All`로 바꿔야 보인다.
+- **`gfx_mem_mb`는 Development 빌드에서만 나온다.** macOS/Unity 2022.3에서 실측: 릴리스 플레이어 빌드는
+  0줄, Development 빌드는 정상 수신. 실제 플레이어(릴리스)에서는 `sys_mem_mb`만 나오는 게 정상이다.
+  Windows에서도 같은지는 아직 미확인(체크리스트 참고).
+- 첫 5초 윈도우의 `frame_ms_max`는 시작 로딩 때문에 크게 튄다(실측 약 2000ms). 시작 직후 구간의
+  "최악 프레임"은 로딩이므로 플레이 중 끊김으로 오해하지 말 것.
+- 이 대시보드 JSON은 생성기로 만들었지만 결과 JSON만 커밋한다. 직접 고칠 땐 아래
+  "대시보드를 직접 수정하고 싶을 때"와 같이 JSON을 고치면 된다.
+- Grafana 11.4에서 bargauge/stat 패널은 `reduceOptions.values: true`가 없으면 여러 시리즈가
+  하나로 합쳐져 막대/타일이 1개만 그려진다. 새 패널을 만들 때 주의.
+
+### 검증 상태 (2026-11-07)
+
+| 항목 | 상태 |
+|---|---|
+| C# 컴파일 (Unity 2022.3.62f3 번들 Roslyn) | 통과 |
+| 두 대시보드 46개 쿼리 타깃 (실제 Loki + Grafana API) | 전부 통과 (샘플 데이터 기준, build=player / All) |
+| 화면 렌더링 (macOS / Windows 대시보드) | 확인 |
+| **macOS 실제 Unity 플레이어 빌드(릴리스)** | 확인 — `os`/`build` 라벨, `hw_info` JSON, fps, cpu_frame/main/render_ms, **gpu_frame_ms(Metal에서 값 나옴)**, sys_mem_mb, 에러 경로 모두 정상 수신. `gfx_mem_mb`만 릴리스에서 안 나옴(위 설명) |
+| **Windows 실측** | **미검증** → `HW대시보드_Windows검증_체크리스트.md` |
+
+> 대시보드/쿼리 검증은 `HardwareProfiler` 형식을 흉내 낸 샘플로 했고, macOS 값은 별도로 실제 빌드를
+> 돌려 확인했다(Apple M5 Pro / Metal / Unity 2022.3.62f3, 42초 실행, 5초 간격 8샘플).
+> Windows의 GPU 프레임타임(D3D11/D3D12)과 메모리 카운터는 직접 돌려봐야 확정된다.
+
 ## 팀원끼리 로그를 공유하고 싶다면 (지금은 미적용, 참고용)
 
 지금 이 구성은 **각자 로컬에만** 로그가 쌓인다(내가 플레이한 것만 내 컴퓨터의 대시보드에

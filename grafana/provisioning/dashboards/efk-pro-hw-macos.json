@@ -1,0 +1,1136 @@
+{
+  "id": null,
+  "uid": "efk-pro-hw-macos",
+  "title": "EFK-PRO HW 부하 (macOS)",
+  "description": "플레이어 PC(macOS)의 FPS/CPU·GPU 프레임타임/메모리. Unity는 사용률(%)을 주지 않아 프레임타임을 부하 지표로 쓴다.",
+  "tags": [
+    "efk-pro",
+    "loki",
+    "hw",
+    "macos"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "build",
+        "label": "빌드 종류",
+        "type": "custom",
+        "query": "player,editor",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "selected": true,
+          "text": "player",
+          "value": "player"
+        },
+        "options": [
+          {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": true,
+            "text": "player",
+            "value": "player"
+          },
+          {
+            "selected": false,
+            "text": "editor",
+            "value": "editor"
+          }
+        ]
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "EFK-PRO 대시보드",
+      "tags": [
+        "efk-pro"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "수집된 세션 수",
+      "description": "hw_info 이벤트 수 = 세션 시작 횟수(선택 시간 범위).",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum(count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"}[$__range])) or vector(0)",
+          "legendFormat": "sessions",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "sessions"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "평균 FPS",
+      "description": "5초 윈도우 FPS의 평균. 30 미만 빨강 / 55 미만 노랑.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 4,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg by (build) (avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"fps\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__range]))",
+          "legendFormat": "{{build}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "green",
+                "value": 55
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "CPU 프레임타임 p95",
+      "description": "FrameTimingManager cpuFrameTime의 95번째 백분위(ms). 16.7ms=60FPS 한계, 33.4ms=30FPS 한계.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 9,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg by (build) (quantile_over_time(0.95, {job=\"efk-pro\", type=\"metric\", name=\"cpu_frame_ms\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__range]))",
+          "legendFormat": "{{build}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 16.7
+              },
+              {
+                "color": "red",
+                "value": 33.4
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "GPU 프레임타임 p95",
+      "description": "gpuFrameTime의 95번째 백분위(ms). 데이터가 없으면 이 플랫폼/설정에서 GPU 타이밍이 안 잡히는 것 — 오른쪽 '진단' 패널 확인.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg by (build) (quantile_over_time(0.95, {job=\"efk-pro\", type=\"metric\", name=\"gpu_frame_ms\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__range]))",
+          "legendFormat": "{{build}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 16.7
+              },
+              {
+                "color": "red",
+                "value": 33.4
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "진단: GPU 타이밍 미지원 보고",
+      "description": "gpu_timing_unavailable 이벤트 수. 0보다 크면 GPU 프레임타임이 수집 안 되는 환경이 있다는 뜻(그 세션의 gpu_frame_ms는 비어 있음).",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum(count_over_time({job=\"efk-pro\", type=\"event\", name=\"gpu_timing_unavailable\", os=\"macos\", build=~\"$build\"}[$__range])) or vector(0)",
+          "legendFormat": "unavailable",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "unavailable",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "FPS 추이",
+      "description": "5초 윈도우 평균 FPS (build 라벨별).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "interval": "30s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"fps\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "fps ({{build}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "green",
+                "value": 55
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "최악 프레임 (frame_ms_max)",
+      "description": "5초 윈도우 안에서 가장 느렸던 한 프레임(ms). 끊김(hitch) 탐지용. 평균 FPS가 좋아도 이 값이 튀면 체감은 나쁘다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "interval": "30s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"frame_ms_max\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "평균 ({{build}})"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "quantile_over_time(0.95, {job=\"efk-pro\", type=\"metric\", name=\"frame_ms_max\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "p95 ({{build}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 16.7
+              },
+              {
+                "color": "red",
+                "value": 33.4
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "CPU 프레임타임 (ms)",
+      "description": "cpu_frame_ms=CPU 전체, cpu_main_ms=메인 스레드, cpu_render_ms=렌더 스레드. 메인이 병목이면 게임 로직/물리, 렌더가 병목이면 드로우콜/배칭을 의심.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "interval": "30s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"cpu_frame_ms\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "cpu_frame ({{build}})"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"cpu_main_ms\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "main ({{build}})"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"cpu_render_ms\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "render ({{build}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 16.7
+              },
+              {
+                "color": "red",
+                "value": 33.4
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "GPU 프레임타임 (ms)",
+      "description": "gpu_frame_ms 평균과 p95. 값이 아예 안 나오면 GPU 타이밍 미지원(진단 패널 참고) — 0ms로 오해하지 말 것.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "interval": "30s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"gpu_frame_ms\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "평균 ({{build}})"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "quantile_over_time(0.95, {job=\"efk-pro\", type=\"metric\", name=\"gpu_frame_ms\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "p95 ({{build}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 16.7
+              },
+              {
+                "color": "red",
+                "value": 33.4
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "메모리 사용량 (MB)",
+      "description": "Apple Silicon은 통합 메모리라 sys_mem(시스템)과 gfx_mem(그래픽)이 같은 풀을 나눠 쓴다 — 둘을 합쳐서 보면 안 되고, VRAM 별도 한도도 없다. ※ gfx_mem_mb는 Development 빌드에서만 수집된다(macOS/Unity 2022.3 실측: 릴리스 빌드 0줄, Development 빌드 정상). 릴리스 플레이어에서는 sys_mem만 나오는 게 정상이다.",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "interval": "30s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"sys_mem_mb\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "sys_mem ({{build}})"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "avg_over_time({job=\"efk-pro\", type=\"metric\", name=\"gfx_mem_mb\", os=\"macos\", build=~\"$build\"} | regexp \"(?P<v>.+)\" | unwrap v [$__interval])",
+          "legendFormat": "gfx_mem ({{build}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mbytes",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "RAM 8GB 이하 세션 비율",
+      "description": "통합 메모리 8GB 이하 기기 비율. 높으면 메모리 예산을 더 빡빡하게 잡아야 한다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 20
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "(sum(count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"} | json | ramMb <= 8192 [$__range])) or vector(0)) / sum(count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"}[$__range]))",
+          "legendFormat": "ratio",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 0,
+          "displayName": "ratio",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.4
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 12,
+      "type": "bargauge",
+      "title": "GPU 분포",
+      "description": "Unity가 보고한 graphicsDeviceName. Apple Silicon은 CPU와 같은 칩 이름으로 나온다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum by (gpu) (count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"} | json [$__range]))",
+          "legendFormat": "{{gpu}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "basic",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "bargauge",
+      "title": "CPU(칩) 분포",
+      "description": "processorType.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 28
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum by (cpu) (count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"} | json [$__range]))",
+          "legendFormat": "{{cpu}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "basic",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "bargauge",
+      "title": "RAM(통합 메모리) 분포 (MB)",
+      "description": "systemMemorySize(MB).",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 28
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum by (ramMbLabel) (count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"} | json | label_format ramMbLabel=\"{{ .ramMb }} MB\" [$__range]))",
+          "legendFormat": "{{ramMbLabel}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "basic",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "bargauge",
+      "title": "그래픽 API 분포",
+      "description": "macOS는 보통 Metal이어야 한다. 다른 값이 보이면 비정상.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum by (gfxApi) (count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"} | json [$__range]))",
+          "legendFormat": "{{gfxApi}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "basic",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "bargauge",
+      "title": "품질 설정 분포",
+      "description": "QualitySettings 현재 레벨 이름.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum by (quality) (count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"} | json [$__range]))",
+          "legendFormat": "{{quality}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "basic",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "bargauge",
+      "title": "해상도 분포",
+      "description": "시작 시점 Screen 해상도.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "sum by (resolution) (count_over_time({job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"} | json [$__range]))",
+          "legendFormat": "{{resolution}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "basic",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "logs",
+      "title": "세션별 hw_info 원본",
+      "description": "세션 시작 시 1회 보내는 하드웨어 사양 JSON 원본.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki_efk_pro"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki_efk_pro"
+          },
+          "expr": "{job=\"efk-pro\", type=\"event\", name=\"hw_info\", os=\"macos\", build=~\"$build\"}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ]
+}
