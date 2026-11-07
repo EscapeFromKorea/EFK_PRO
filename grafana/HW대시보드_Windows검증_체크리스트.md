@@ -71,7 +71,7 @@ Unity에서 **Tools > Telemetry > Sync Loki Config from .env** 실행.
 | 4 | "CPU 프레임타임" | cpu_frame / main / render 3개 선이 보임 | [ ] |
 | 5 | "GPU 프레임타임" | **값이 나온다** (아래 주의 참고) | [ ] |
 | 6 | "진단: GPU 타이밍 미지원 보고" | `0` | [ ] |
-| 7 | "메모리 사용량" | sys_mem, gfx_mem 둘 다 나옴 | [ ] |
+| 7 | "메모리 사용량" | **B(플레이어 빌드)**: sys_mem만 나와도 정상. **A(에디터)/Development 빌드**: sys_mem, gfx_mem 둘 다 나옴 (macOS에서는 gfx_mem이 Development 빌드에서만 나옴을 확인. Windows도 같은지 알려줘) | [ ] |
 | 8 | "GPU 분포"/"VRAM 분포"/"그래픽 API 분포" | 내 GPU·VRAM·API(`Direct3D11` 등)가 보임 | [ ] |
 
 ### 5번/6번이 안 나오면 (GPU 프레임타임 없음)

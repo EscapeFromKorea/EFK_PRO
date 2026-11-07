@@ -685,7 +685,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "메모리 사용량 (MB)",
-      "description": "Apple Silicon은 통합 메모리라 sys_mem(시스템)과 gfx_mem(그래픽)이 같은 풀을 나눠 쓴다 — 둘을 합쳐서 보면 안 되고, VRAM 별도 한도도 없다.",
+      "description": "Apple Silicon은 통합 메모리라 sys_mem(시스템)과 gfx_mem(그래픽)이 같은 풀을 나눠 쓴다 — 둘을 합쳐서 보면 안 되고, VRAM 별도 한도도 없다. ※ gfx_mem_mb는 Development 빌드에서만 수집된다(macOS/Unity 2022.3 실측: 릴리스 빌드 0줄, Development 빌드 정상). 릴리스 플레이어에서는 sys_mem만 나오는 게 정상이다.",
       "gridPos": {
         "h": 8,
         "w": 16,

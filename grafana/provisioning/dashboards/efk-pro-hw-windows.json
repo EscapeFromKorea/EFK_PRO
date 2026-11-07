@@ -685,7 +685,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "메모리 사용량 (MB)",
-      "description": "Windows(dGPU)는 시스템 RAM(sys_mem)과 GPU 메모리(gfx_mem)가 별도 풀이다. VRAM 한도는 아래 분포 패널의 vramMb와 비교해서 본다.",
+      "description": "Windows(dGPU)는 시스템 RAM(sys_mem)과 GPU 메모리(gfx_mem)가 별도 풀이다. VRAM 한도는 아래 분포 패널의 vramMb와 비교해서 본다. ※ gfx_mem_mb는 Development 빌드에서만 수집된다(macOS/Unity 2022.3 실측: 릴리스 빌드 0줄, Development 빌드 정상). 릴리스 플레이어에서는 sys_mem만 나오는 게 정상이다.",
       "gridPos": {
         "h": 8,
         "w": 16,

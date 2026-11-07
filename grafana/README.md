@@ -102,8 +102,11 @@ docker-compose down
   "부하가 낮다"고 오해하는 걸 막기 위함이다.
 - 대시보드 상단 **빌드 종류** 변수 기본값은 `player`다. 에디터 플레이는 에디터 오버헤드가 섞여
   있어 플레이어 PC 부하로 볼 수 없기 때문이다. 에디터에서 테스트할 땐 `editor`나 `All`로 바꿔야 보인다.
-- 메모리 지표(`sys_mem_mb`/`gfx_mem_mb`)는 빌드 종류/플랫폼에 따라 Unity가 카운터를 안 열어줄 수
-  있다. 그 경우 해당 지표만 안 나온다.
+- **`gfx_mem_mb`는 Development 빌드에서만 나온다.** macOS/Unity 2022.3에서 실측: 릴리스 플레이어 빌드는
+  0줄, Development 빌드는 정상 수신. 실제 플레이어(릴리스)에서는 `sys_mem_mb`만 나오는 게 정상이다.
+  Windows에서도 같은지는 아직 미확인(체크리스트 참고).
+- 첫 5초 윈도우의 `frame_ms_max`는 시작 로딩 때문에 크게 튄다(실측 약 2000ms). 시작 직후 구간의
+  "최악 프레임"은 로딩이므로 플레이 중 끊김으로 오해하지 말 것.
 - 이 대시보드 JSON은 생성기로 만들었지만 결과 JSON만 커밋한다. 직접 고칠 땐 아래
   "대시보드를 직접 수정하고 싶을 때"와 같이 JSON을 고치면 된다.
 - Grafana 11.4에서 bargauge/stat 패널은 `reduceOptions.values: true`가 없으면 여러 시리즈가
@@ -116,11 +119,12 @@ docker-compose down
 | C# 컴파일 (Unity 2022.3.62f3 번들 Roslyn) | 통과 |
 | 두 대시보드 46개 쿼리 타깃 (실제 Loki + Grafana API) | 전부 통과 (샘플 데이터 기준, build=player / All) |
 | 화면 렌더링 (macOS / Windows 대시보드) | 확인 |
-| **Unity Play에서 실제로 값이 들어오는지** | **미검증** |
+| **macOS 실제 Unity 플레이어 빌드(릴리스)** | 확인 — `os`/`build` 라벨, `hw_info` JSON, fps, cpu_frame/main/render_ms, **gpu_frame_ms(Metal에서 값 나옴)**, sys_mem_mb, 에러 경로 모두 정상 수신. `gfx_mem_mb`만 릴리스에서 안 나옴(위 설명) |
 | **Windows 실측** | **미검증** → `HW대시보드_Windows검증_체크리스트.md` |
 
-> 샘플 데이터는 `HardwareProfiler`가 만드는 것과 같은 형식으로 흉내 내서 넣은 것이다.
-> 실제 Unity 값(특히 GPU 프레임타임, 메모리 카운터)은 직접 돌려봐야 확정된다.
+> 대시보드/쿼리 검증은 `HardwareProfiler` 형식을 흉내 낸 샘플로 했고, macOS 값은 별도로 실제 빌드를
+> 돌려 확인했다(Apple M5 Pro / Metal / Unity 2022.3.62f3, 42초 실행, 5초 간격 8샘플).
+> Windows의 GPU 프레임타임(D3D11/D3D12)과 메모리 카운터는 직접 돌려봐야 확정된다.
 
 ## 팀원끼리 로그를 공유하고 싶다면 (지금은 미적용, 참고용)
 
