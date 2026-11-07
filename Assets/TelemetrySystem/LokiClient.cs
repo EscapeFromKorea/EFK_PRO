@@ -23,6 +23,9 @@ public class LokiClient : MonoBehaviour
     const string JobLabel = "efk-pro";
 
     static LokiClient _instance;
+    // OS 구분 라벨(macos/windows/linux/other). 그라파나 대시보드가 OS별로 갈라 보기 위함.
+    // SystemInfo는 메인 스레드에서만 안전하게 읽히므로 static 초기화 대신 Awake()에서 채운다.
+    string _osLabel = "other";
     LokiConfig _config;
     readonly List<(string key, Dictionary<string, string> labels, long ts, string line)> _buffer = new();
 
@@ -37,6 +40,7 @@ public class LokiClient : MonoBehaviour
     void Awake()
     {
         _instance = this; // AddComponent()가 반환되기 전에 Awake가 도니, Bootstrap의 대입을 기다리면 이 안에서 부르는 이벤트가 유실된다
+        _osLabel = ResolveOsLabel();
         _config = Resources.Load<LokiConfig>("LokiConfig");
         if (_config == null || string.IsNullOrEmpty(_config.token))
         {
@@ -71,12 +75,27 @@ public class LokiClient : MonoBehaviour
 
     public static void Enqueue(Dictionary<string, string> labels, string line) => _instance?.EnqueueInternal(labels, line);
 
+    /// <summary>텔레메트리가 실제로 켜져 있는지(LokiConfig 로드 성공). 꺼져 있으면 부가 수집기가 스스로 안 돌게 하는 용도.</summary>
+    public static bool IsActive => _instance != null && _instance.enabled;
+
     void EnqueueInternal(Dictionary<string, string> labels, string line)
     {
         if (!enabled) return;
         labels["job"] = JobLabel;
+        labels["os"] = _osLabel;
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000L;
         _buffer.Add((LabelsKey(labels), labels, ts, line));
+    }
+
+    static string ResolveOsLabel()
+    {
+        switch (SystemInfo.operatingSystemFamily)
+        {
+            case OperatingSystemFamily.MacOSX: return "macos";
+            case OperatingSystemFamily.Windows: return "windows";
+            case OperatingSystemFamily.Linux: return "linux";
+            default: return "other";
+        }
     }
 
     static string LabelsKey(Dictionary<string, string> labels)
