@@ -171,11 +171,14 @@ public class RoleSlot : MonoBehaviour, IInteractionProvider
         if (PanelUser == null) return;
         PlayerMover closedBy = PanelUser;
         PanelUser = null;
+        InputGate.PanelClosed(); // ESC가 이 화면을 닫을 때 일시정지 메뉴가 같이 열리지 않게 한다(PauseMenuSystem).
         PanelClosed?.Invoke(closedBy);
     }
 
     private void OpenPanel(PlayerMover p)
     {
+        // 이미 화면이 열린 채 다른 사용자로 덮어쓰이면 열림 수를 한 번 더 올리지 않는다.
+        if (PanelUser == null) InputGate.PanelOpened();
         PanelUser = p;
         PanelOpened?.Invoke(p);
     }

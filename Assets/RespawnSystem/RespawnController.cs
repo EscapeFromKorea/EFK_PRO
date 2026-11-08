@@ -325,7 +325,7 @@ public class RespawnController : MonoBehaviour
     {
         RefreshRoster();
 
-        if (Input.GetKeyDown(KeyCode.R))
+        if (!InputGate.Blocked && Input.GetKeyDown(KeyCode.R)) // 일시정지 메뉴가 열려 있으면 수동 리스폰을 막는다(PauseMenuSystem).
         {
             PlayerMover mover = ControlledPlayer();
             if (mover != null) TryRespawn(mover, useFade: true, reason: "수동 R");
