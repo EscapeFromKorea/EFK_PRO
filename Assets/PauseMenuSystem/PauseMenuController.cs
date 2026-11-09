@@ -189,11 +189,11 @@ public class PauseMenuController : MonoBehaviour
         var r = new Rect((W - 520) / 2, (H - 460) / 2, 520, 460);
         GUI.Box(r, GUIContent.none, _box);
         GUI.Label(new Rect(r.x, r.y + 20, r.width, 60), "일시정지", _title);
-        if (GUI.Button(new Rect(r.x + 60, r.y + 110, 400, 70), "설정", _button)) { _state = State.Settings; _scroll = Vector2.zero; }
+        if (GUI.Button(new Rect(r.x + 60, r.y + 110, 400, 70), "돌아가기", _button)) Close();
+        if (GUI.Button(new Rect(r.x + 60, r.y + 200, 400, 70), "설정", _button)) { _state = State.Settings; _scroll = Vector2.zero; }
         GUI.enabled = false; // 메인 화면은 아직 없다.
-        GUI.Button(new Rect(r.x + 60, r.y + 200, 400, 70), "메인화면으로 나가기 (준비 중)", _button);
+        GUI.Button(new Rect(r.x + 60, r.y + 290, 400, 70), "메인화면으로 나가기 (준비 중)", _button);
         GUI.enabled = true;
-        if (GUI.Button(new Rect(r.x + 60, r.y + 290, 400, 70), "돌아가기", _button)) Close();
     }
 
     static readonly string[] ShadowNames = { "끔", "낮음", "높음" };
