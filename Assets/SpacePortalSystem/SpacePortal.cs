@@ -72,7 +72,8 @@ public class SpacePortal : MonoBehaviour
 
     [Header("시각 — 포탈 너머 보기 (PRD §4.6)")]
     public bool enableViewThrough = true;
-    public int renderTextureResolution = 512;
+    // 뷰스루 켜기/끄기·포탈 속 그림자·렌더텍스처 해상도는 사용자 그래픽 설정(GraphicsOptions, ESC 메뉴)이 정한다.
+    // 포탈 속 그림자는 기본 꺼짐 — 2026-11-08 High 실측에서 켜면 casters 192→473, draw 크게 증가.
 
     /// <summary>씬에 색당 최대 하나만 존재한다는 것을 보장하는 전역 참조.</summary>
     public static SpacePortal Orange { get; private set; }
@@ -85,6 +86,7 @@ public class SpacePortal : MonoBehaviour
     private static readonly Quaternion Flip180 = Quaternion.Euler(0f, 180f, 0f);
 
     private BoxCollider trigger;
+    private static readonly Plane[] framePlanes = new Plane[6]; // LateUpdate는 메인 스레드 순차 호출이라 공유해도 안전.
 
     private class ClonePart
     {
@@ -518,7 +520,7 @@ public class SpacePortal : MonoBehaviour
         camGo.transform.SetParent(transform, false);
         viewCamera = camGo.AddComponent<Camera>();
         viewCamera.enabled = false; // 자동 렌더 루프를 타지 않는다 — LateUpdate에서 수동 Render()만 쓴다.
-        viewTexture = new RenderTexture(Mathf.Max(64, renderTextureResolution), Mathf.Max(64, renderTextureResolution), 16);
+        viewTexture = new RenderTexture(GraphicsOptions.PortalResolution, GraphicsOptions.PortalResolution, 16);
         viewCamera.targetTexture = viewTexture;
     }
 
@@ -530,10 +532,19 @@ public class SpacePortal : MonoBehaviour
         // 포탈은 짝의 존재 여부와 무관하게 항상 보인다 — 짝이 없으면(단독 설치) 검정 단색으로 위치만
         // 표시하고, 짝이 생기면 뷰스루로 전환한다(2026-09-11 확정 — 예전엔 짝 없을 때 완전히
         // 안 보여 어디에 설치했는지 알 수 없었다).
-        if (!enableViewThrough || partner == null || viewCamera == null)
+        if (!enableViewThrough || !GraphicsOptions.PortalView || partner == null || viewCamera == null)
         {
             quadMaterial.mainTexture = blackTexture;
             return;
+        }
+        // 설정에서 해상도가 바뀌면 렌더텍스처를 새로 만든다(정수 비교 한 번이라 평소 비용은 없다).
+        int res = GraphicsOptions.PortalResolution;
+        if (viewTexture.width != res)
+        {
+            viewCamera.targetTexture = null;
+            Destroy(viewTexture);
+            viewTexture = new RenderTexture(res, res, 16);
+            viewCamera.targetTexture = viewTexture;
         }
         quadMaterial.mainTexture = viewTexture;
 
@@ -541,10 +552,12 @@ public class SpacePortal : MonoBehaviour
         // 낸다 — 포탈이 여러 개거나 한동안 화면 밖에 있으면 무의미한 렌더가 쌓인다(2026-09-29
         // 점검에서 발견). 텍스처는 마지막으로 보였을 때 값 그대로 남고, 다시 보이면 다음 프레임에
         // 갱신된다(한 프레임 지연은 무해하다).
-        if (!quadRenderer.isVisible) return;
-
+        // isVisible는 "어느 카메라든" 보면 true라 짝 포탈의 뷰 카메라나 씬 뷰가 봐도 렌더가 돌았다 —
+        // 메인 카메라 절두체와 쿼드 bounds만 직접 본다(2026-11-08).
         Camera mainCam = Camera.main;
         if (mainCam == null) return;
+        GeometryUtility.CalculateFrustumPlanes(mainCam, framePlanes);
+        if (!GeometryUtility.TestPlanesAABB(framePlanes, quadRenderer.bounds)) return;
 
         // 메인 카메라를 "이 포탈 → 짝 포탈" 상대 변환으로 옮긴 위치/방향에서 찍어, 이 포탈 면에는
         // "짝 포탈 저편에서 본 장면"이 비친다(표준 포탈 카메라 트릭).
@@ -562,7 +575,10 @@ public class SpacePortal : MonoBehaviour
         // 비칠 수 있다는 것을 알고 감수한 타협이다(최종 보고 참고).
         if (renderDepth >= MaxRenderDepth) return; // 재귀 1단계 제한 — 더 안쪽은 직전 프레임 텍스처 그대로.
         renderDepth++;
+        float savedShadowDistance = QualitySettings.shadowDistance;
+        if (!GraphicsOptions.PortalShadows) QualitySettings.shadowDistance = 0f; // Render()는 동기라 메인 카메라 렌더엔 영향 없다.
         viewCamera.Render();
+        QualitySettings.shadowDistance = savedShadowDistance;
         renderDepth--;
     }
 

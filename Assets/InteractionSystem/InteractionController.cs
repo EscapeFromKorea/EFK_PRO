@@ -171,9 +171,11 @@ public class InteractionController : MonoBehaviour
         bool sameHolder = !ch.tracker.IsHolding || holder == ch.heldBy;
         bool holdAvailable = ch.hasHold && sameHolder;
 
+        // 일시정지 메뉴가 열려 있으면 입력을 모두 끊는다 — 진행 중이던 홀드는 holdAvailable=false로 발동 없이 취소된다(PauseMenuSystem).
+        bool paused = InputGate.Blocked;
         HoldResult r = ch.tracker.Step(
-            Input.GetKeyDown(ch.key), Input.GetKeyUp(ch.key), Input.GetKey(ch.key),
-            Time.time, holdSeconds, holdAvailable);
+            !paused && Input.GetKeyDown(ch.key), !paused && Input.GetKeyUp(ch.key), !paused && Input.GetKey(ch.key),
+            Time.time, holdSeconds, holdAvailable && !paused);
 
         if (ch.tracker.IsHolding && ch.heldBy == null) ch.heldBy = holder;
         if (!ch.tracker.IsHolding && r != HoldResult.None) ch.heldBy = null;

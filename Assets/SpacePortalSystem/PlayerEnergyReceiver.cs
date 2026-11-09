@@ -122,7 +122,7 @@ public class PlayerEnergyReceiver : MonoBehaviour
     private void HandleAim()
     {
         EnergyColor? aimColor = CarriedBall != null ? CarriedBall.color : InstalledColor;
-        bool wantAim = Input.GetMouseButton(1) && aimColor.HasValue;
+        bool wantAim = !InputGate.Blocked && Input.GetMouseButton(1) && aimColor.HasValue; // 일시정지 메뉴가 열려 있으면 조준도 끊는다.
 
         if (!wantAim)
         {

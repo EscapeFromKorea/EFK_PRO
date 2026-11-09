@@ -159,7 +159,14 @@ public class RailTrackVisual : MonoBehaviour
     private void EnsureSleeperPoolSize(Transform holder, int count)
     {
         if (sleeperPool.Count == 0)
-            for (int i = 0; i < holder.childCount; i++) sleeperPool.Add(holder.GetChild(i));
+            for (int i = 0; i < holder.childCount; i++)
+            {
+                var child = holder.GetChild(i);
+                sleeperPool.Add(child);
+                // 침목은 작고 반복되는 장식 — 그림자 캐스터 절감(2026-11-08 성능 최적화). 씬에 이미 박힌 침목에도 풀 초기화 때 한 번 적용된다.
+                if (child.TryGetComponent(out Renderer existing))
+                    existing.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
 
         while (sleeperPool.Count < count)
         {
@@ -169,7 +176,9 @@ public class RailTrackVisual : MonoBehaviour
             cube.transform.SetParent(holder, false);
             if (sleeperMaterialInstance == null)
                 sleeperMaterialInstance = new Material(Shader.Find("Standard")) { color = sleeperColor };
-            cube.GetComponent<Renderer>().sharedMaterial = sleeperMaterialInstance;
+            var sleeperRenderer = cube.GetComponent<Renderer>();
+            sleeperRenderer.sharedMaterial = sleeperMaterialInstance;
+            sleeperRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             sleeperPool.Add(cube.transform);
         }
     }
