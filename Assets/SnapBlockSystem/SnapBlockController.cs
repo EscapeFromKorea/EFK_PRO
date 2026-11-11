@@ -53,6 +53,8 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
     private readonly List<SnapBlock.Face> facesA = new List<SnapBlock.Face>();
     private readonly List<SnapBlock.Face> facesB = new List<SnapBlock.Face>();
     private readonly List<SnapBlock> sceneBlocks = new List<SnapBlock>();
+    private readonly HashSet<SnapBlock> structureVisited = new HashSet<SnapBlock>();
+    private readonly Queue<SnapBlock> structurePending = new Queue<SnapBlock>();
 
     private Transform hlA, hlB;                 // 후보 면 하이라이트 2개
     private Renderer hlARenderer, hlBRenderer;
@@ -328,19 +330,25 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
     // candBlock이 속한 구조물의 블록 수 + (aimedBlock이 그 구조물에 아직 없으면) 1.
     private int CountStructureWith(SnapBlock seed, SnapBlock adding)
     {
-        HashSet<SnapBlock> seen = new HashSet<SnapBlock>();
-        Queue<SnapBlock> q = new Queue<SnapBlock>();
-        q.Enqueue(seed);
-        seen.Add(seed);
-        while (q.Count > 0)
+        try
         {
-            SnapBlock b = q.Dequeue();
-            foreach (SnapBlock n in b.ConnectedBlocks)
+            structurePending.Enqueue(seed);
+            structureVisited.Add(seed);
+            while (structurePending.Count > 0)
             {
-                if (n != null && seen.Add(n)) q.Enqueue(n);
+                SnapBlock block = structurePending.Dequeue();
+                foreach (SnapBlock neighbor in block.ConnectedBlocks)
+                {
+                    if (neighbor != null && structureVisited.Add(neighbor)) structurePending.Enqueue(neighbor);
+                }
             }
+            return structureVisited.Contains(adding) ? structureVisited.Count : structureVisited.Count + 1;
         }
-        return seen.Contains(adding) ? seen.Count : seen.Count + 1;
+        finally
+        {
+            structureVisited.Clear();
+            structurePending.Clear();
+        }
     }
 
     private void CollectSceneBlocks()
