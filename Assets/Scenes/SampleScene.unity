@@ -12103,7 +12103,7 @@ MonoBehaviour:
   overturnHoldSecAtFullFlip: 0.5
   overturnRecoveryDelaySec: 2
   fallYThreshold: -20
-  logDiagnostics: 1
+  logDiagnostics: 0
 --- !u!54 &392910631
 Rigidbody:
   m_ObjectHideFlags: 0
