@@ -53,6 +53,8 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
     private readonly List<SnapBlock.Face> facesA = new List<SnapBlock.Face>();
     private readonly List<SnapBlock.Face> facesB = new List<SnapBlock.Face>();
     private readonly List<SnapBlock> sceneBlocks = new List<SnapBlock>();
+    private readonly HashSet<SnapBlock> structureVisited = new HashSet<SnapBlock>();
+    private readonly Queue<SnapBlock> structurePending = new Queue<SnapBlock>();
 
     private Transform hlA, hlB;                 // 후보 면 하이라이트 2개
     private Renderer hlARenderer, hlBRenderer;
@@ -189,7 +191,7 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
         }
     }
 
-    // 대상 블록의 6면 × 씬의 다른 모든 블록의 6면 중, 거리·각도 조건을 통과하는 가장 가까운 쌍.
+    // 결합 거리 안에 들어오는 블록의 면 중 거리·각도 조건을 통과하는 가장 가까운 쌍.
     private void FindBestCandidate()
     {
         aimedBlock.GetFaces(facesA);
@@ -197,11 +199,15 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
         float dist = carrier != null && carrier.Carried == aimedBlock ? carriedSnapDistance : snapDistance;
         float bestSqr = dist * dist;
         float cosTol = Mathf.Cos(Mathf.Deg2Rad * Mathf.Clamp(snapAngleToleranceDeg, 0f, 179f));
+        Bounds searchBounds = aimedBlock.GetWorldBoxBounds();
+        // Expand는 전체 크기를 늘린다. 양쪽에 결합 거리와 부동소수점 여유를 둔다.
+        searchBounds.Expand(2f * (Mathf.Abs(dist) + 0.001f));
 
         foreach (SnapBlock other in sceneBlocks)
         {
             if (other == null || other == aimedBlock) continue;
             if (aimedBlock.HasConnectionTo(other)) continue;
+            if (!searchBounds.Intersects(other.GetWorldBoxBounds())) continue;
 
             other.GetFaces(facesB);
             for (int i = 0; i < facesA.Count; i++)
@@ -324,19 +330,25 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
     // candBlock이 속한 구조물의 블록 수 + (aimedBlock이 그 구조물에 아직 없으면) 1.
     private int CountStructureWith(SnapBlock seed, SnapBlock adding)
     {
-        HashSet<SnapBlock> seen = new HashSet<SnapBlock>();
-        Queue<SnapBlock> q = new Queue<SnapBlock>();
-        q.Enqueue(seed);
-        seen.Add(seed);
-        while (q.Count > 0)
+        try
         {
-            SnapBlock b = q.Dequeue();
-            foreach (SnapBlock n in b.ConnectedBlocks)
+            structurePending.Enqueue(seed);
+            structureVisited.Add(seed);
+            while (structurePending.Count > 0)
             {
-                if (n != null && seen.Add(n)) q.Enqueue(n);
+                SnapBlock block = structurePending.Dequeue();
+                foreach (SnapBlock neighbor in block.ConnectedBlocks)
+                {
+                    if (neighbor != null && structureVisited.Add(neighbor)) structurePending.Enqueue(neighbor);
+                }
             }
+            return structureVisited.Contains(adding) ? structureVisited.Count : structureVisited.Count + 1;
         }
-        return seen.Contains(adding) ? seen.Count : seen.Count + 1;
+        finally
+        {
+            structureVisited.Clear();
+            structurePending.Clear();
+        }
     }
 
     private void CollectSceneBlocks()

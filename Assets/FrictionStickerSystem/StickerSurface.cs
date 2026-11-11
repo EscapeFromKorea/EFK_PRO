@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>스티커 종류. 미끄럼(마찰 감소) / 벨크로(마찰 증가). 명세서 "종류" 표 그대로.</summary>
@@ -26,6 +27,9 @@ public enum StickerKind
 [DisallowMultipleComponent]
 public class StickerSurface : MonoBehaviour
 {
+    private static readonly List<StickerSurface> surfaces = new List<StickerSurface>();
+    internal static IReadOnlyList<StickerSurface> Surfaces => surfaces;
+
     [Header("마찰을 바꿀 대상 콜라이더")]
     [Tooltip("비우면 이 GameObject의 Collider를 자동으로 쓴다. 콜라이더가 자식에 있거나 여러 개면 " +
              "여기서 명시 지정한다. 이 콜라이더의 sharedMaterial이 부착 중 인스턴스 재질로 교체됐다가 " +
@@ -48,6 +52,11 @@ public class StickerSurface : MonoBehaviour
     /// <summary>마찰 교체가 적용되는 콜라이더. targetCollider 우선, 없으면 자기 Collider.</summary>
     public Collider ResolvedCollider =>
         targetCollider != null ? targetCollider : GetComponent<Collider>();
+
+    // 기존 씬 검색은 활성 GameObject의 비활성 마커도 반환한다.
+    private void Awake() => surfaces.Add(this);
+
+    private void OnDestroy() => surfaces.Remove(this);
 
     private void Reset()
     {
