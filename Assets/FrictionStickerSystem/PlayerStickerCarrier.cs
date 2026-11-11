@@ -49,9 +49,6 @@ public class PlayerStickerCarrier : MonoBehaviour, IInteractionProvider
     private Vector3 aimPoint;               // 대상 표면에서 플레이어에 가장 가까운 점(데칼 위치).
     private Vector3 aimNormal;              // 그 점에서의 표면 법선(데칼 방향).
 
-    private static readonly System.Collections.Generic.List<StickerSurface> surfaceBuf =
-        new System.Collections.Generic.List<StickerSurface>();
-
     private void Awake()
     {
         mover = GetComponent<PlayerMover>();
@@ -132,21 +129,31 @@ public class PlayerStickerCarrier : MonoBehaviour, IInteractionProvider
         float bestSqr = aimRange * aimRange;
         Vector3 me = transform.position;
 
-        surfaceBuf.Clear();
-        surfaceBuf.AddRange(Object.FindObjectsOfType<StickerSurface>());
-        foreach (StickerSurface s in surfaceBuf)
+        var surfaces = StickerSurface.Surfaces;
+        for (int i = 0; i < surfaces.Count; i++)
         {
-            Collider col = s != null ? s.ResolvedCollider : null;
+            StickerSurface surface = surfaces[i];
+            if (surface == null || !surface.gameObject.activeInHierarchy ||
+                (surface.hideFlags & HideFlags.DontSave) != 0) continue;
+
+            Collider col = surface.ResolvedCollider;
             if (col == null) continue;
             // 비볼록 MeshCollider는 ClosestPoint가 지원되지 않아 매 프레임 에러 로그가 난다 — 대상에서 뺀다.
             if (col is MeshCollider mesh && !mesh.convex) continue;
 
+            // 비활성 콜라이더의 빈 bounds로는 ClosestPoint 결과를 거를 수 없다.
+            Bounds bounds = col.bounds;
+            if (bounds.size != Vector3.zero && bounds.SqrDistance(me) > bestSqr) continue;
+
             Vector3 near = col.ClosestPoint(me);
             float sqr = (near - me).sqrMagnitude;
             if (sqr > bestSqr) continue;
+            // 기존 InstanceID 오름차순 검색은 같은 거리에서 마지막 표면을 골랐다.
+            if (sqr == bestSqr && aimedSurface != null && surface.GetInstanceID() < aimedSurface.GetInstanceID())
+                continue;
 
             bestSqr = sqr;
-            aimedSurface = s;
+            aimedSurface = surface;
             aimPoint = near;
         }
 

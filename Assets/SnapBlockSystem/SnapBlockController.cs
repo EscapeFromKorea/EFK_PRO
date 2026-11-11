@@ -189,7 +189,7 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
         }
     }
 
-    // 대상 블록의 6면 × 씬의 다른 모든 블록의 6면 중, 거리·각도 조건을 통과하는 가장 가까운 쌍.
+    // 결합 거리 안에 들어오는 블록의 면 중 거리·각도 조건을 통과하는 가장 가까운 쌍.
     private void FindBestCandidate()
     {
         aimedBlock.GetFaces(facesA);
@@ -197,11 +197,15 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
         float dist = carrier != null && carrier.Carried == aimedBlock ? carriedSnapDistance : snapDistance;
         float bestSqr = dist * dist;
         float cosTol = Mathf.Cos(Mathf.Deg2Rad * Mathf.Clamp(snapAngleToleranceDeg, 0f, 179f));
+        Bounds searchBounds = aimedBlock.GetWorldBoxBounds();
+        // Expand는 전체 크기를 늘린다. 양쪽에 결합 거리와 부동소수점 여유를 둔다.
+        searchBounds.Expand(2f * (Mathf.Abs(dist) + 0.001f));
 
         foreach (SnapBlock other in sceneBlocks)
         {
             if (other == null || other == aimedBlock) continue;
             if (aimedBlock.HasConnectionTo(other)) continue;
+            if (!searchBounds.Intersects(other.GetWorldBoxBounds())) continue;
 
             other.GetFaces(facesB);
             for (int i = 0; i < facesA.Count; i++)
