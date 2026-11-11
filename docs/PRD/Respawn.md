@@ -255,8 +255,10 @@ Controller` 두 개.
   접지 창구라 어쩔 수 없이 여기를 읽는다(§2-2). `DreamThreadController`와 같은 선택.
 - **AccelSystem** — `PlayerAccelReceiver.CancelBoost()` 호출(§5). **교차 폴더 수정 1건, 허가받아
   완료**(public 메서드 추가, 기존 동작 무변경).
-- **DreamThreadSystem** — "붙잡힌 플레이어" 가드로 상호배제. 코드 참조 없음
-  (`ExternallyDriven` + `isKinematic` 두 신호로 간접 조율).
+- **DreamThreadSystem** — "붙잡힌 플레이어" 가드로 상호배제(`ExternallyDriven` + `isKinematic`
+  두 신호). **2026-10-10부터 `DreamThreadController`(매달림)·`ThreadPinPlacer`(벽 부착)가
+  `RespawnController.ReleaseHoldRequested`를 구독해 복귀 직전에 스스로 놓는다**(구독만, 이 폴더
+  파일 수정 없음 — 이벤트는 처음부터 static으로 열려 있었다).
 - **PlayerGravityOverride** — **리스폰 순간 `RestoreDefault(0)`을 한 번 호출한다.** 버블·감속
   구역 모두 `OnTriggerExit`에서 복원하므로 순간이동으로 볼륨을 빠져나가는 것 자체는 안전하지만,
   (1) 페이드 중 `isKinematic`이면 `PlayerGravityOverride.FixedUpdate`가 즉시 return해 **배율이
@@ -307,7 +309,7 @@ Controller` 두 개.
 | 횟수 표시 | 임시 `OnGUI` 화면 표시(정식 HUD 생기면 이관) | 확정(2026-07-31) |
 | 조작 차단 방식 | `ExternallyDriven` 플래그(컴포넌트 비활성 금지). 점프는 별도 차단 불필요 | 확정(2026-07-31) |
 | 부스트 취소 | 리스폰 시 `PlayerAccelReceiver.CancelBoost()` 호출 | 확정(2026-07-31) |
-| 붙잡힌 플레이어 | **자동은 미룸**(타이머 유지, 풀리면 즉시 실행) / **수동·외부는 거절 + 안내 로그**. 판정 = `ExternallyDriven \|\| isKinematic` | 구현 시 확정 |
+| 붙잡힌 플레이어 | **자동은 미룸**(타이머 유지, 풀리면 즉시 실행) / **수동(R)·외부(위험 피격)는 붙잡은 기믹이 `ReleaseHoldRequested`로 스스로 놓은 뒤 즉시 처리**. 훅이 없는 붙잡힘만 거절 + 안내 로그. 판정 = `ExternallyDriven \|\| isKinematic` | 2026-10-10 변경(B안) — 구현 시 확정은 "수동·외부 거절"이었다 |
 | 착지 감시 선딜레이 | 0.15초 | 구현 시 추가 |
 | 페이드 구현 | `renderer.material` 인스턴스 알파 직접 보간(MPB 미사용), `_Color`만(Built-in RP) | 확정(검토 반영) |
 | 접지 판정 창구 | `PlayerShapeController.IsGrounded()`(Root) → 자식 `PlayerGroundContact` → 타임아웃 | 확정(검토 반영) |
@@ -341,9 +343,18 @@ Controller` 두 개.
 **남은 차단 항목: 없음.** 구현 착수 가능.
 
 ### 구현하며 설계에서 벗어난 결정 (2026-07-31)
-- **`R`·외부 호출은 미루지 않고 거절한다**(자동 장외만 미룬다). `R`은 "지금" 되돌리라는 확정
-  의사표시라, 붙잡힘이 풀린 몇 초 뒤에 갑자기 발동하는 쪽이 더 나쁘다. 거절 로그가 해제 방법을
-  안내한다.
+- **`R`·외부 호출은 미루지 않는다**(자동 장외만 미룬다). `R`은 "지금" 되돌리라는 확정
+  의사표시라, 붙잡힘이 풀린 몇 초 뒤에 갑자기 발동하는 쪽이 더 나쁘다.
+  - **(2026-10-10 변경) 거절 → "붙잡은 기믹이 스스로 놓는다".** 원래는 붙잡힌 몸의 R·외부 호출을
+    거절 + 로그로 안내했는데, 이 정책은 놓을 훅이 없는 기믹(실타래 매달림·세모 벽 부착·투석기 버킷
+    탑승·조향석 도킹)에서 위험 피격을 **면역**으로 만들었다 — `SectionHitCounter`가 임계 도달 즉시
+    카운터를 0으로 리셋하고 호출하므로, 거절되면 카운터만 소진되고 몸은 위험 구간에 남았다
+    (`SectionRespawn.md` §4 복귀 순서 (3) "로프/탑승/외부 이동 해제"와도 충돌). 지금은
+    `DreamThreadController`·`ThreadPinPlacer`·`CatapultBucket`·`CatapultSteerHandle`이
+    `RespawnController.ReleaseHoldRequested`를 구독해 순간이동 전에 스스로 놓는다(`RailCartRider`·
+    `CatapultLoadController`는 원래 그랬다). 거절은 **훅이 없는 붙잡힘**에만 남는다(포탈 굴리기
+    텀블·SpacePortal 순간이동 코루틴 중 등 짧은 구간). 자동 장외의 "미루기"는 그대로다 — 이벤트는
+    `TryRespawn`에서만 발신되고 자동 경로의 `IsHeld` 대기(`:400`)는 그 앞에서 `continue`한다.
 - **착지 감시 전 0.15초 선딜레이.** 접지 판정에 유예 창(`groundedGraceTime` 0.1초)이 있어,
   **킬 라인 아래 바닥에 앉은 채로** 3초를 채운 경우 순간이동 직후에도 몇 프레임은 접지로 읽혀
   공중에서 즉시 조작이 풀린다 — 리스폰 루프를 막겠다는 목적이 정확히 깨진다. 유예 창을 지나

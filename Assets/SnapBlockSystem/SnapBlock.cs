@@ -96,8 +96,11 @@ public class SnapBlock : MonoBehaviour
         allBlocks.Remove(this);
     }
 
+    private bool destroying;
+
     private void OnDestroy()
     {
+        destroying = true;
         DetachAll();
     }
 
@@ -111,6 +114,19 @@ public class SnapBlock : MonoBehaviour
         body.solverIterations = Mathf.Max(1, solverIterations);
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         body.interpolation = RigidbodyInterpolation.Interpolate;
+    }
+
+    internal Bounds GetWorldBoxBounds()
+    {
+        // 면 중심과 같은 Transform 기준. 물리 동기화 전이나 콜라이더가 꺼져 있어도 계산할 수 있다.
+        Matrix4x4 world = transform.localToWorldMatrix;
+        Vector3 half = box.size * 0.5f;
+        Vector3 center = world.MultiplyPoint3x4(box.center);
+        Vector3 extents = new Vector3(
+            Mathf.Abs(world.m00 * half.x) + Mathf.Abs(world.m01 * half.y) + Mathf.Abs(world.m02 * half.z),
+            Mathf.Abs(world.m10 * half.x) + Mathf.Abs(world.m11 * half.y) + Mathf.Abs(world.m12 * half.z),
+            Mathf.Abs(world.m20 * half.x) + Mathf.Abs(world.m21 * half.y) + Mathf.Abs(world.m22 * half.z));
+        return new Bounds(center, extents * 2f);
     }
 
     /// <summary>이 블록의 6면(월드 중심 + 바깥 법선)을 채운다. BoxCollider의 현재 크기/자세를 반영.</summary>
@@ -140,7 +156,7 @@ public class SnapBlock : MonoBehaviour
         if (other == null || other == this) return false;
         if (joints.ContainsKey(other)) return false;
 
-        AlignTo(myFace, otherFace);
+        AlignTo(other, myFace, otherFace);
 
         body.velocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
@@ -172,8 +188,30 @@ public class SnapBlock : MonoBehaviour
         {
             if (j != null) Destroy(j);
             joints.Remove(other);
+            if (!destroying && other != null && gameObject.activeInHierarchy)
+                StartCoroutine(RefilterPair(other));
         }
         other.joints.Remove(this);
+    }
+
+    // 결합 중엔 두 블록 사이 충돌이 꺼져 있다. 조인트를 없애도 물리 엔진이 그 쌍의 필터를 다시 계산하지
+    // 않아, 위아래로 쌓았다 해체하면 위 블록이 아래 블록을 통과해 겹친 채 정지했다(2026-10-03 Loki 실측:
+    // IgnoreCollision·레이어·트리거는 모두 정상인데 dy 1.0 → 0.0). 충돌 무시를 켰다 꺼서 필터를 강제로
+    // 갱신한다. 조인트 제거는 프레임 끝에 반영되므로 다음 FixedUpdate 뒤에 한다.
+    private System.Collections.IEnumerator RefilterPair(SnapBlock other)
+    {
+        yield return null;
+        yield return new WaitForFixedUpdate();
+        if (this == null || other == null || HasConnectionTo(other)) yield break;
+
+        Collider a = GetComponent<Collider>(), b = other.GetComponent<Collider>();
+        if (a != null && b != null)
+        {
+            Physics.IgnoreCollision(a, b, true);
+            Physics.IgnoreCollision(a, b, false);
+        }
+        if (body != null) body.WakeUp();
+        if (other.body != null) other.body.WakeUp();
     }
 
     /// <summary>이 블록의 모든 결합을 해제한다(구조물에서 이 블록만 떼어낸다).</summary>
@@ -203,16 +241,86 @@ public class SnapBlock : MonoBehaviour
         }
     }
 
-    // 내 면이 상대 면과 정확히 맞물리도록 이 블록을 회전 + 이동시킨다. FromToRotation은 법선 축만
-    // 맞추고 그 축 둘레 회전(roll)은 현재 자세를 최대한 보존한다 — 플레이어가 대충 맞춰 민 상태라
-    // 그 정도면 그레이박스엔 충분하다(정밀 정렬은 후속).
-    private void AlignTo(Face myFace, Face otherFace)
+    // 내 면이 상대 면과 정확히 맞물렸을 때의 이 블록 자세를 계산한다(적용하지 않는다). 법선을 맞춘 뒤
+    // 그 축 둘레 회전(roll)을 상대 블록의 축에 90° 단위로 스냅한다 — 예전엔 roll을 현재 자세 그대로 둬
+    // 대충 맞춘 블록이 모서리가 어긋난 채 결합됐다(2026-10-10 플레이 확인).
+    public void ComputeAlignedPose(SnapBlock other, Face myFace, Face otherFace, out Vector3 pos, out Quaternion rot)
     {
-        Quaternion delta = Quaternion.FromToRotation(myFace.normal, -otherFace.normal);
-        transform.rotation = delta * transform.rotation;
+        Vector3 n = -otherFace.normal;
+        rot = Quaternion.FromToRotation(myFace.normal, n) * transform.rotation;
 
-        Vector3 newMyCenter = transform.TransformPoint(myFace.localCenter);
-        transform.position += otherFace.center - newMyCenter;
+        // 법선과 가장 수직인 내 로컬 축 하나를 골라, 상대의 축 중 가장 가까운 것(±90° 대칭)에 맞춘다.
+        int mi = 0;
+        float md = 2f;
+        for (int i = 0; i < 3; i++)
+        {
+            float d = Mathf.Abs(Vector3.Dot(AxisOf(rot, i), n));
+            if (d < md) { md = d; mi = i; }
+        }
+        Vector3 m = Vector3.ProjectOnPlane(AxisOf(rot, mi), n).normalized;
+        Quaternion oq = other.transform.rotation;
+        float best = float.MaxValue;
+        for (int i = 0; i < 3; i++)
+        {
+            Vector3 o = Vector3.ProjectOnPlane(AxisOf(oq, i), n);
+            if (o.sqrMagnitude < 0.25f) continue; // 법선과 거의 평행한 축은 제외.
+            float a = Vector3.SignedAngle(m, o.normalized, n);
+            a -= 90f * Mathf.Round(a / 90f);
+            if (Mathf.Abs(a) < Mathf.Abs(best)) best = a;
+        }
+        if (best != float.MaxValue) rot = Quaternion.AngleAxis(best, n) * rot;
+
+        pos = otherFace.center - rot * Vector3.Scale(myFace.localCenter, transform.lossyScale);
+    }
+
+    private static Vector3 AxisOf(Quaternion q, int i) =>
+        i == 0 ? q * Vector3.right : (i == 1 ? q * Vector3.up : q * Vector3.forward);
+
+    private void AlignTo(SnapBlock other, Face myFace, Face otherFace)
+    {
+        ComputeAlignedPose(other, myFace, otherFace, out Vector3 pos, out Quaternion rot);
+        transform.SetPositionAndRotation(pos, rot);
+    }
+
+    private static readonly Collider[] overlapBuf = new Collider[16];
+    private static readonly HashSet<SnapBlock> structureBuf = new HashSet<SnapBlock>();
+    private static readonly Queue<SnapBlock> queueBuf = new Queue<SnapBlock>();
+
+    /// <summary>other에 결합했을 때의 자세가 다른 콜라이더(플레이어·지형·다른 블록)와 겹치는가. 이 블록·상대가
+    /// 속한 결합 구조물의 블록과 트리거, ignoreRoot 아래 콜라이더는 무시한다. 겹치면 그 콜라이더를 blocker로
+    /// 돌려준다.</summary>
+    public bool AlignedPoseBlockedBy(SnapBlock other, Face myFace, Face otherFace, out Collider blocker,
+                                     Transform ignoreRoot = null)
+    {
+        blocker = null;
+        ComputeAlignedPose(other, myFace, otherFace, out Vector3 pos, out Quaternion rot);
+
+        structureBuf.Clear();
+        queueBuf.Clear();
+        queueBuf.Enqueue(this); structureBuf.Add(this);
+        queueBuf.Enqueue(other); structureBuf.Add(other);
+        while (queueBuf.Count > 0)
+        {
+            foreach (SnapBlock n in queueBuf.Dequeue().ConnectedBlocks)
+                if (n != null && structureBuf.Add(n)) queueBuf.Enqueue(n);
+        }
+
+        Vector3 lossy = transform.lossyScale;
+        Vector3 center = pos + rot * Vector3.Scale(box.center, lossy);
+        // 5% 줄여 면이 맞닿은 이웃(상대 블록·바닥)을 겹침으로 오인하지 않게 한다.
+        Vector3 half = Vector3.Scale(box.size, lossy) * 0.5f * 0.95f;
+        int count = Physics.OverlapBoxNonAlloc(center, half, overlapBuf, rot, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
+        {
+            Collider c = overlapBuf[i];
+            if (c == null) continue;
+            if (ignoreRoot != null && c.transform.IsChildOf(ignoreRoot)) continue;
+            SnapBlock sb = c.GetComponentInParent<SnapBlock>();
+            if (sb != null && structureBuf.Contains(sb)) continue;
+            blocker = c;
+            return true;
+        }
+        return false;
     }
 
     private void OnDrawGizmosSelected()

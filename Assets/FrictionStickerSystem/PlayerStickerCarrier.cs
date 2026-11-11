@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -14,26 +15,19 @@ using UnityEngine;
 /// 표면을 화면 중앙에 맞추는 건 비현실적이라, 표면 근처에 서서 키만 누르면 되게 한다. 대상 표면
 /// 위에 작은 공(조준점)이 떠서 색으로 상태를 알린다.
 ///
-/// [키] attachKey(기본 V — F·G는 꿈의 실타래와 겹침):
-///  - 대상 표면에 스티커 없음        → 선택 종류 부착
-///  - 대상 표면에 "다른 종류" 스티커 → 그 스티커를 떼고 선택 종류로 교체
-///  - 대상 표면에 "같은 종류" 스티커 → 회수(토글 오프)
-/// switchKindKey(기본 Q): 미끄럼 ↔ 벨크로 선택 전환. 모든 수치·키는 인스펙터 노출.
+/// [키] V(장비 채널)는 InteractionController가 한 번만 읽는다(키맵 통합안, 2026-10-03):
+///  - V 탭: 대상 표면에 스티커 없음 → 선택 종류 부착 / "다른 종류" → 떼고 교체 / "같은 종류" → 회수
+///  - V 홀드: 미끄럼 ↔ 벨크로 선택 전환(옛 Q 키 폐지)
+/// 수치는 인스펙터 노출.
 /// </summary>
 [RequireComponent(typeof(PlayerMover))]
 [DisallowMultipleComponent]
-public class PlayerStickerCarrier : MonoBehaviour
+public class PlayerStickerCarrier : MonoBehaviour, IInteractionProvider
 {
     [Header("타겟팅 (근접)")]
     [Tooltip("이 거리(Unit) 안에서 가장 가까운 StickerSurface를 대상으로 삼는다. 플레이어 위치에서 " +
              "표면 콜라이더의 가장 가까운 점까지의 거리로 잰다.")]
     public float aimRange = 4f;
-
-    [Header("입력 키")]
-    [Tooltip("스티커 부착 / 교체 / 회수 키. (F·G는 꿈의 실타래와 겹쳐 V 사용)")]
-    public KeyCode attachKey = KeyCode.V;
-    [Tooltip("미끄럼 ↔ 벨크로 선택을 전환하는 키.")]
-    public KeyCode switchKindKey = KeyCode.Q;
 
     [Header("보유량 (-1 = 무한)")]
     [Tooltip("미끄럼 스티커 보유 개수. -1이면 무한.")]
@@ -55,15 +49,18 @@ public class PlayerStickerCarrier : MonoBehaviour
     private Vector3 aimPoint;               // 대상 표면에서 플레이어에 가장 가까운 점(데칼 위치).
     private Vector3 aimNormal;              // 그 점에서의 표면 법선(데칼 방향).
 
-    private static readonly System.Collections.Generic.List<StickerSurface> surfaceBuf =
-        new System.Collections.Generic.List<StickerSurface>();
-
     private void Awake()
     {
         mover = GetComponent<PlayerMover>();
     }
 
-    private void OnDisable() => HideReticle();
+    private void OnEnable() => InteractionController.Register(this);
+
+    private void OnDisable()
+    {
+        InteractionController.Unregister(this);
+        HideReticle();
+    }
 
     private void OnDestroy()
     {
@@ -80,15 +77,50 @@ public class PlayerStickerCarrier : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(switchKindKey))
-            selectedKind = selectedKind == StickerKind.Slip ? StickerKind.Velcro : StickerKind.Slip;
-
         UpdateTarget();
         UpdateReticle();
-
-        if (Input.GetKeyDown(attachKey))
-            HandleAttachKey();
     }
+
+    private System.Action attach, switchKind;
+
+    public void CollectActions(List<InteractionAction> into)
+    {
+        // 근처에 붙일 수 있는 표면이 없으면 안내 자체를 올리지 않는다(V 홀드 종류 전환도 표면 근처에서만).
+        if (mover == null || InteractionController.Controlled != mover || aimedSurface == null) return;
+        attach ??= HandleAttachKey;
+        switchKind ??= SwitchKind;
+
+        FrictionSticker current = aimedSurface.Current;
+        bool ok = true;
+        string reason = null;
+        if (current != null && current.Kind == selectedKind) { }
+        else if (!aimedSurface.Accepts(selectedKind)) { ok = false; reason = "이 표면에는 붙일 수 없습니다"; }
+        else if (!HasStock(selectedKind)) { ok = false; reason = "스티커가 없습니다"; }
+
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Gear,
+            trigger = InteractionTrigger.Tap,
+            verb = current == null ? "스티커 붙이기" : current.Kind == selectedKind ? "스티커 회수" : "스티커 교체",
+            enabled = ok,
+            reason = reason,
+            priority = InteractionPriority.Panel,
+            distance = Vector3.Distance(transform.position, aimPoint),
+            execute = attach,
+        });
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Gear,
+            trigger = InteractionTrigger.Hold,
+            verb = selectedKind == StickerKind.Slip ? "종류 전환 (→벨크로)" : "종류 전환 (→미끄럼)",
+            enabled = true,
+            priority = InteractionPriority.Panel,
+            execute = switchKind,
+        });
+    }
+
+    private void SwitchKind() =>
+        selectedKind = selectedKind == StickerKind.Slip ? StickerKind.Velcro : StickerKind.Slip;
 
     // 플레이어에서 aimRange 안, 가장 가까운 StickerSurface를 찾는다.
     private void UpdateTarget()
@@ -97,19 +129,31 @@ public class PlayerStickerCarrier : MonoBehaviour
         float bestSqr = aimRange * aimRange;
         Vector3 me = transform.position;
 
-        surfaceBuf.Clear();
-        surfaceBuf.AddRange(Object.FindObjectsOfType<StickerSurface>());
-        foreach (StickerSurface s in surfaceBuf)
+        var surfaces = StickerSurface.Surfaces;
+        for (int i = 0; i < surfaces.Count; i++)
         {
-            Collider col = s != null ? s.ResolvedCollider : null;
+            StickerSurface surface = surfaces[i];
+            if (surface == null || !surface.gameObject.activeInHierarchy ||
+                (surface.hideFlags & HideFlags.DontSave) != 0) continue;
+
+            Collider col = surface.ResolvedCollider;
             if (col == null) continue;
+            // 비볼록 MeshCollider는 ClosestPoint가 지원되지 않아 매 프레임 에러 로그가 난다 — 대상에서 뺀다.
+            if (col is MeshCollider mesh && !mesh.convex) continue;
+
+            // 비활성 콜라이더의 빈 bounds로는 ClosestPoint 결과를 거를 수 없다.
+            Bounds bounds = col.bounds;
+            if (bounds.size != Vector3.zero && bounds.SqrDistance(me) > bestSqr) continue;
 
             Vector3 near = col.ClosestPoint(me);
             float sqr = (near - me).sqrMagnitude;
             if (sqr > bestSqr) continue;
+            // 기존 InstanceID 오름차순 검색은 같은 거리에서 마지막 표면을 골랐다.
+            if (sqr == bestSqr && aimedSurface != null && surface.GetInstanceID() < aimedSurface.GetInstanceID())
+                continue;
 
             bestSqr = sqr;
-            aimedSurface = s;
+            aimedSurface = surface;
             aimPoint = near;
         }
 

@@ -1,14 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// 구 / 정사면체가 딱딱 블록(<see cref="SnapBlock"/>) 1개를 머리 위에 얹어 들고 이동·점프해,
+/// 정육면체만 딱딱 블록(<see cref="SnapBlock"/>) 1개를 머리 위에 얹어 들고 이동·점프해,
 /// 턱이나 선반 위에 올려놓는 주체. <see cref="BlockCarryController"/>가 런타임에 플레이어 Root에
 /// AddComponent한다 — PlayerSystem 파일도, 씬의 플레이어 3종도, SnapBlockSystem도 건드리지
 /// 않는다(교차 폴더 하드룰). PlayerStickerCarrier / PlayerRollModeReceiver 와 같은 "기믹이
 /// 붙여주는 컴포넌트" 패턴이다.
 ///
-/// [입력 게이트] 이 플레이어가 조작 대상일 때만(PlayerMover.IsControlled &amp;&amp; !ExternallyDriven)
-/// 입력을 읽는다. Tab으로 다른 도형을 조작 중이면 반응하지 않는다.
+/// [입력] 키를 직접 읽지 않는다. 들기/내려놓기는 E 탭 액션으로 <see cref="InteractionController"/>에
+/// 올린다(키맵 통합안 §7-1). 이 플레이어가 조작 대상일 때만(PlayerMover.IsControlled &amp;&amp;
+/// !ExternallyDriven) 액션을 올린다. Tab으로 다른 도형을 조작 중이면 반응하지 않는다.
 ///
 /// [타겟팅 — 근접] 카메라 조준이 아니라 "플레이어에서 pickupRange 안, 가장 가까운 자유 상태
 /// SnapBlock"을 대상으로 삼는다(마찰 스티커·딱딱 블록과 동일). 대상 블록 위에 작은 공(조준점)이
@@ -32,7 +33,7 @@ using UnityEngine;
 /// </summary>
 [RequireComponent(typeof(PlayerMover))]
 [DisallowMultipleComponent]
-public class PlayerBlockCarrier : MonoBehaviour
+public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
 {
     [Header("타겟팅 (근접)")]
     [Tooltip("이 거리(Unit) 안에서 가장 가까운 SnapBlock을 대상으로 삼는다. 플레이어 위치에서 " +
@@ -46,10 +47,6 @@ public class PlayerBlockCarrier : MonoBehaviour
     public float dropDistance = 1.2f;
     [Tooltip("들 수 있는 블록 Rigidbody 질량 상한. 초과하면 거부한다.")]
     public float maxCarryMass = 2f;
-
-    [Header("입력 키")]
-    [Tooltip("픽업 / 내려놓기 토글 키.")]
-    public KeyCode pickupKey = KeyCode.C;
 
     [Header("자동 내려놓기 감지")]
     [Tooltip("한 프레임에 플레이어가 이 거리(Unit) 넘게 순간이동하면 리스폰/리셋으로 보고 즉시 드롭한다.")]
@@ -81,13 +78,21 @@ public class PlayerBlockCarrier : MonoBehaviour
     // 마지막 스캔 시점의 대상(없으면 null) + 거부 사유. retargetInterval 간격으로만 갱신된다.
     private SnapBlock aimed;
     private string rejectReason;
+    private float aimedDistance;
     private float nextRetargetTime;
+
+    // 컨트롤러에 액션을 올려도 되는 상태인가(Update의 게이트를 통과한 프레임에만 true) + 내려놓기 가능 여부.
+    private bool interactable;
+    private bool dropClear;
+    private System.Action onInteractTap;
 
     private Transform reticle;
     private Renderer reticleRenderer;
 
     private static readonly System.Collections.Generic.List<SnapBlock> blockBuf =
         new System.Collections.Generic.List<SnapBlock>();
+
+    private readonly Collider[] dropOverlapBuffer = new Collider[16];
 
     private static readonly Color colorOk = new Color(1f, 1f, 1f, 0.95f);
     private static readonly Color colorReject = new Color(0.9f, 0.2f, 0.2f, 0.95f);
@@ -98,10 +103,18 @@ public class PlayerBlockCarrier : MonoBehaviour
         shapeId = GetComponentInChildren<PlayerShapeIdentity>();
         lastPos = transform.position;
         lastScale = transform.localScale;
+        onInteractTap = OnInteractTap;
+    }
+
+    private void OnEnable()
+    {
+        InteractionController.Register(this);
     }
 
     private void OnDisable()
     {
+        InteractionController.Unregister(this);
+        interactable = false;
         if (carried != null) DropInPlace("컴포넌트 비활성화");
         HideReticle();
     }
@@ -115,6 +128,8 @@ public class PlayerBlockCarrier : MonoBehaviour
 
     private void Update()
     {
+        if (pendingBlockCol != null) UpdatePendingIgnore();
+
         // 조작권이 없어도 자동 드롭 조건은 계속 감시한다(다른 도형 조작 중 이 몸이 리스폰될 수 있다).
         // 순간이동·크기 변화는 "직전 프레임 대비"라, 감시 후 이번 프레임 스냅샷을 항상 갱신한다
         // (안 그러면 픽업 직후 첫 프레임에 오래된 lastPos와 비교해 오탐 드롭이 난다).
@@ -126,6 +141,7 @@ public class PlayerBlockCarrier : MonoBehaviour
         }
         RecordFrameSnapshot();
 
+        interactable = false;
         if (mover == null || !mover.IsControlled || mover.ExternallyDriven)
         {
             aimed = null;
@@ -133,9 +149,10 @@ public class PlayerBlockCarrier : MonoBehaviour
             return;
         }
 
-        // 정육면체는 애초에 못 든다(EvaluateReject가 항상 거부) — CubeDock이 !IsCube를 미리
-        // 걸러두는 것과 똑같이, 스캔·조준점도 아예 안 띄운다(PR #92 리뷰 지적, 경미).
-        if (shapeId != null && shapeId.Kind == PlayerShapeStats.ShapeKind.Cube)
+        // 정육면체만 블록을 옮긴다(2026-10-03 확정: 구·정사면체는 도형 특성상 블록을 옮기는 게 어색하다.
+        // 결합은 도형 제한 없음). 정육면체가 아니면 EvaluateReject가 항상 거부하므로, 스캔·조준점도
+        // 아예 안 띄운다(PR #92 리뷰 지적, 경미).
+        if (shapeId == null || shapeId.Kind != PlayerShapeStats.ShapeKind.Cube)
         {
             aimed = null;
             HideReticle();
@@ -151,11 +168,50 @@ public class PlayerBlockCarrier : MonoBehaviour
         }
 
         UpdateReticle();
+        interactable = true;
+    }
 
-        if (Input.GetKeyDown(pickupKey))
+    // ── 중앙 입력 연동 ────────────────────────────────────────
+
+    /// <summary>들고 있는 블록. 없으면 null. 결합(SnapBlockController)이 든 블록을 대상으로 쓰는 데 필요하다.</summary>
+    public SnapBlock Carried => carried;
+
+    /// <summary>든 블록을 지금 위치에 그대로 놓는다(공간 검사 없음). 같은 프레임에 결합하기 직전에 부른다.</summary>
+    public void ReleaseInPlace()
+    {
+        // 결합 자세가 이 몸과 겹칠 수 있다 — 충돌 무시를 바로 풀지 않고 몸이 빠져나올 때까지 유지한다.
+        keepIgnoreUntilClear = true;
+        DropInPlace("결합을 위해 들기 해제");
+        keepIgnoreUntilClear = false;
+    }
+
+    private void OnInteractTap()
+    {
+        if (carried != null) TryDropForward();
+        else TryPickup();
+    }
+
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        if (!interactable) return;
+
+        if (carried != null)
         {
-            if (carried != null) TryDropForward();
-            else TryPickup();
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "내려놓기", enabled = dropClear, reason = "내려놓을 공간이 없습니다 — 벽·천장과 겹칩니다.",
+                priority = InteractionPriority.Block, distance = 0f, execute = onInteractTap,
+            });
+        }
+        else if (aimed != null)
+        {
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "들기", enabled = rejectReason == null, reason = rejectReason,
+                priority = InteractionPriority.Block, distance = aimedDistance, execute = onInteractTap,
+            });
         }
     }
 
@@ -177,7 +233,8 @@ public class PlayerBlockCarrier : MonoBehaviour
         }
 
         carriedBody.transform.SetPositionAndRotation(
-            transform.position + Vector3.up * carryHeight, carriedRotation);
+            transform.position + Vector3.up * EffectiveCarryHeight(), carriedRotation);
+
     }
 
     // ── 타겟팅 ────────────────────────────────────────────────
@@ -209,6 +266,7 @@ public class PlayerBlockCarrier : MonoBehaviour
         if (best == null) return;
 
         aimed = best;
+        aimedDistance = Mathf.Sqrt(bestSqr);
         rejectReason = EvaluateReject(best);
     }
 
@@ -216,8 +274,8 @@ public class PlayerBlockCarrier : MonoBehaviour
     private string EvaluateReject(SnapBlock b)
     {
         PlayerShapeStats.ShapeKind kind = shapeId != null ? shapeId.Kind : PlayerShapeStats.ShapeKind.Sphere;
-        if (kind == PlayerShapeStats.ShapeKind.Cube)
-            return "정육면체는 블록을 들 수 없습니다 (구·정사면체 전용).";
+        if (kind != PlayerShapeStats.ShapeKind.Cube)
+            return "정육면체만 블록을 들 수 있습니다.";
 
         if (b.HasConnections)
             return "결합된 구조물은 들 수 없습니다.";
@@ -253,7 +311,8 @@ public class PlayerBlockCarrier : MonoBehaviour
 
         carried = aimed;
         carriedBody = rb;
-        carriedRotation = rb.transform.rotation;
+        // 움직이는(굴러가는) 블록을 집어도 비스듬한 채 얹히지 않게, 가장 가까운 축 정렬 자세로 고정한다.
+        carriedRotation = SnapToAxes(rb.rotation);
 
         // SnapBlock 컴포넌트를 비활성화 — SnapBlockController(용접 대상 탐색)와 PlayerCubeDock
         // (도킹 대상 탐색)는 전부 FindObjectsOfType<SnapBlock>()로 후보를 찾는데, 비활성 컴포넌트는
@@ -284,7 +343,7 @@ public class PlayerBlockCarrier : MonoBehaviour
     // 바라보는 방향 앞쪽 상단에 내려놓는다. 공간이 막혀 있으면 거부.
     private void TryDropForward()
     {
-        Vector3 target = transform.position + LookDir() * dropDistance + Vector3.up * carryHeight;
+        Vector3 target = transform.position + LookDir() * EffectiveDropDistance() + Vector3.up * EffectiveCarryHeight();
 
         if (!IsDropSpaceClear(target, carriedRotation))
         {
@@ -300,8 +359,28 @@ public class PlayerBlockCarrier : MonoBehaviour
     {
         if (carried == null) return;
         Vector3 here = carriedBody != null ? carriedBody.transform.position
-                                           : transform.position + Vector3.up * carryHeight;
+                                           : transform.position + Vector3.up * EffectiveCarryHeight();
         PlaceCarriedAt(here, carriedRotation, reason);
+    }
+
+    // 결합 직후 겹침을 푸는 중인 충돌 무시 쌍. 블록 콜라이더와 몸 콜라이더가 더 이상 겹치지 않으면 푼다.
+    private bool keepIgnoreUntilClear;
+    private Collider pendingBlockCol;
+    private readonly System.Collections.Generic.List<Collider> pendingPlayerCols =
+        new System.Collections.Generic.List<Collider>();
+
+    private void UpdatePendingIgnore()
+    {
+        if (pendingBlockCol == null) { pendingPlayerCols.Clear(); return; }
+
+        Bounds bb = pendingBlockCol.bounds;
+        foreach (Collider pc in pendingPlayerCols)
+            if (pc != null && pc.enabled && bb.Intersects(pc.bounds)) return;
+
+        foreach (Collider pc in pendingPlayerCols)
+            if (pc != null) Physics.IgnoreCollision(pendingBlockCol, pc, false);
+        pendingPlayerCols.Clear();
+        pendingBlockCol = null;
     }
 
     private void PlaceCarriedAt(Vector3 pos, Quaternion rot, string reason)
@@ -318,7 +397,15 @@ public class PlayerBlockCarrier : MonoBehaviour
             rb.angularVelocity = Vector3.zero;
         }
 
-        if (block != null)
+        if (block != null && keepIgnoreUntilClear)
+        {
+            pendingBlockCol = block.GetComponent<Collider>();
+            pendingPlayerCols.Clear();
+            pendingPlayerCols.AddRange(ignoredWithPlayer);
+            ignoredWithPlayer.Clear();
+            block.enabled = true;
+        }
+        else if (block != null)
         {
             IgnoreCollisionWithPlayer(block, false);
             block.enabled = true; // 다시 용접·도킹 대상 탐색에 보이게.
@@ -341,6 +428,10 @@ public class PlayerBlockCarrier : MonoBehaviour
     {
         why = null;
 
+        // 포탈 통과는 몸 고정·붙잡힘·순간이동을 전부 건드리지만 든 블록은 몸을 따라 같이 건너가야 한다
+        // (LateUpdate 추종이 새 위치로 데려간다). 통과 중에는 아래 조건들을 보지 않는다.
+        if (SpacePortal.IsTraversing(mover)) return false;
+
         if (mover != null && mover.ExternallyDriven)
         {
             why = "몸이 외부 기믹에 붙잡힘(실타래 등)";
@@ -354,7 +445,10 @@ public class PlayerBlockCarrier : MonoBehaviour
             return true;
         }
 
-        if (GetComponent("PlayerRollModeReceiver") != null)
+        // 컴포넌트 존재가 아니라 모드 on 여부를 본다 — Portal은 첫 통과 때 붙인 뒤 떼지 않아서, 존재만 보면
+        // 포탈을 한 번 지난 도형은 영원히 블록을 못 든다(2026-09-29 점검에서 발견).
+        PlayerRollModeReceiver rollMode = GetComponent<PlayerRollModeReceiver>();
+        if (rollMode != null && rollMode.RollModeActive)
         {
             why = "굴리기 모드 진입";
             return true;
@@ -402,15 +496,56 @@ public class PlayerBlockCarrier : MonoBehaviour
     private bool IsDropSpaceClear(Vector3 center, Quaternion rot)
     {
         Vector3 half = CarriedHalfExtents() * 0.95f;
-        Collider[] hits = Physics.OverlapBox(center, half, rot, ~0, QueryTriggerInteraction.Ignore);
-        foreach (Collider h in hits)
+        // 운반 중 조준 표시가 매 프레임 부르므로 NonAlloc으로 힙 할당을 없앤다(버퍼 16개면 충분).
+        int count = Physics.OverlapBoxNonAlloc(center, half, dropOverlapBuffer, rot, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
         {
+            Collider h = dropOverlapBuffer[i];
             if (h == null) continue;
             if (carried != null && h.transform.IsChildOf(carried.transform)) continue;
             if (h.transform.IsChildOf(transform) || transform.IsChildOf(h.transform)) continue;
             return false;
         }
         return true;
+    }
+
+    private static Quaternion SnapToAxes(Quaternion q)
+    {
+        Vector3 up = NearestAxis(q * Vector3.up);
+        Vector3 fwd = Vector3.ProjectOnPlane(q * Vector3.forward, up);
+        if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.ProjectOnPlane(q * Vector3.right, up);
+        return Quaternion.LookRotation(NearestAxis(fwd), up);
+    }
+
+    private static Vector3 NearestAxis(Vector3 v)
+    {
+        float ax = Mathf.Abs(v.x), ay = Mathf.Abs(v.y), az = Mathf.Abs(v.z);
+        if (ax >= ay && ax >= az) return new Vector3(Mathf.Sign(v.x), 0f, 0f);
+        if (ay >= az) return new Vector3(0f, Mathf.Sign(v.y), 0f);
+        return new Vector3(0f, 0f, Mathf.Sign(v.z));
+    }
+
+    // 든 블록이 정육면체 몸과 겹치지 않도록 인스펙터 값을 "최소값"으로 쓰고, 두 몸의 크기가 더 크면 그만큼
+    // 띄운다. 블록이 크거나 정육면체가 커진/작아진 상태여도 머리 위·앞쪽에서 서로 파고들지 않는다.
+    private Vector3 PlayerHalfExtents()
+    {
+        Collider pc = shapeId != null ? shapeId.solidCollider : null;
+        return pc != null ? pc.bounds.extents : Vector3.one * 0.5f;
+    }
+
+    // 기준은 루트 피벗이 아니라 몸 콜라이더의 윗면이다 — 루트 피벗이 콜라이더 중심보다 아래(실측 0.5U)라서
+    // "피벗 + 두 반높이"로 재면 0.5U만큼 겹쳤다(2026-10-10 Loki dbg_carry_tick: 높이 오차로 intersect=True).
+    private float EffectiveCarryHeight()
+    {
+        Collider pc = shapeId != null ? shapeId.solidCollider : null;
+        float top = pc != null ? pc.bounds.max.y - transform.position.y : PlayerHalfExtents().y;
+        return Mathf.Max(carryHeight, top + CarriedHalfExtents().y + 0.05f);
+    }
+
+    private float EffectiveDropDistance()
+    {
+        Vector3 p = PlayerHalfExtents(), b = CarriedHalfExtents();
+        return Mathf.Max(dropDistance, Mathf.Max(p.x, p.z) + Mathf.Max(b.x, b.z) + 0.1f);
     }
 
     private Vector3 CarriedHalfExtents()
@@ -455,9 +590,10 @@ public class PlayerBlockCarrier : MonoBehaviour
 
         if (carried != null)
         {
-            Vector3 target = transform.position + LookDir() * dropDistance + Vector3.up * carryHeight;
+            Vector3 target = transform.position + LookDir() * EffectiveDropDistance() + Vector3.up * EffectiveCarryHeight();
             pos = target;
-            c = IsDropSpaceClear(target, carriedRotation) ? colorOk : colorReject;
+            dropClear = IsDropSpaceClear(target, carriedRotation);
+            c = dropClear ? colorOk : colorReject;
         }
         else if (aimed != null)
         {

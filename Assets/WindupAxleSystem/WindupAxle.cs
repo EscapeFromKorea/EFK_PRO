@@ -28,6 +28,14 @@ public class WindupAxle : MonoBehaviour
              "엉뚱하게 바뀌는 것을 막기 위함이다.")]
     public float directionDeadzone = 0.01f;
 
+    [Header("마우스 휠 감기 (키맵 통합안 §8 #6)")]
+    [Tooltip("조작 중인 플레이어가 축에서 이 거리(Unit) 안이면 마우스 휠로 감을 수 있다(어떤 도형이든, 굴리기 " +
+             "모드 불필요). 0 이하면 휠 감기 비활성.")]
+    public float wheelRange = 3f;
+    [Tooltip("휠이 이만큼 쌓이면 ApplyRotation 1회(정육면체 텀블 1회 = 1.0 기준). 휠 한 눈금 = 0.1이므로 " +
+             "기본 1이면 10눈금 ≈ 텀블 1회.")]
+    public float wheelUnitsPerWind = 1f;
+
     [Header("이산 이벤트 (저장소 관례 UnityEvent)")]
     public UnityEvent onFullyCharged;
     public UnityEvent onFullyDischarged;
@@ -96,10 +104,10 @@ public class WindupAxle : MonoBehaviour
     /// 반대 방향 입력은 기존 충전량을 먼저 상쇄한 뒤 반대 부호로 쌓인다(부호 있는 단일 값이라
     /// 별도 분기가 필요 없다). <see cref="crankSwingCooldown"/> 유예시간 중에는 통째로 무시한다 —
     /// 아암이 물리적으로 도는 동안의 재발화를 막아야 해서, 저장량 반영까지 함께 잠긴다.</summary>
-    public void ApplyRotation(float signedDelta)
+    public bool ApplyRotation(float signedDelta)
     {
-        if (Mathf.Abs(signedDelta) < directionDeadzone) return;
-        if (Time.time < nextCrankSwingTime) return;
+        if (Mathf.Abs(signedDelta) < directionDeadzone) return false;
+        if (Time.time < nextCrankSwingTime) return false;
 
         CurrentCharge = ApplyChargeRotation(CurrentCharge, signedDelta, chargeRate, maxCharge, directionDeadzone);
         IsWinding = true;
@@ -109,6 +117,35 @@ public class WindupAxle : MonoBehaviour
         float swingSign = Mathf.Sign(signedDelta);
         for (int i = 0; i < receivers.Count; i++)
             receivers[i].OnCrankSwing(swingSign);
+        return true;
+    }
+
+    private float wheelAccum;
+
+    // 휠은 눈금을 쌓았다가 wheelUnitsPerWind에 닿으면 한 번 감는다. 쿨다운 중 거절되면 쌓인 채로 다음 프레임에
+    // 다시 시도한다. 방향이 바뀌거나 범위를 벗어나면 비운다.
+    private void Update()
+    {
+        PlayerMover p = InteractionController.Controlled;
+        Transform at = crank != null ? crank : transform;
+        if (wheelRange <= 0f || p == null || InteractionController.IsGripped(p) || CatapultLoadController.IsConnectedTo(p) ||
+            (p.transform.position - at.position).sqrMagnitude > wheelRange * wheelRange)
+        {
+            wheelAccum = 0f;
+            return;
+        }
+
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        if (scroll != 0f)
+        {
+            if (Mathf.Sign(scroll) != Mathf.Sign(wheelAccum)) wheelAccum = 0f;
+            wheelAccum += scroll; // 위로 굴림 = +
+        }
+
+        float unit = Mathf.Max(0.01f, wheelUnitsPerWind);
+        if (Mathf.Abs(wheelAccum) >= unit &&
+            ApplyRotation(Mathf.Sign(wheelAccum) * unit))
+            wheelAccum -= Mathf.Sign(wheelAccum) * unit;
     }
 
     void FixedUpdate()

@@ -139,17 +139,38 @@ public class PlayerShapeController : MonoBehaviour
         // 예전의 useAverageColliderScale X/Y 평균 보정 분기는 더 이상 필요 없다.
         // (해당 public 필드는 PlayerSystem/Editor의 생성기가 참조하고 있어 남겨두지만
         //  런타임 동작에는 관여하지 않는다.)
+        // [2026-09-19] 값이 이미 맞아도 매 프레임 무조건 대입하던 것을 가드로 막는다. 이 콜라이더는
+        // 바닥과 실제로 부딪히는 솔리드 콜라이더이고, Rigidbody 밑의 콜라이더 Transform을 건드리면
+        // 같은 값을 넣어도 dirty로 잡혀 PhysX가 접촉을 다시 잡는다 — 그게 렌더 프레임(가변)마다
+        // 반복되면 물리 스텝(50Hz)과 위상이 어긋나 수직 접촉이 흔들린다. 바로 아래 meshTransform
+        // 처리에는 원래부터 같은 가드가 있었는데 이쪽만 빠져 있었다.
         if (colliderTransform != null)
         {
-            colliderTransform.localScale = Vector3.one;
+            if (colliderTransform.localScale != Vector3.one)
+                colliderTransform.localScale = Vector3.one;
 
-            colliderTransform.localPosition = new Vector3(
-                colliderTransform.localPosition.x,
-                0.5f,
-                colliderTransform.localPosition.z
-            );
+            float targetY = BottomPivotOffsetY;
+            Vector3 colliderLocal = colliderTransform.localPosition;
+            if (Mathf.Abs(colliderLocal.y - targetY) > 0.001f)
+                colliderTransform.localPosition = new Vector3(colliderLocal.x, targetY, colliderLocal.z);
         }
     }
+
+    // [2026-09-21, 구 카메라 꿀렁임 조사로 확정] Root 원점을 "바닥 접촉점"으로 보고 콜라이더/메시를
+    // 반높이(0.5)만큼 자식 로컬 Y로 띄우는 이 관행은 Root 회전이 고정된 정육면체/정사면체에서만
+    // 안전하다. 구는 Root가 실제 물리로 자유 회전하는데(RigidbodyConstraints.None), 자식 Transform은
+    // 부모 회전을 그대로 물려받으므로 이 오프셋이 회전할 때마다 Root 원점을 중심으로 궤도를 돈다 —
+    // PhysX가 그 궤도 도는 콜라이더를 계속 바닥에 붙이려고 Root 자체를 회전 주기(≈0.45s)·반지름
+    // 진폭(≈0.5U)으로 위아래로 흔든 것이 targetY/카메라 꿀렁임의 정체였다(Loki 실측으로 확인 —
+    // velY는 거의 0인데 posY만 회전 주기로 진동). 구만 오프셋을 0으로 둬 콜라이더 중심이 곧 Root
+    // 원점(=회전 중심)이 되게 한다 — 물리적으로 구는 애초에 회전축이 중심을 지나야 하므로 이게 맞는
+    // 배치다. 대신 구의 Root는 더 이상 "바닥"이 아니라 "구 중심"을 의미하게 되므로, 씬 배치 Y는
+    // 그만큼(반지름) 올려줘야 한다.
+    private float BottomPivotOffsetY =>
+        (shapeIdentity != null && shapeIdentity.stats != null
+            && shapeIdentity.stats.kind == PlayerShapeStats.ShapeKind.Sphere)
+            ? 0f
+            : 0.5f;
 
     void FixedUpdate()
     {
@@ -204,7 +225,7 @@ public class PlayerShapeController : MonoBehaviour
         // Player_Root Y는 Rigidbody Physics에 완전히 위임하여 누적 상승 루프 방지
         if (meshTransform != null)
         {
-            float targetLocalY = 0.5f;
+            float targetLocalY = BottomPivotOffsetY;
             Vector3 localPos = meshTransform.localPosition;
 
             if (Mathf.Abs(localPos.y - targetLocalY) > 0.001f)
@@ -238,6 +259,32 @@ public class PlayerShapeController : MonoBehaviour
     {
         currentState = (currentState == state) ? EScaleState.Normal : state;
         RecomputeTargetScale();
+    }
+
+    /// <summary>현재 크기 상태(외부에서 임시로 배율을 강제했다가 되돌리려는 기믹이 저장해 두는 용도 —
+    /// 예: CatapultSteerHandle이 도킹 전 크기를 기억해 해제 때 복원한다). 2026-09-29 추가.</summary>
+    public EScaleState CurrentState => currentState;
+
+    /// <summary>state로 강제 전환한다. `ToggleScale`과 달리 대칭 토글이 아니라 목표 상태를 그대로
+    /// 설정하므로, 이미 그 상태여도(예: ScalePad로 이미 커진 채) 다시 꺼지지 않고 멱등하게 유지된다.
+    /// 2026-09-29 추가 — CatapultSteerHandle 도킹이 ToggleScale을 도킹/해제에 두 번 불러 "이미 커진
+    /// 채 도킹하면 오히려 줄어들고, 작아진 채 도킹하면 해제 후 원래(작아진) 크기로 못 돌아가는"
+    /// 결함이 있었다(전 기믹 점검에서 발견). 같은 상태면 아무 일도 하지 않는다.</summary>
+    public void SetScaleState(EScaleState state)
+    {
+        if (currentState == state) return;
+        currentState = state;
+        RecomputeTargetScale();
+    }
+
+    /// <summary>growMultiplier를 바꾸고, 현재 Grown 상태면 즉시 반영한다(아니면 다음 Grown 전환 때
+    /// 적용된다). 2026-09-29 추가 — 도킹처럼 "지금 이 배율로 강제 고정"이 필요한 기믹을 위한 진입점.
+    /// growMultiplier 자체는 이 컴포넌트와 ScalePad가 공유하는 필드라(기존 설계), 호출자가 원래 값으로
+    /// 되돌리지 않으면 이후 ScalePad 성장도 이 값을 쓴다 — 의도된 동작이다.</summary>
+    public void SetGrowMultiplier(float multiplier)
+    {
+        growMultiplier = multiplier;
+        if (currentState == EScaleState.Grown) RecomputeTargetScale();
     }
 
     /// <summary>현재 접지 여부 반환 (외부 참조용)</summary>

@@ -25,7 +25,8 @@ public class SyncDemoGravityToggle : MonoBehaviour
 
     private void Update()
     {
-        if (!Input.GetKeyDown(toggleKey)) return;
+        // QA 전용 — 릴리스 빌드에서는 Z키로 중력이 꺼지지 않게 한다(에디터·개발 빌드에서만 동작).
+        if (!Debug.isDebugBuild || !Input.GetKeyDown(toggleKey)) return;
 
         body.useGravity = !body.useGravity;
         if (!body.useGravity)

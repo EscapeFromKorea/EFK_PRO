@@ -21,7 +21,7 @@ using UnityEngine.Events;
 /// [도형 차등 없음] 무거울수록·빠를수록 Collision.impulse가 커져 충전량이 자연히 달라진다.
 /// 포탈을 통과한 고속 물체도 impulse가 그만큼 커서 대량 충전된다(maxImpulsePerHit로 상한 선택).
 /// </summary>
-public class InertiaCapacitor : MonoBehaviour
+public class InertiaCapacitor : MonoBehaviour, IInteractionProvider
 {
     [Header("충전 (입력: 충돌 운동량)")]
     [Tooltip("저장량 최대치. 이 이상은 안 쌓인다.")]
@@ -52,8 +52,9 @@ public class InertiaCapacitor : MonoBehaviour
     public int outputSteps = 0;
 
     [Header("한 번에 방출 (버스트 — 선택)")]
-    [Tooltip("이 키를 누르면 Discharge()가 호출돼 저장량을 빠르게 쏟아낸다. None이면 비활성.")]
-    public KeyCode dischargeKey = KeyCode.None;
+    [Tooltip("조작 중인 플레이어가 이 거리(Unit) 안에서 E를 길게 누르면 Discharge()가 호출돼 저장량을 빠르게 " +
+             "쏟아낸다(InteractionController 홀드). 0 이하면 수동 방출 비활성.")]
+    public float interactRange = 3f;
     [Tooltip("버스트가 지속되는 시간(초).")]
     public float burstSeconds = 0.6f;
     [Tooltip("버스트 동안 drainPerSecond에 곱해지는 배율.")]
@@ -167,10 +168,29 @@ public class InertiaCapacitor : MonoBehaviour
         }
     }
 
-    private void Update()
+    private void OnEnable() => InteractionController.Register(this);
+    private void OnDisable() => InteractionController.Unregister(this);
+
+    private System.Action discharge;
+
+    // E 홀드 = 방출(키맵 통합안). 충전이 없으면 올리지 않는다(비활성 홀드는 탭을 지연시키지 않으므로 어차피 무해).
+    public void CollectActions(List<InteractionAction> into)
     {
-        if (dischargeKey != KeyCode.None && Input.GetKeyDown(dischargeKey))
-            Discharge();
+        PlayerMover p = InteractionController.Controlled;
+        if (p == null || interactRange <= 0f || CurrentCharge <= 0f) return;
+        float d = Vector3.Distance(p.transform.position, transform.position);
+        if (d > interactRange) return;
+        discharge ??= Discharge;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand,
+            trigger = InteractionTrigger.Hold,
+            verb = "축전기 방출",
+            enabled = true,
+            priority = InteractionPriority.Panel,
+            distance = d,
+            execute = discharge,
+        });
     }
 
     private void OnCollisionEnter(Collision collision)

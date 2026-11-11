@@ -134,7 +134,7 @@ public static class DoorSystemMenuItem
 
     // ── 생성 헬퍼 ─────────────────────────────────────────────────────────────────────
 
-    private static GameObject SpawnDoor(Vector3 position)
+    internal static GameObject SpawnDoor(Vector3 position)
     {
         GameObject door = GameObject.CreatePrimitive(PrimitiveType.Cube);
         door.name = "door";
@@ -159,7 +159,7 @@ public static class DoorSystemMenuItem
         return door;
     }
 
-    private static GameObject SpawnLever(Vector3 position, doorPhysics door)
+    internal static GameObject SpawnLever(Vector3 position, doorPhysics door)
     {
         GameObject pivot = GameObject.CreatePrimitive(PrimitiveType.Cube);
         pivot.name = "lever_pivot";

@@ -76,14 +76,30 @@ public class PlayerAccelReceiver : MonoBehaviour
     {
         if (state == State.None) return;
 
+        // 실타래 매달림·투석기 탑승/착지 대기·레일카·복귀 연출처럼 몸을 외부가 소유한 동안에는 부스트가
+        // velocity를 통째 대입해 소유자의 이동을 덮어쓴다(2026-10-10 코드 리뷰 중-14). 부스트를 버린다.
+        if ((mover != null && mover.ExternallyDriven) || rb.isKinematic)
+        {
+            CancelBoost();
+            return;
+        }
+
         float currentY = rb.velocity.y; // 중력/점프는 건드리지 않음
 
         Vector3 inputVel = Vector3.zero;
-        if (mover != null && mover.IsControlled)
+        // 패널·UI 등으로 입력이 잠긴 동안(InputLocked)에는 조향도 받지 않는다(2026-10-25 리뷰 G1).
+        if (mover != null && mover.IsControlled && !mover.InputLocked)
         {
             float h = Input.GetAxis("Horizontal");
             float v = Input.GetAxis("Vertical");
             inputVel = new Vector3(h, 0f, v) * mover.moveSpeed;
+            // PlayerMover.LegacyVelocityFixedUpdate/TorqueRollingFixedUpdate와 같은 회전 보정 — 없으면
+            // 궤도 카메라를 돌린 채 가속 발판을 밟았을 때 조향 입력 방향이 평소 이동과 반대로 꼬인다
+            // (2026-09-29 점검에서 발견). PlayerMover.EffectiveInputYaw()는 private라 PortalSystem/
+            // PlayerRollModeReceiver와 같은 방식으로 공개 멤버만으로 같은 식을 다시 계산한다.
+            float yaw = EffectiveInputYaw();
+            if (Mathf.Abs(yaw) > 0.0001f)
+                inputVel = Quaternion.AngleAxis(yaw, Vector3.up) * inputVel;
 
             Vector3 boostDir = boostVelocity.sqrMagnitude > 0.0001f ? boostVelocity.normalized : Vector3.zero;
             if (boostDir != Vector3.zero)
@@ -130,5 +146,16 @@ public class PlayerAccelReceiver : MonoBehaviour
                 state = State.None; // velocity 제어권을 다른 이동 스크립트로 완전히 반납
             }
         }
+    }
+
+    // PlayerMover.cs는 건드리지 않는다(PortalSystem/PlayerRollModeReceiver와 같은 방침) — 그 클래스의
+    // private EffectiveInputYaw()과 같은 식을 공개 멤버(inputYawOffset/cameraRelativeInput/ViewYaw/
+    // MouseOrbitActive)만으로 다시 계산한다.
+    private float EffectiveInputYaw()
+    {
+        float? viewYaw = PlayerFollowCamera.ViewYaw;
+        if (viewYaw.HasValue && (PlayerFollowCamera.MouseOrbitActive || mover.cameraRelativeInput))
+            return viewYaw.Value;
+        return mover.inputYawOffset;
     }
 }

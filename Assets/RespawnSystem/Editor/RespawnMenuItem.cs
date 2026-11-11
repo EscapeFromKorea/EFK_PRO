@@ -95,6 +95,24 @@ public static class RespawnMenuItem
                   "킬 라인(killY)은 그대로 살아 있고, 이 볼륨은 거기에 더해지는 판정이다.", go);
     }
 
+    /// <summary>구간별 개인 복귀 목적지(SectionSafePoint) 생성. 체크포인트와 달리 조립할 것이
+    /// 없어(트리거 박스+빈 오브젝트 하나) 메뉴가 절약해 주는 건 위치를 씬 뷰 중심에 놓는 것뿐이지만,
+    /// 다른 Create 메뉴들과 동선을 맞춘다(docs/PRD/SectionRespawn.md §3).</summary>
+    [MenuItem("Tools/Respawn/Create Section Safe Point")]
+    public static void CreateSectionSafePoint()
+    {
+        GameObject go = new GameObject("SectionSafePoint");
+        go.transform.position = SceneViewCenter();
+        go.AddComponent<SectionSafePoint>();
+
+        Undo.RegisterCreatedObjectUndo(go, "Create Section Safe Point");
+        Selection.activeGameObject = go;
+
+        Debug.Log("[Respawn] 구간 안전점을 만들었다. sectionId를 지어 주고(예: \"CH4_FallingRock\") " +
+                  "지형 바닥에 정확히 맞춰 배치해라 — 볼륨처럼 레이로 바닥을 찾지 않고 이 위치를 그대로 " +
+                  "쓴다. 여러 위험 장치가 같은 구간을 쓰면 같은 SectionSafePoint를 공유시켜라.", go);
+    }
+
     [MenuItem("Tools/Respawn/Create Respawn Controller")]
     public static void CreateController()
     {

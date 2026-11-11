@@ -38,6 +38,11 @@ using UnityEngine.Rendering;
 /// mover.enabled를 끄면 PlayerControlSwitcher 로스터에서 빠져 Tab 순환이 깨진다(실타래 Phase 1에서
 /// 이미 치른 부채). 점프는 따로 막지 않는다 — 낙하 중엔 비접지, 페이드 중엔 isKinematic이라
 /// 구조적으로 성립하지 않는다. 유일하게 뚫리던 경로는 부스트라 순간이동 시 CancelBoost()를 부른다.
+///
+/// [SectionRespawn 확장 — 구간별 개인 복귀 (docs/PRD/SectionRespawn.md)]
+/// RespawnPlayer(GameObject, SectionSafePoint) 오버로드가 지정된 구간 목적지로 보낸다. 공용
+/// 체크포인트(위 문단)로 보내는 기존 경로와 연출·안전 로직을 100% 공유하고, 목적지 조회와 점유
+/// 검사만 다르다 — SectionHitCounter가 임계 피격에서 이 오버로드를 발화한다.
 /// </summary>
 public class RespawnController : MonoBehaviour
 {
@@ -96,6 +101,20 @@ public class RespawnController : MonoBehaviour
     [Tooltip("Shows the temporary IMGUI respawn counter. Disable in finished scenes that provide no debug HUD.")]
     public bool showDebugGui = true;
 
+    /// <summary>복귀가 시작될 때(자동·수동 R·구간 복귀 모두) 대상 플레이어 Root를 넘겨 발신한다. 복귀는
+    /// 개인의 이동일 뿐이라 역할·진행 상태는 그대로 두고 그 참가자의 화면(패널)만 닫으면 되는 시스템들이
+    /// 구독한다(RoleAssignmentManager — docs/PRD/RoleClueTerminal.md §2.5). 다른 시스템의 존재를 이
+    /// 컨트롤러가 알 필요가 없도록 이벤트로만 열어 둔다.</summary>
+    public event System.Action<GameObject> PlayerRespawned;
+
+    /// <summary>복귀 직전, "붙잡힘" 판정(IsHeld) 전에 발신한다. 몸을 붙잡는 기믹이 구독해 그 참가자를
+    /// 스스로 놓는다 — 탑승은 R로 풀 수 없고 탑승 중 추격자에게 잡히는 것이 CH1의 정상 경로라 거절하면
+    /// 영영 복귀하지 못한다. 구독자: RailCartRider·CatapultLoadController(원래), DreamThreadController·
+    /// ThreadPinPlacer·CatapultBucket·CatapultSteerHandle(2026-10-10 — 구독자가 없는 붙잡힘은 위험 피격을
+    /// 면역으로 만들었다, docs/PRD/Respawn.md §310). 자동 장외(킬 라인) 경로는 이 이벤트 전에 IsHeld로
+    /// 미루므로 영향이 없다. 구독자를 이 컨트롤러가 알 필요가 없도록 static 이벤트로만 연다.</summary>
+    public static event System.Action<PlayerMover> ReleaseHoldRequested;
+
     private static RespawnController instance;
 
     // 체크포인트는 도형별이 아니라 마지막에 갱신된 하나만 공유한다. 좌표로 들고 있어서 구역이
@@ -120,6 +139,11 @@ public class RespawnController : MonoBehaviour
 
     // 연출이 진행 중인 플레이어. 연출 중 재입력(R 연타)과 중복 발동을 막는다.
     private readonly HashSet<PlayerMover> busy = new HashSet<PlayerMover>();
+
+    // 연출 도중 컨트롤러가 꺼질 때 되돌릴 것들 — 코루틴 지역 변수는 OnDisable에서 닿지 않아 필드로 든다.
+    private readonly List<List<FadeMaterial>> activeFades = new List<List<FadeMaterial>>();
+    private readonly Dictionary<Rigidbody, RigidbodyInterpolation> savedInterpolation =
+        new Dictionary<Rigidbody, RigidbodyInterpolation>();
 
     private static readonly int ColorId = Shader.PropertyToID("_Color");
 
@@ -150,6 +174,13 @@ public class RespawnController : MonoBehaviour
             if (rb != null) rb.isKinematic = false;
         }
         busy.Clear();
+
+        // 몸이 투명한 Fade 머티리얼 채로, 또는 interpolation이 None인 채로 남지 않게 되돌린다.
+        foreach (List<FadeMaterial> fade in new List<List<FadeMaterial>>(activeFades)) EndFade(fade);
+        activeFades.Clear();
+        foreach (var pair in savedInterpolation)
+            if (pair.Key != null) pair.Key.interpolation = pair.Value;
+        savedInterpolation.Clear();
     }
 
     /// <summary>RespawnZone이 플레이어 진입 시 호출한다. 컨트롤러가 없으면 저장되지 않는다.</summary>
@@ -164,7 +195,63 @@ public class RespawnController : MonoBehaviour
         instance.StoreCheckpoint(zone);
     }
 
-    private void StoreCheckpoint(RespawnZone zone)
+    /// <summary>SetCheckpoint와 같은 저장 경로이되 <b>실제로 저장됐는지</b>를 돌려준다(RemoteCheckpointGate용).
+    /// 이미 잡은 구역·순서 역행·배치 오류·컨트롤러 없음은 false.</summary>
+    public static bool TryStoreCheckpoint(RespawnZone zone)
+    {
+        if (zone == null || instance == null) return false;
+        return instance.StoreCheckpoint(zone);
+    }
+
+    /// <summary>챕터 전체 재시작용(RemoteCheckpointGate.RestartChapter가 부른다). 현재 체크포인트를 비우고
+    /// clearZones의 잡음 기록·깃발을 지운 뒤, returnTo가 있으면 그 구역을 팀 체크포인트로 되돌린다
+    /// (순서 비교는 비운 뒤라 적용되지 않는다). returnTo가 null이면 체크포인트 없음 상태가 된다.</summary>
+    public static void RestartCheckpoint(RespawnZone returnTo, IEnumerable<RespawnZone> clearZones)
+    {
+        if (instance == null)
+        {
+            Debug.LogWarning("[Respawn] 씬에 RespawnController가 없어 체크포인트를 되돌리지 못했다.");
+            return;
+        }
+
+        if (instance.currentZone != null) instance.currentZone.SetFlagState(RespawnZone.FlagState.Hidden);
+        if (clearZones != null)
+            foreach (RespawnZone z in clearZones)
+            {
+                if (z == null) continue;
+                instance.claimed.Remove(z);
+                z.SetFlagState(RespawnZone.FlagState.Hidden);
+            }
+
+        instance.currentZone = null;
+        instance.hasCheckpoint = false;
+        if (returnTo == null) return;
+        instance.claimed.Remove(returnTo);
+        instance.StoreCheckpoint(returnTo);
+    }
+
+    /// <summary>진행 순서 규칙. 현재 체크포인트가 순서를 쓸 때만 개입한다 — 순서를 안 쓰는 기존 맵은 항상 통과다.
+    /// 현재가 순서 없음이고 새 구역이 순서 있음이면 통과(마지막 구역이 이기는 기존 규칙 그대로).</summary>
+    private bool PassesProgressOrder(RespawnZone zone)
+    {
+        if (currentZone == null || !currentZone.useProgressOrder) return true;
+
+        if (!zone.useProgressOrder)
+        {
+            Debug.LogError($"[Respawn] 배치 오류: 진행 순서가 없는 '{zone.name}'이 순서 있는 체크포인트 " +
+                           $"'{currentZone.name}'을 덮으려 해 거절했다. 이 구역에도 progressOrder를 줘라.", zone);
+            return false;
+        }
+        if (zone.progressOrder == currentZone.progressOrder)
+        {
+            Debug.LogError($"[Respawn] 배치 오류: '{zone.name}'과 '{currentZone.name}'의 progressOrder가 " +
+                           $"{zone.progressOrder}로 같아 어느 쪽이 뒤인지 알 수 없다. 거절했다.", zone);
+            return false;
+        }
+        return zone.progressOrder > currentZone.progressOrder; // 작으면 과거 구역 — 조용히 거절
+    }
+
+    private bool StoreCheckpoint(RespawnZone zone)
     {
         // **한 번 잡은 구역은 다시 활성화되지 않는다.** 뒤로 걸어가 이전 체크포인트를 다시 밟으면
         // 복귀 지점이 뒤로 밀려 진행이 되감기고, 어려운 구간을 통과한 직후에 죽으면 그 구간을 다시
@@ -176,7 +263,12 @@ public class RespawnController : MonoBehaviour
         //
         // 파괴된 구역이 목록에 남지만 정리하지 않는다 — 파괴 후 재생성된 구역은 다른 인스턴스라
         // 새로 잡히고, 씬에 미리 배치되는 오브젝트라 목록이 자라지 않는다.
-        if (!claimed.Add(zone)) return;
+        if (claimed.Contains(zone)) return false;
+
+        // 순서 거절은 claimed에 넣지 않는다 — 거절된 구역이 나중에 정당하게 앞 순서가 될 수도 있어서다
+        // (재시작으로 현재가 되돌려진 뒤 등).
+        if (!PassesProgressOrder(zone)) return false;
+        claimed.Add(zone);
 
         // 초록 깃발은 씬에서 정확히 하나 — 직전 체크포인트는 "지나온 경로"인 흰 깃발로 내린다.
         // 잡은 곳을 전부 초록으로 두면 실제 저장된 체크포인트는 하나뿐인데 여러 개가 켜져 있어
@@ -190,6 +282,7 @@ public class RespawnController : MonoBehaviour
         hasCheckpoint = true;
         warnedNoCheckpoint = false;
         Debug.Log($"[Respawn] 체크포인트 갱신: '{zone.name}' (낙하 {DropPosition}, 페이드 바닥 {groundPoint})");
+        return true;
     }
 
     /// <summary>외부 기믹이 리스폰을 강제 발동하는 진입점(낙석 피격 등). 인자는 맞은 플레이어의 Root.
@@ -211,11 +304,31 @@ public class RespawnController : MonoBehaviour
         TryRespawn(mover, useFade: true, reason: "외부 호출");
     }
 
+    /// <summary>구간 지정 복귀 — SectionHitCounter/위험 장치(낙석·레이저·함정 등)가 직접 호출한다.
+    /// 목적지 조회만 다르고 연출·안전 로직(조작 차단, 로프 해제, 페이드, 착지 대기)은
+    /// RespawnPlayer(GameObject)와 100% 동일하다(docs/PRD/SectionRespawn.md §3 — 복제하지 않는다).
+    ///
+    /// destination이 null이면 공용 체크포인트로 보내는 기존 동작으로 폴백한다(오배선 시 안전망).</summary>
+    public void RespawnPlayer(GameObject playerRoot, SectionSafePoint destination)
+    {
+        if (destination == null) { RespawnPlayer(playerRoot); return; }
+        if (playerRoot == null) return;
+
+        PlayerMover mover = playerRoot.GetComponentInParent<PlayerMover>();
+        if (mover == null)
+        {
+            Debug.LogWarning($"[Respawn] '{playerRoot.name}'에서 PlayerMover를 못 찾아 구간 복귀를 건너뛴다 " +
+                             "(인자는 플레이어 Root여야 한다).", playerRoot);
+            return;
+        }
+        TryRespawn(mover, useFade: true, reason: $"구간 복귀({destination.sectionId})", destination: destination);
+    }
+
     private void Update()
     {
         RefreshRoster();
 
-        if (Input.GetKeyDown(KeyCode.R))
+        if (!InputGate.Blocked && Input.GetKeyDown(KeyCode.R)) // 일시정지 메뉴가 열려 있으면 수동 리스폰을 막는다(PauseMenuSystem).
         {
             PlayerMover mover = ControlledPlayer();
             if (mover != null) TryRespawn(mover, useFade: true, reason: "수동 R");
@@ -317,12 +430,14 @@ public class RespawnController : MonoBehaviour
     /// 예전엔 일회성 게이트가 이쪽까지 삼켜, 낙석에 맞아도 리스폰이 안 되는데 콘솔이 완전히 무음이었다
     /// (2026-07-31 실제 사고 — 원인 추적을 로그가 아니라 스택 트레이스에 의존해야 했다). 아래 IsHeld
     /// 거절이 이미 매번 찍히는 것과도 일관되지 않았다.</summary>
-    private bool TryRespawn(PlayerMover mover, bool useFade, string reason, bool automatic = false)
+    private bool TryRespawn(PlayerMover mover, bool useFade, string reason, bool automatic = false,
+                            SectionSafePoint destination = null)
     {
         if (mover == null) return false;
         if (busy.Contains(mover)) return false; // 연출 중 재입력 무시
 
-        if (!hasCheckpoint)
+        // 구간 목적지가 있으면 독립 좌표라 공용 체크포인트 유무와 무관하게 진행한다.
+        if (destination == null && !hasCheckpoint)
         {
             if (!automatic || !warnedNoCheckpoint)
             {
@@ -334,6 +449,26 @@ public class RespawnController : MonoBehaviour
             return false;
         }
 
+        // 구간 목적지의 점유 검사 — 벽/도형 겹침 없이, 전부 막히면 강제로 밀어 넣지 않고 이번 호출을
+        // 포기한다(docs/PRD/SectionRespawn.md §4 "안전점 다중화"). 아래 좌석 해제보다 먼저 한다 —
+        // 복귀가 불발될 호출에서 탑승자를 내려놓으면 안 된다.
+        Vector3? sectionPoint = null;
+        if (destination != null)
+        {
+            // 예약 시간 = 페이드 아웃 + 순간이동 여유. 실제 도착 뒤엔 몸이 겹침 검사에 직접 잡힌다.
+            if (!destination.TryGetAvailablePoint(mover, out Vector3 point, fadeOutSeconds + 0.5f))
+            {
+                Debug.LogWarning($"[Respawn] '{destination.sectionId}' 안전점(및 보조 지점)이 전부 다른 " +
+                                 $"참가자로 막혀 있어 '{ShapeLabel(mover)}' 구간 복귀를 건너뛴다 " +
+                                 "(다음 피격/재시도에서 다시 시도된다).", destination);
+                return false;
+            }
+            sectionPoint = point;
+        }
+
+        // 좌석형 기믹(레일카)은 여기서 스스로 내려놓는다 — 그 뒤엔 IsHeld가 false라 정상 진행한다.
+        ReleaseHoldRequested?.Invoke(mover);
+
         // 조인트/키네마틱으로 붙잡힌 바디를 순간이동시키면 기믹 상태가 꼬인다. 수동·외부 발동은
         // 미루지 않고 거절한다 — R은 "지금" 되돌리라는 의사표시라, 몇 초 뒤 갑자기 발동하면 더 나쁘다.
         if (IsHeld(mover))
@@ -343,7 +478,7 @@ public class RespawnController : MonoBehaviour
             return false;
         }
 
-        StartCoroutine(RespawnRoutine(mover, useFade, reason));
+        StartCoroutine(RespawnRoutine(mover, useFade, reason, sectionPoint));
         return true;
     }
 
@@ -358,7 +493,8 @@ public class RespawnController : MonoBehaviour
         return rb != null && rb.isKinematic;
     }
 
-    private IEnumerator RespawnRoutine(PlayerMover mover, bool useFade, string reason)
+    private IEnumerator RespawnRoutine(PlayerMover mover, bool useFade, string reason,
+                                       Vector3? sectionFadePoint = null)
     {
         Rigidbody rb = mover.GetComponent<Rigidbody>();
         busy.Add(mover);
@@ -372,6 +508,7 @@ public class RespawnController : MonoBehaviour
         RespawnCount++;
         Debug.Log($"[Respawn] '{ShapeLabel(mover)}' 리스폰 — {reason} / {(useFade ? "페이드" : "낙하")}, " +
                   $"팀 누적 {RespawnCount}회");
+        PlayerRespawned?.Invoke(mover.gameObject);
 
         List<FadeMaterial> fadeMats = null;
         if (useFade)
@@ -394,7 +531,8 @@ public class RespawnController : MonoBehaviour
         // (반투명한 채 아래로 쏘아지면 연출이 깨진다).
         float carriedFall = useFade ? 0f : Mathf.Min(Mathf.Max(0f, -rb.velocity.y), maxCarriedFallSpeed);
 
-        yield return TeleportRoutine(mover, rb, useFade ? FadeSpawnPosition(mover) : DropPosition, carriedFall);
+        yield return TeleportRoutine(mover, rb,
+            useFade ? FadeSpawnPosition(mover, sectionFadePoint ?? groundPoint) : DropPosition, carriedFall);
 
         if (mover == null || rb == null)
         {
@@ -443,6 +581,7 @@ public class RespawnController : MonoBehaviour
         // 위치로 길게 늘어나 보인다. "암전 없이 자연스럽게"가 이 시스템의 전부인데 정확히 그 한
         // 프레임이 깨지므로, 물리 스텝 하나가 지나 보간 버퍼가 새 위치로 갱신될 때까지 꺼 둔다.
         RigidbodyInterpolation prevInterpolation = rb.interpolation;
+        savedInterpolation[rb] = prevInterpolation;
         rb.interpolation = RigidbodyInterpolation.None;
 
         rb.velocity = Vector3.zero;
@@ -474,6 +613,7 @@ public class RespawnController : MonoBehaviour
 
         yield return new WaitForFixedUpdate();
         if (rb != null) rb.interpolation = prevInterpolation;
+        savedInterpolation.Remove(rb);
     }
 
     /// <summary>낙하 리스폰 시작 지점 — 체크포인트 구역 상단 + dropExtraHeight. 저장 시점에 더해
@@ -481,16 +621,21 @@ public class RespawnController : MonoBehaviour
     /// 다시 밟게 만들지 않는다). 기즈모도 같은 값을 쓴다.</summary>
     private Vector3 DropPosition => dropPoint + Vector3.up * dropExtraHeight;
 
-    /// <summary>페이드 스폰 좌표 — 체크포인트 바닥 위로 "콜라이더 밑면이 groundClearance만큼 뜨는" 높이.
+    /// <summary>페이드 스폰 좌표 — 지정한 바닥 지점 위로 "콜라이더 밑면이 groundClearance만큼 뜨는" 높이.
     /// 요구사항의 "바닥 + 5cm"는 스케일 1 전제라, ScalingSystem으로 커진 도형은 5cm가 몸 절반보다
-    /// 낮아 바닥에 파묻힌다. 현재 콜라이더 바운즈로 피벗~발바닥 거리를 재서 스케일과 무관하게 세운다.</summary>
-    private Vector3 FadeSpawnPosition(PlayerMover mover)
+    /// 낮아 바닥에 파묻힌다. 현재 콜라이더 바운즈로 피벗~발바닥 거리를 재서 스케일과 무관하게 세운다.
+    ///
+    /// groundPointToUse를 인자로 받는 이유(SectionRespawn 확장) — 공용 체크포인트(groundPoint)로
+    /// 보낼 때와 SectionSafePoint가 지정한 구간별 목적지로 보낼 때가 이 계산 자체는 똑같고 바닥
+    /// 좌표만 다르다. 이 오프셋 계산을 SectionSafePoint 쪽에 복제하지 않기 위해 여기서 인자화한다.</summary>
+    private Vector3 FadeSpawnPosition(PlayerMover mover, Vector3 groundPointToUse)
     {
         float pivotToBottom = 0f;
         if (TryGetSolidBounds(mover.transform, out Bounds body))
             pivotToBottom = Mathf.Max(0f, mover.transform.position.y - body.min.y);
 
-        return new Vector3(groundPoint.x, groundPoint.y + pivotToBottom + groundClearance, groundPoint.z);
+        return new Vector3(groundPointToUse.x, groundPointToUse.y + pivotToBottom + groundClearance,
+                           groundPointToUse.z);
     }
 
     // 트리거 콜라이더(Player_Mesh)는 시각 메쉬 크기라 실제로 바닥에 닿는 면이 아니다 — 솔리드
@@ -568,12 +713,14 @@ public class RespawnController : MonoBehaviour
                 SetTransparent(m);
             }
         }
+        activeFades.Add(list);
         return list;
     }
 
     private void EndFade(List<FadeMaterial> mats)
     {
         if (mats == null) return;
+        activeFades.Remove(mats);
         foreach (FadeMaterial fm in mats)
         {
             if (fm.mat == null) continue;

@@ -656,7 +656,9 @@ public static class CatapultMenuItem
             // (tubeThickness)를 줘야 세그먼트들이 원둘레를 따라 이어 붙어 실제 닫힌 원으로 보인다
             // (반대로 주면 중심에서 바깥으로 뻗는 꽃잎/바큇살처럼 보인다).
             seg.transform.localScale = new Vector3(segmentLength, tubeThickness, tubeThickness);
-            seg.GetComponent<Renderer>().sharedMaterial = mat;
+            var segRenderer = seg.GetComponent<Renderer>();
+            segRenderer.sharedMaterial = mat;
+            segRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; // 작은 장식 세그먼트 — 그림자 캐스터 절감(2026-11-08 성능 최적화)
         }
 
         return ring;

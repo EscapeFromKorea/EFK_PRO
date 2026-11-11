@@ -15,7 +15,7 @@ using UnityEngine;
 /// 광산차 몸체)은 전부 자식 오브젝트의 로컬 스케일로만 표현한다(`RailCartMenuItem` 참고). 그래서
 /// 탑승자를 카트 루트에 직접 부모화해도 전단이 생기지 않는다.
 /// </summary>
-public class RailCartRider : MonoBehaviour
+public class RailCartRider : MonoBehaviour, IInteractionProvider
 {
     [Tooltip("탑승/하차 대상 카트. 비워두면 이 컴포넌트가 붙은 오브젝트의 RailCart를 찾는다.")]
     public RailCart cart;
@@ -30,6 +30,7 @@ public class RailCartRider : MonoBehaviour
     private Rigidbody occupantBody;
     private PlayerMover occupantMover;
     private Transform occupantOriginalParent;
+    private RigidbodyInterpolation occupantOriginalInterpolation;
     private Collider[] occupantColliders;
     private Collider[] cartColliders;
 
@@ -38,15 +39,72 @@ public class RailCartRider : MonoBehaviour
         if (cart == null) cart = GetComponent<RailCart>();
     }
 
+    // 탑승자가 복귀 대상이 되면(추격자·레이저 피격, 장외, R) 먼저 내려놓는다 — 붙잡힌 채로는
+    // RespawnController가 복귀를 거절해 영영 돌아가지 못한다.
+    private System.Action onInteract;
+
+    void OnEnable()
+    {
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+        InteractionController.Register(this);
+    }
+
+    void OnDisable()
+    {
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+        InteractionController.Unregister(this);
+        // 탑승 중에 꺼지면 탑승자가 부모화·키네마틱·ExternallyDriven 상태로 영구히 남는다.
+        if (occupantBody != null && occupantMover != null) Unboard();
+    }
+
+    // 키를 직접 읽지 않는다 — 탑승 중인 플레이어에게는 하차(붙잡힌 상태에서도 허용), 그 외엔 탑승 범위
+    // 안일 때 탑승을 E 탭 액션으로 올린다(키맵 통합안 §2-1). 도형 제한 없음.
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        onInteract ??= OnInteract;
+
+        if (occupantBody != null)
+        {
+            if (occupantMover != mover) return; // 다른 사람이 탄 카트는 건드리지 못한다.
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "하차", enabled = true,
+                priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteract,
+                allowWhenGripped = true,
+            });
+            return;
+        }
+
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+        float d = Vector3.Distance(body.position, transform.position);
+        if (d > boardRange) return;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "레일카 탑승", enabled = true,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+        });
+    }
+
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (occupantMover != null && occupantMover == mover) Unboard();
+    }
+
     void Update()
     {
         // 탑승 중엔 다른 기믹(DreamThreadSystem 등)이 같은 프레임에 ExternallyDriven을 꺼도
         // 자기 몫만큼은 자가 치유한다 — RailCartRider의 이전 버전이 겪은 것과 같은 소유권 경합
         // 방지(`RailCartRider.cs` 이력 참고).
         if (occupantMover != null) occupantMover.ExternallyDriven = true;
+    }
 
-        if (!Input.GetKeyDown(KeyCode.C)) return;
-
+    private void OnInteract()
+    {
         if (occupantBody != null)
         {
             // occupantMover가 지금 조작 대상이 아니면(Tab으로 다른 도형으로 넘어갔거나, 다른
@@ -81,6 +139,14 @@ public class RailCartRider : MonoBehaviour
         Rigidbody body = mover.GetComponent<Rigidbody>();
         if (body == null) return;
 
+        // 이미 다른 기믹이 붙잡고 있는 몸이면 탑승시키지 않는다(2026-09-29 점검에서 발견 — 예:
+        // 벽에 부착 중인 세모를 억지로 태우면 부모화가 두 소유자 사이에서 꼬인다).
+        if (mover.ExternallyDriven || body.isKinematic)
+        {
+            Debug.Log("[RailCart] 이미 다른 기믹이 이 도형을 붙잡고 있어 탑승할 수 없습니다.");
+            return;
+        }
+
         float myDistance = Vector3.Distance(body.position, transform.position);
         if (myDistance > boardRange) return;
         if (!IsNearestRider(body.position, myDistance)) return;
@@ -112,9 +178,21 @@ public class RailCartRider : MonoBehaviour
 
     private void Board(PlayerMover mover, Rigidbody body)
     {
+        // 포탈 굴리기 모드인 채로 타면, 텀블 도중(붙잡힘 상태)엔 모드가 스스로 꺼지지 않아 카트 안에서
+        // 텀블·Release(isKinematic 해제)를 이어갈 수 있다. 아래에서 키네마틱을 걸기 전에 먼저 끈다(끄는 쪽이
+        // isKinematic/ExternallyDriven을 되돌리므로 순서 중요). ※ 2026-09-25 "정사면체가 떠서 카트가 못
+        // 움직인다"의 실제 원인은 이게 아니라 아래 보간이었다(Loki 실측) — 이 줄은 예방용으로 남긴다.
+        PlayerRollModeReceiver rollMode = mover.GetComponent<PlayerRollModeReceiver>();
+        if (rollMode != null) rollMode.SetRollMode(false);
+
         occupantBody = body;
         occupantMover = mover;
         occupantOriginalParent = body.transform.parent;
+        // 탑승 중엔 보간을 끈다 — CatapultBucket.Board와 같은 이유: 키네마틱 바디가 부모(카트) Transform에
+        // 간접적으로 끌려갈 때 Interpolate는 옛 물리 자세로 Transform을 되써 몸이 월드에 묶일 수 있다.
+        // 하차 시 원래 값으로 되돌린다.
+        occupantOriginalInterpolation = body.interpolation;
+        body.interpolation = RigidbodyInterpolation.None;
 
         occupantColliders = body.GetComponentsInChildren<Collider>(true);
         cartColliders = cart != null ? cart.GetComponentsInChildren<Collider>(true) : GetComponentsInChildren<Collider>(true);
@@ -142,6 +220,7 @@ public class RailCartRider : MonoBehaviour
         body.transform.SetParent(occupantOriginalParent, true);
         body.transform.position = exitPos;
         body.isKinematic = false;
+        body.interpolation = occupantOriginalInterpolation;
         mover.ExternallyDriven = false;
 
         occupantBody = null;

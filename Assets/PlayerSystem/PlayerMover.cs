@@ -80,6 +80,29 @@ public class PlayerMover : MonoBehaviour
              "구/정육면체/정사면체 모두 이 공식 하나를 공유한다(자세한 이유는 클래스 상단 주석 참고).")]
     public float rollRadius = 0.5f;
 
+    [Tooltip("[진단 실험, 2026-09-21] 목표 각속도로 매 프레임 순간 스냅하는 대신 초당 이만큼(rad/s²)까지만 " +
+             "바뀌게 제한한다. Loki 실측으로 구가 정지 중엔 카메라 target Y가 완전히 안정적이고 구를 " +
+             "때만 요동친다는 게 확인돼, 이 순간 대입 자체(그리고 그로 인한 접촉 솔버/마찰과의 경합)를 " +
+             "원인으로 의심해 시도한다. 수평 velocity는 여전히 즉시 대입이라 moveSpeed 도달 규격에는 " +
+             "영향 없다 — 오직 회전 연출의 반응 속도만 늦어진다. 0이면 기존처럼 순간 스냅(회귀 없음). " +
+             "FreezeRotation인 정육면체/정사면체는 각속도 대입 자체가 물리엔진에 의해 무시되므로 무관하다.")]
+    public float maxAngularAccel = 100f;
+
+    [Header("[진단 전용] 구르기 물리 로그 (Grafana/Loki)")]
+    [Tooltip("[진단 실험, 2026-09-21] 매 FixedUpdate(50Hz) rb.velocity/angularVelocity/position.y를 " +
+             "Loki로 보낸다. 각속도 MoveTowards 완화가 카메라 요동을 못 없앤 뒤, 원인을 더 정확히 " +
+             "보려고 추가한다. 로그량이 많으니(초당 50줄) 재현 구간에서만 짧게 켜고 끌 것.")]
+    public bool logRollDebug = false;
+
+    private void LogRollDebug()
+    {
+        if (!logRollDebug) return;
+        LokiTelemetry.Event("sphere_roll_debug",
+            $"velY={rb.velocity.y:F4} velXZ={new Vector2(rb.velocity.x, rb.velocity.z).magnitude:F3} " +
+            $"angVel={rb.angularVelocity.magnitude:F3} angVelVec=({rb.angularVelocity.x:F2},{rb.angularVelocity.y:F2},{rb.angularVelocity.z:F2}) " +
+            $"posY={rb.position.y:F4} grounded={IsGrounded()}");
+    }
+
     [Header("토크+마찰 구르기 (정육면체/정사면체)")]
     [Tooltip("켜면 접지 중 velocity/angularVelocity 하드 대입 대신 AddTorque + 고마찰 그립으로 " +
              "물리적으로 굴린다. false면 기존 각속도 대입 방식을 그대로 유지한다(구 무변화). " +
@@ -197,6 +220,22 @@ public class PlayerMover : MonoBehaviour
     /// 오가는 것이 자연스럽게 성립한다.</summary>
     public bool ExternallyDriven { get; set; }
 
+    // ─── [mnppi 추가] 입력 잠금 ───
+    /// <summary>이 도형의 **이동·점프 입력만** 잠근다. true인 동안 조작권이 없을 때(!IsControlled)와 같은
+    /// 경로(DampWhenUncontrolled)를 타서, 입력은 읽지 않고 굴러가던 몸은 감쇠로 멈춘다. 역할 사물의
+    /// 책/문답 패널이 열려 있는 동안 켠다(docs/PRD/RoleClueTerminal.md — "패널을 닫으면 이동 조작을
+    /// 돌려준다"). RoleAssignmentManager가 패널 열림/닫힘에 맞춰 세팅한다.
+    ///
+    /// [왜 IsControlled / ExternallyDriven을 재사용하지 않고 별도 플래그인가]
+    /// - IsControlled는 "지금 이 도형이 조종 대상인가"를 뜻해 여러 시스템이 조종 대상 조회에 쓴다
+    ///   (RespawnController, 배선 패널, 캐리어 등). 패널 때문에 false로 내리면 그 조회들이 어긋난다.
+    /// - ExternallyDriven은 이동과 **감쇠까지** 멈춰서 굴러가던 몸이 계속 미끄러지고, 실타래·포탈·복귀가
+    ///   소유권 없이 같이 쓰는 스위치라 남이 켜 둔 값을 덮어쓸 수 있다.
+    /// 별도 플래그는 서로 간섭하지 않는다. 이 값은 IsControlled를 바꾸지 않으므로 Tab 전환과도 무관하다.
+    /// </summary>
+    public bool InputLocked { get; set; }
+    // ─── [mnppi 추가 끝] ───
+
     private Rigidbody rb;
     private PlayerShapeController shapeController;
     private PlayerGroundContact groundContact;
@@ -230,6 +269,26 @@ public class PlayerMover : MonoBehaviour
 
         if (shapeController == null)
             groundLayer &= ~(1 << gameObject.layer);
+
+        // [2026-09-20, 구 카메라 꿀렁거림 조사로 확정] PlayerObjectMenuItem이 에디터에서
+        // rb.maxAngularVelocity=30을 대입하는데도 런타임에는 프로젝트 기본값(7)으로 되돌아가 있는
+        // 게 실측(진단 로그)으로 확인됐다(원인 미상 — Rigidbody가 아직 콜라이더를 갖기 전 시점에
+        // 설정해서 씹혔을 가능성). 구(자유 회전)는 moveSpeed/rollRadius로 나온 각속도(기본값 기준
+        // 14 rad/s)가 7로 잘리면 대입한 선속도와 각속도가 안 맞아 매 스텝 마찰이 그 어긋남을
+        // 보정하려 들고, 그게 "구 카메라 위아래 꿀렁거림"의 주원인이었다. 원인이 무엇이든 런타임엔
+        // 항상 30 이상이 보장되게 여기서 다시 못박는다.
+        if (rb.maxAngularVelocity < 30f)
+            rb.maxAngularVelocity = 30f;
+
+        // [2026-09-20] PlayerObjectMenuItem이 "구는 접촉점 1개뿐이라 괜찮다"는 가정으로
+        // solverIterations 보강(정육면체/정사면체 12/4)을 구만 제외해뒀었는데, 위 maxAngularVelocity
+        // 수정 이후에도 남아있던 작고 빠른 잔여 떨림이 이 보강으로 줄어드는 게 실측으로 확인돼
+        // 구도 동일하게 올린다.
+        if (rb.solverVelocityIterations < 4)
+        {
+            rb.solverIterations = Mathf.Max(rb.solverIterations, 12);
+            rb.solverVelocityIterations = 4;
+        }
     }
 
     void OnEnable()
@@ -244,6 +303,9 @@ public class PlayerMover : MonoBehaviour
 
     void FixedUpdate()
     {
+        // [진단 전용] 이번 스텝에서 아무것도 건드리기 전, 지난 스텝 물리 결과를 그대로 찍는다.
+        LogRollDebug();
+
         // 외부 시스템이 몸을 굴리는 동안은 이동도 감쇠도 하지 않는다(둘 다 그 물리를 짓밟는다).
         if (ExternallyDriven)
         {
@@ -266,7 +328,7 @@ public class PlayerMover : MonoBehaviour
     // 쓰던 방식 그대로이며, useTorqueRolling이 false인 한 동작이 전혀 변하지 않는다.
     private void LegacyVelocityFixedUpdate()
     {
-        if (!IsControlled)
+        if (!IsControlled || InputLocked) // [mnppi 수정] 기존: !IsControlled — 입력 잠금 추가
         {
             DampWhenUncontrolled();
             return;
@@ -390,7 +452,12 @@ public class PlayerMover : MonoBehaviour
             lastTravelVelocity += groundVelXZ; // 다음 스텝 drift 계산이 이 몫까지 "물리 몫"으로 오인하지 않도록 같이 반영
             rb.velocity = new Vector3(target.x, rb.velocity.y, target.z);
             if (rollRadius > 0.0001f)
-                rb.angularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
+            {
+                Vector3 desiredAngularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
+                rb.angularVelocity = maxAngularAccel > 0f
+                    ? Vector3.MoveTowards(rb.angularVelocity, desiredAngularVelocity, maxAngularAccel * Time.fixedDeltaTime)
+                    : desiredAngularVelocity;
+            }
         }
         else
         {
@@ -469,7 +536,7 @@ public class PlayerMover : MonoBehaviour
     // 실제 구르기(모서리 피벗)로 변환하게 둔다. 선형 전진은 회전의 결과로 자연 발생한다.
     private void TorqueRollingFixedUpdate()
     {
-        if (!IsControlled)
+        if (!IsControlled || InputLocked) // [mnppi 수정] 기존: !IsControlled — 입력 잠금 추가
         {
             DampWhenUncontrolled();
             return;
@@ -530,7 +597,14 @@ public class PlayerMover : MonoBehaviour
         lastTravelVelocity = Vector3.zero;
         float k = Mathf.Clamp01(uncontrolledDamping * Time.fixedDeltaTime);
         Vector3 vel = rb.velocity;
-        rb.velocity = new Vector3(vel.x * (1f - k), vel.y, vel.z * (1f - k));
+        // 움직이는 발판 위에서는 월드 0이 아니라 발판 속도로 수렴시킨다 — 발판 속도까지 깎으면 몸이
+        // 발판에서 미끄러지고, 시소처럼 반응하는 판에는 그 어긋남이 토크로 되먹임된다(GroundVelocity
+        // 설명 참고). GroundVelocity는 공중에서 초기화되지 않으므로 접지 중일 때만 쓴다.
+        Vector3 groundVel = groundContact != null && groundContact.IsGrounded ? groundContact.GroundVelocity : Vector3.zero;
+        rb.velocity = new Vector3(
+            groundVel.x + (vel.x - groundVel.x) * (1f - k),
+            vel.y,
+            groundVel.z + (vel.z - groundVel.z) * (1f - k));
         rb.angularVelocity *= (1f - k);
     }
 
