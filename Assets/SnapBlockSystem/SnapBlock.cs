@@ -116,6 +116,19 @@ public class SnapBlock : MonoBehaviour
         body.interpolation = RigidbodyInterpolation.Interpolate;
     }
 
+    internal Bounds GetWorldBoxBounds()
+    {
+        // 면 중심과 같은 Transform 기준. 물리 동기화 전이나 콜라이더가 꺼져 있어도 계산할 수 있다.
+        Matrix4x4 world = transform.localToWorldMatrix;
+        Vector3 half = box.size * 0.5f;
+        Vector3 center = world.MultiplyPoint3x4(box.center);
+        Vector3 extents = new Vector3(
+            Mathf.Abs(world.m00 * half.x) + Mathf.Abs(world.m01 * half.y) + Mathf.Abs(world.m02 * half.z),
+            Mathf.Abs(world.m10 * half.x) + Mathf.Abs(world.m11 * half.y) + Mathf.Abs(world.m12 * half.z),
+            Mathf.Abs(world.m20 * half.x) + Mathf.Abs(world.m21 * half.y) + Mathf.Abs(world.m22 * half.z));
+        return new Bounds(center, extents * 2f);
+    }
+
     /// <summary>이 블록의 6면(월드 중심 + 바깥 법선)을 채운다. BoxCollider의 현재 크기/자세를 반영.</summary>
     public void GetFaces(List<Face> outFaces)
     {
