@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// ESC 일시정지 메뉴(설정 / 메인화면으로 나가기 / 돌아가기)와 그래픽 설정 창. 기존 UI들과 같은 IMGUI(`OnGUI`)로 그린다 —
+/// ESC 일시정지 메뉴(돌아가기 / 설정 / 메인화면으로 나가기 / 게임 종료하기)와 그래픽 설정 창. 기존 UI들과 같은 IMGUI(`OnGUI`)로 그린다 —
 /// 메인 화면 테마가 정해지면 이 클래스의 그리는 부분만 갈아끼우면 되도록 상태·적용 로직은 `GraphicsOptions`/`InputGate`에 뒀다.
 /// 부트스트랩은 PerfSampler처럼 씬과 무관하게 스스로 생성한다.
 /// </summary>
@@ -186,7 +186,7 @@ public class PauseMenuController : MonoBehaviour
 
     void DrawMain(float W, float H)
     {
-        var r = new Rect((W - 520) / 2, (H - 460) / 2, 520, 460);
+        var r = new Rect((W - 520) / 2, (H - 550) / 2, 520, 550);
         GUI.Box(r, GUIContent.none, _box);
         GUI.Label(new Rect(r.x, r.y + 20, r.width, 60), "일시정지", _title);
         if (GUI.Button(new Rect(r.x + 60, r.y + 110, 400, 70), "돌아가기", _button)) Close();
@@ -194,6 +194,16 @@ public class PauseMenuController : MonoBehaviour
         GUI.enabled = false; // 메인 화면은 아직 없다.
         GUI.Button(new Rect(r.x + 60, r.y + 290, 400, 70), "메인화면으로 나가기 (준비 중)", _button);
         GUI.enabled = true;
+        if (GUI.Button(new Rect(r.x + 60, r.y + 380, 400, 70), "게임 종료하기", _button)) QuitGame();
+    }
+
+    static void QuitGame()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false; // 에디터에선 Application.Quit이 무동작이라 플레이 모드를 끈다.
+#else
+        Application.Quit();
+#endif
     }
 
     static readonly string[] ShadowNames = { "끔", "낮음", "높음" };
