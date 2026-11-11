@@ -14,6 +14,8 @@ using UnityEngine.SceneManagement;
 /// F9로 SpacePortal 뷰스루 전체를 토글할 수 있다(portals=개수, vt=on/off).
 /// GPU 시간은 ProjectSettings의 Frame Timing Stats가 켜져 있고 그래픽 API가 지원할 때만 나온다(없으면 gpu_ms=-1).
 /// draw/setpass/batches/shadow_casters는 Development Build에서만 값이 있다(릴리스 빌드는 -1).
+/// 히치 조사용: gc0/gc1/gc2는 누적 GC 횟수, mono_kb는 Mono 힙 사용량, worst_gc=1이면 구간 최악 프레임에 Gen0 GC가 있었다.
+/// gc_b_frame/gc_n_frame은 프레임당 평균 GC 할당 바이트/횟수, gc_b_max는 구간 내 한 프레임 최대 할당 바이트(Development Build만, 없으면 -1).
 /// </summary>
 public class PerfSampler : MonoBehaviour
 {
@@ -28,9 +30,12 @@ public class PerfSampler : MonoBehaviour
     }
 
     readonly FrameTiming[] _timing = new FrameTiming[1];
-    ProfilerRecorder _draw, _setPass, _batches, _casters;
+    ProfilerRecorder _draw, _setPass, _batches, _casters, _gcBytes, _gcCount;
+    long _gcBytesSum, _gcCountSum, _gcBytesMax;   // 프레임당 GC 할당(바이트/횟수) 구간 누적
     float _elapsed, _worst, _cpuSum, _gpuSum, _mainSum, _renderSum;
     int _frames, _gpuFrames;
+    int _lastGc0;      // 직전 프레임의 Gen0 GC 횟수 — 최악 프레임에 GC가 끼었는지 판정용
+    bool _worstGc;     // 이번 구간의 최악 프레임에 GC가 있었나
     bool _vtOff;
     bool _active;
 
@@ -42,11 +47,14 @@ public class PerfSampler : MonoBehaviour
         _setPass = ProfilerRecorder.StartNew(ProfilerCategory.Render, "SetPass Calls Count");
         _batches = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Batches Count");
         _casters = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Shadow Casters Count");
+        _gcBytes = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+        _gcCount = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocation In Frame Count");
     }
 
     void OnDisable()
     {
         _draw.Dispose(); _setPass.Dispose(); _batches.Dispose(); _casters.Dispose();
+        _gcBytes.Dispose(); _gcCount.Dispose();
     }
 
     void Update()
@@ -81,7 +89,16 @@ public class PerfSampler : MonoBehaviour
         float dt = Time.unscaledDeltaTime;
         _elapsed += dt;
         _frames++;
-        if (dt > _worst) _worst = dt;
+        int gc0 = System.GC.CollectionCount(0);
+        if (dt > _worst) { _worst = dt; _worstGc = gc0 != _lastGc0; }
+        _lastGc0 = gc0;
+        if (_gcBytes.Valid)
+        {
+            long b = _gcBytes.LastValue;
+            _gcBytesSum += b;
+            if (b > _gcBytesMax) _gcBytesMax = b;
+            _gcCountSum += _gcCount.LastValue;
+        }
 
         FrameTimingManager.CaptureFrameTimings();
         if (FrameTimingManager.GetLatestTimings(1, _timing) > 0)
@@ -102,6 +119,8 @@ public class PerfSampler : MonoBehaviour
     {
         _elapsed = _worst = _cpuSum = _gpuSum = _mainSum = _renderSum = 0f;
         _frames = _gpuFrames = 0;
+        _worstGc = false;
+        _gcBytesSum = _gcCountSum = _gcBytesMax = 0;
     }
 
     void Report()
@@ -113,6 +132,14 @@ public class PerfSampler : MonoBehaviour
         sb.Append("scene=").Append(SceneManager.GetActiveScene().name)
           .Append(" fps=").Append((_frames / _elapsed).ToString("F1", ci))
           .Append(" worst_ms=").Append((_worst * 1000f).ToString("F1", ci))
+          .Append(" worst_gc=").Append(_worstGc ? 1 : 0)
+          .Append(" gc0=").Append(System.GC.CollectionCount(0))
+          .Append(" gc1=").Append(System.GC.CollectionCount(1))
+          .Append(" gc2=").Append(System.GC.CollectionCount(2))
+          .Append(" gc_b_frame=").Append(_frames > 0 && _gcBytes.Valid ? (_gcBytesSum / (float)_frames).ToString("F0", ci) : "-1")
+          .Append(" gc_n_frame=").Append(_frames > 0 && _gcCount.Valid ? (_gcCountSum / (float)_frames).ToString("F1", ci) : "-1")
+          .Append(" gc_b_max=").Append(_gcBytes.Valid ? _gcBytesMax : -1)
+          .Append(" mono_kb=").Append(UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() / 1024)
           .Append(" cpu_ms=").Append(_frames > 0 ? (_cpuSum / _frames).ToString("F2", ci) : "-1")
           .Append(" cpu_main_ms=").Append(_frames > 0 ? (_mainSum / _frames).ToString("F2", ci) : "-1")
           .Append(" cpu_render_ms=").Append(_frames > 0 ? (_renderSum / _frames).ToString("F2", ci) : "-1")

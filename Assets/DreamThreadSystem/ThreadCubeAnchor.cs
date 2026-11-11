@@ -56,13 +56,25 @@ public class ThreadCubeAnchor : MonoBehaviour
     private Material armedMaterial;
     private Material idleMaterial;
 
+    // 플레이어 목록 캐시 — 씬 전체 탐색은 매 프레임이 아니라 이 간격마다만 한다(탐색은 배열을 할당한다).
+    private const float RescanInterval = 0.1f;
+    private PlayerShapeIdentity[] players = System.Array.Empty<PlayerShapeIdentity>();
+    private float nextScanTime;
+
     void Update()
     {
-        // ponytail: 매 프레임 전체 탐색 — 플레이어가 3명뿐이라 무시할 비용이고, 이렇게 해야 리스폰으로
-        // 네모가 새로 생겨도 자동으로 고리가 달린다. 플레이어 수가 늘면 등록식으로 바꾼다.
-        foreach (PlayerShapeIdentity id in Object.FindObjectsOfType<PlayerShapeIdentity>())
+        // 고리 상태(armed/rolling)는 아래에서 매 프레임 갱신하고, 목록만 캐시한다. 리스폰으로 네모가 새로
+        // 생기면 최대 RescanInterval 늦게 고리가 달린다. 파괴된 항목은 아래 null 검사로 건너뛴다.
+        // ponytail: 주기 재탐색 — 플레이어 수가 크게 늘면 등록식(정적 목록)으로 바꾼다.
+        if (Time.unscaledTime >= nextScanTime)
         {
-            if (id.Kind != PlayerShapeStats.ShapeKind.Cube) continue;
+            players = Object.FindObjectsOfType<PlayerShapeIdentity>();
+            nextScanTime = Time.unscaledTime + RescanInterval;
+        }
+
+        foreach (PlayerShapeIdentity id in players)
+        {
+            if (id == null || id.Kind != PlayerShapeStats.ShapeKind.Cube) continue;
 
             // [굴리기(PortalSystem) 텀블 중에는 고리를 아예 없앤다]
             // 고리는 네모 Root의 자식인데 텀블은 Root 자체를 90° 굴린다 — 고리가 같이 뒤집혀 바닥
