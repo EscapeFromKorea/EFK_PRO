@@ -19,6 +19,9 @@ using UnityEngine.Networking;
 public class LokiClient : MonoBehaviour
 {
     const float FlushIntervalSeconds = 10f;
+    // 첫 전송은 일찍 보낸다. 첫 요청은 UnityWebRequest·직렬화 초기화 비용이 한꺼번에 들어 약 60~70ms 히치가 나는데(2026-11-11 세 세션
+    // 모두 시작 후 약 12초에 재현), 10초 뒤에 보내면 플레이 중에 터진다. 로딩 구간에 흡수시키려는 것이다.
+    const float FirstFlushDelaySeconds = 1f;
     const int RequestTimeoutSeconds = 5;
     const string JobLabel = "efk-pro";
 
@@ -49,7 +52,7 @@ public class LokiClient : MonoBehaviour
             return;
         }
         Application.logMessageReceived += OnLogMessage;
-        InvokeRepeating(nameof(Flush), FlushIntervalSeconds, FlushIntervalSeconds);
+        InvokeRepeating(nameof(Flush), FirstFlushDelaySeconds, FlushIntervalSeconds);
         LokiTelemetry.Event("game_boot", Application.unityVersion);
     }
 
