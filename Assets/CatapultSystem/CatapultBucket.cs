@@ -119,7 +119,7 @@ using UnityEngine;
 /// 비율이 1을 넘는 경우가 없어 항상 "가벼울수록 더 빨리" 방향으로만 작동한다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class CatapultBucket : MonoBehaviour
+public class CatapultBucket : MonoBehaviour, IInteractionProvider
 {
     [Header("발사 후 조작 복구")]
     [Tooltip("착지를 못 잡아도 이 시간(초) 안에 강제로 조작을 복구한다. " +
@@ -241,6 +241,15 @@ public class CatapultBucket : MonoBehaviour
         return (body.mass / identity.stats.mass) > shrunkBoardMaxScaleRatio;
     }
 
+    // 이미 다른 기믹이 붙잡고 있는 몸이면 탑승시키지 않는다(2026-09-29 점검에서 발견 — 예: 조향석에
+    // 도킹된 구, 벽에 부착된 세모를 억지로 태우면 소유권이 두 기믹 사이에서 꼬인다). 세 진입점
+    // (OnTriggerEnter/Stay, C키)이 전부 이 헬퍼를 공유한다 — 하나만 고치면 회귀가 생긴다.
+    private static bool IsGrabbedElsewhere(PlayerShapeIdentity identity, Rigidbody body)
+    {
+        PlayerMover mover = identity.GetComponent<PlayerMover>();
+        return (mover != null && mover.ExternallyDriven) || body.isKinematic;
+    }
+
     // 벽이 사라진 대신 이 거리 게이트가 "가장자리를 스치기만 해도 탑승"을 막는다(클래스 상단
     // "탑승 각도 게이트와 중앙 탑승 구역" 주석 참고). world 좌표를 이 트리거(Catapult_BucketInner)
     // 자신의 로컬 좌표로 변환해, 콜라이더 절반 크기(box.size/2)의 centralZoneFraction(0.8)배
@@ -264,9 +273,91 @@ public class CatapultBucket : MonoBehaviour
         c.isTrigger = true;
     }
 
+    private System.Action onInteract;
+
+    void OnEnable()
+    {
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    void OnDisable()
+    {
+        InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+        // 비활성화로 갱신이 멈추면 탑승자가 부모화+isKinematic인 채(또는 착지 대기 ExternallyDriven인 채)
+        // 영구히 남는다 — 복귀 훅과 같은 경로로 놓는다(2026-10-10 점검).
+        HandleReleaseHold(occupantMover != null ? occupantMover : launchingMover);
+    }
+
+    // 복귀가 이 몸을 지목하면 순간이동 전에 버킷에서 스스로 내려놓는다. 탑승 중엔 부모화+isKinematic이라
+    // 이 훅이 없으면 RespawnController가 거절하고, 풀리는 길은 발사(정사면체가 당김 앵커에 닿아야 함)뿐이라
+    // 투석기가 장외로 떨어지면 영영 복귀하지 못했다(2026-10-10 B안, docs/PRD/Respawn.md §310).
+    // 발사 스윙 도중이면 CatapultArm이 램프 종료 시 빈 버킷으로 처리한다(탑승자 null이면 속도 대입만 생략).
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (mover == null) return;
+
+        // 발사 직후 착지 대기 중(ExternallyDriven)인 몸 — 이미 버킷에서 분리된 뒤다.
+        if (launching && launchingMover == mover)
+        {
+            mover.ExternallyDriven = false;
+            launching = false;
+            launchingMover = null;
+            launchingShape = null;
+            return;
+        }
+
+        if (occupantBody == null || occupantMover != mover) return;
+
+        occupantBody.transform.SetParent(occupantOriginalParent, true);
+        occupantBody.isKinematic = false;
+        occupantBody.interpolation = occupantOriginalInterpolation;
+
+        occupantBody = null;
+        occupantMover = null;
+        occupantShapeController = null;
+        occupantOriginalParent = null;
+        overlapCount = 0;
+    }
+
+    // 키를 직접 읽지 않는다 — 정육면체가 탑승 범위 안이면 E 탭 액션을 올리고, 막힌 이유는 회색 사유로
+    // 보여 준다(키맵 통합안 §2-1). 탑승 중에는 하차 키가 없다(발사로만 내린다).
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        if (occupantBody != null) return;
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
+        if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Cube) return;
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+
+        float d = Vector3.Distance(body.position, transform.position);
+        if (d > boardApproachRange) return;
+
+        string reason = BoardBlockReason(body, identity);
+        onInteract ??= HandleBoardInput;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "버킷 탑승", enabled = reason == null, reason = reason,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+        });
+    }
+
+    // 탑승이 막히는 이유(없으면 null). HandleBoardInput의 게이트와 같은 순서·같은 문구.
+    private string BoardBlockReason(Rigidbody body, PlayerShapeIdentity identity)
+    {
+        if (IsTooHeavyToBoard(body, identity)) return "커진 상태로는 버킷에 탑승할 수 없습니다.";
+        if (IsNotShrunkEnoughToBoard(body, identity)) return "이 투석기는 축소(Shrunk) 상태에서만 탑승할 수 있습니다.";
+        if (!ArmAngleAllowsBoard()) return "아직 팔이 충분히 당겨지지 않아 탑승할 수 없습니다.";
+        if (IsGrabbedElsewhere(identity, body)) return "이미 다른 기믹이 이 정육면체를 붙잡고 있어 탑승할 수 없습니다.";
+        return null;
+    }
+
     void Update()
     {
-        HandleBoardInput();
 
         if (!launching) return;
 
@@ -286,7 +377,6 @@ public class CatapultBucket : MonoBehaviour
     // 이 메서드 하나로 완결된다(클래스 상단 "C키 탑승" 주석 참고).
     private void HandleBoardInput()
     {
-        if (!Input.GetKeyDown(KeyCode.C)) return;
         if (occupantBody != null) return; // 이미 탑승 중
 
         PlayerMover mover = FindControlledPlayer();
@@ -316,6 +406,12 @@ public class CatapultBucket : MonoBehaviour
         if (!ArmAngleAllowsBoard())
         {
             Debug.Log("[Catapult] 아직 팔이 충분히 당겨지지 않아 탑승할 수 없습니다.");
+            return;
+        }
+
+        if (IsGrabbedElsewhere(identity, body))
+        {
+            Debug.Log("[Catapult] 이미 다른 기믹이 이 정육면체를 붙잡고 있어 탑승할 수 없습니다.");
             return;
         }
 
@@ -394,6 +490,7 @@ public class CatapultBucket : MonoBehaviour
 
         // 벽이 사라진 대신, 가장자리를 스치기만 한 진입은 걸러낸다(클래스 상단 주석 참고).
         if (!IsWithinCentralBoardZone(body.position)) return;
+        if (IsGrabbedElsewhere(identity, body)) return; // 로그는 OnTriggerStay가 매 프레임 스팸하지 않게 생략.
 
         overlapCount = 1;
         Board(identity, body);
@@ -420,6 +517,7 @@ public class CatapultBucket : MonoBehaviour
 
         // 가장자리에 머무르며 재시도하는 것도 같은 기준으로 걸러낸다.
         if (!IsWithinCentralBoardZone(body.position)) return;
+        if (IsGrabbedElsewhere(identity, body)) return; // 로그는 매 프레임 스팸하지 않게 생략.
 
         overlapCount = 1;
         Board(identity, body);

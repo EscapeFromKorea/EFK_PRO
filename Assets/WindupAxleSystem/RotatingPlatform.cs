@@ -48,6 +48,23 @@ public class RotatingPlatform : MonoBehaviour, IWindupReceiver
     private float appliedAngle; // 실제로 transform에 반영된 누적각(스텝 단위로만 쫓아감)
     private bool warnedMissingPad;
 
+    private Rigidbody body;
+    private Quaternion baseRotation;
+
+    void Awake()
+    {
+        // 키네마틱 Rigidbody + MoveRotation으로 돌린다 — transform.Rotate로 정적 콜라이더를 돌리면 물리가
+        // 이 판을 "움직이는 물체"로 몰라 위의 승객이 실려 가지 않고 PlayerMover의 GroundVelocity도 0이다
+        // (2026-10-10 코드 리뷰 중-12, 문서의 kinematic+MoveRotation과 일치시킨다). 메뉴가 만든 옛 씬
+        // 인스턴스에는 Rigidbody가 없어 여기서 보충한다.
+        body = GetComponent<Rigidbody>();
+        if (body == null) body = gameObject.AddComponent<Rigidbody>();
+        body.isKinematic = true;
+        body.useGravity = false;
+        body.interpolation = RigidbodyInterpolation.Interpolate;
+        baseRotation = body.rotation;
+    }
+
     void OnEnable()
     {
         if (axle != null) axle.Subscribe(this);
@@ -80,8 +97,8 @@ public class RotatingPlatform : MonoBehaviour, IWindupReceiver
 
         float next = Mathf.MoveTowards(appliedAngle, stepTarget, gearSnapSpeed * Time.fixedDeltaTime);
         if (next == appliedAngle) return;
-        transform.Rotate(Vector3.up, next - appliedAngle, Space.World);
         appliedAngle = next;
+        body.MoveRotation(Quaternion.AngleAxis(appliedAngle, Vector3.up) * baseRotation);
     }
 
     /// <summary>ReleaseDelay 모드는 대기열에 들어온 뒤로는 계속 재생된다(발판 개념이 없다).

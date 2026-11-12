@@ -40,7 +40,7 @@ using UnityEngine;
 /// 입력값으로 덮어써 발사 자체가 사라지기 때문이다(아래 Launching).
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
-public class DreamThreadController : MonoBehaviour
+public class DreamThreadController : MonoBehaviour, IInteractionProvider
 {
     [Header("실 길이 (마우스 휠 조절)")]
     [Tooltip("실의 최대 길이(Unit). PRD 진자 수치표가 실 8을 기준으로 한다.")]
@@ -142,34 +142,104 @@ public class DreamThreadController : MonoBehaviour
         lr.enabled = false;
     }
 
-    void Update()
+    private System.Action onInteract;
+
+    void OnEnable()
     {
-        if (Input.GetKeyDown(KeyCode.F))
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    // 복귀(R·위험 피격)가 이 몸을 지목하면 순간이동 전에 스스로 놓는다. 이 훅이 없으면 매달린 몸은
+    // RespawnController가 거절해 위험 장치의 피격 카운터만 소진되고 면역이 됐다(2026-10-10 B안,
+    // docs/PRD/Respawn.md §310). 발사 중(Launching)은 조인트가 이미 없고 ExternallyDriven만 남아 있다.
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (activeMover == null || activeMover != mover) return;
+        if (state == ThreadState.Hanging) Release(false);
+        else if (state == ThreadState.Launching) FinishLaunch();
+    }
+
+    // 키를 직접 읽지 않는다(키맵 통합안 §2-1, F → E 탭). 매달린 당사자에게는 "실 놓기"(붙잡힌 상태에서도 허용),
+    // 그 외엔 범위 안에 앵커가 있을 때 "실 연결"을 올린다. 막히는 이유는 회색 사유로 보여 준다.
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        onInteract ??= HandleInteract;
+
+        if (state == ThreadState.Hanging)
         {
-            if (state == ThreadState.Hanging)
+            if (activeMover == mover)
             {
-                // 매달린 당사자가 조작 대상일 때만 F로 놓는다. 이 게이트가 없으면 A가 매달린 채
-                // 파킹돼 있고 B를 조작 중일 때 **B가 누른 F로 A의 실이 끊긴다** — 이 컴포넌트는 씬
-                // 싱글턴이라 입력이 누구 것인지 스스로 구분하지 못하기 때문이다. 같은 함수의
-                // HandleWheel과 FixedUpdate의 펌핑·접지이동에는 원래 같은 게이트가 있었고, F만
-                // 빠져 있었다. 설계 의도는 "실을 강제로 끊는 경우는 대상/고리 소멸과 무게 초과
-                // 유예 소진뿐"이다(폴더 CLAUDE.md).
-                //
-                // 여기서 TryConnect로 흘려보내면 안 된다: BeginHang이 activeMover를 B로 덮어써
-                // A는 조인트가 붙고 ExternallyDriven이 true인 채 추적에서 사라진다 = 영구 조작 불능.
-                // 매달림은 동시 1명이므로(단일 state/joint) B는 A가 놓을 때까지 기다린다.
-                if (activeMover == null || activeMover.IsControlled)
-                    Release(intoLaunch: true);
-                else
-                    Debug.Log("[DreamThread] 다른 플레이어가 매달려 있습니다 — Tab으로 그 플레이어를 " +
-                              "조작해 F로 놓으세요(매달림은 동시 1명).");
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "실 놓기", enabled = true,
+                    priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteract,
+                    allowWhenGripped = true,
+                });
+                return;
             }
-            else
+
+            // 매달림은 동시 1명이다 — 다른 플레이어가 매달려 있으면 그가 놓을 때까지 기다린다.
+            float otherDist = NearestAnchorDistance(mover.transform.position);
+            if (otherDist >= 0f)
             {
-                TryConnect(); // Idle 또는 Launching 중 재연결 시도(실패해도 상태 유지)
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "실 연결", enabled = false,
+                    reason = "다른 플레이어가 매달려 있습니다 — Tab으로 그 플레이어를 조작해 놓으세요(매달림은 동시 1명).",
+                    priority = InteractionPriority.Panel, distance = otherDist, execute = onInteract,
+                });
             }
+            return;
         }
 
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+        float d = NearestAnchorDistance(body.position);
+        if (d < 0f) return;
+
+        float weight = PlayerWeight.Of(body);
+        string reason = weight >= hangWeightThreshold
+            ? $"무거워서 실에 매달릴 수 없습니다 (무게 {weight:0.##} ≥ {hangWeightThreshold})."
+            : null;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "실 연결", enabled = reason == null, reason = reason,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+            // 발사(Launching) 중에는 착지 전까지 ExternallyDriven이 켜져 있다 — 이 상태의 재연결을 허용한다
+            // (TryConnect가 먼저 FinishLaunch로 정리한다).
+            allowWhenGripped = state == ThreadState.Launching && activeMover == mover,
+        });
+    }
+
+    private void HandleInteract()
+    {
+        if (state == ThreadState.Hanging)
+        {
+            // 매달린 당사자가 조작 대상일 때만 놓는다. 이 게이트가 없으면 A가 매달린 채 파킹돼 있고 B를
+            // 조작 중일 때 **B가 누른 키로 A의 실이 끊긴다** — 이 컴포넌트는 씬 싱글턴이라 입력이 누구
+            // 것인지 스스로 구분하지 못하기 때문이다. 여기서 TryConnect로 흘려보내면 안 된다: BeginHang이
+            // activeMover를 B로 덮어써 A는 조인트가 붙고 ExternallyDriven이 true인 채 추적에서 사라진다
+            // = 영구 조작 불능. 매달림은 동시 1명이므로 B는 A가 놓을 때까지 기다린다.
+            if (activeMover == null || activeMover.IsControlled)
+                Release(intoLaunch: true);
+            else
+                Debug.Log("[DreamThread] 다른 플레이어가 매달려 있습니다 — Tab으로 그 플레이어를 " +
+                          "조작해 놓으세요(매달림은 동시 1명).");
+        }
+        else
+        {
+            TryConnect(); // Idle 또는 Launching 중 재연결 시도(실패해도 상태 유지)
+        }
+    }
+
+    void Update()
+    {
         if (state == ThreadState.Hanging)
         {
             // 대상이나 고리가 사라진 경우에만 강제로 떼어낸다. **Tab으로 조작권이 넘어가도 실은
@@ -239,7 +309,7 @@ public class DreamThreadController : MonoBehaviour
             Vector3 move = new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical"));
             if (move.sqrMagnitude > 1f) move.Normalize();
             move *= groundMoveSpeed;
-            float yaw = activeMover != null ? activeMover.inputYawOffset : 0f;
+            float yaw = EffectiveInputYaw();
             if (Mathf.Abs(yaw) > 0.0001f)
                 move = Quaternion.AngleAxis(yaw, Vector3.up) * move;
             activeBody.velocity = new Vector3(move.x, activeBody.velocity.y, move.z);
@@ -266,7 +336,7 @@ public class DreamThreadController : MonoBehaviour
             Vector3 wish = new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical"));
             if (wish.sqrMagnitude > 1f) wish.Normalize();
             if (invertSwing) wish = -wish;
-            float yaw = activeMover != null ? activeMover.inputYawOffset : 0f;
+            float yaw = EffectiveInputYaw();
             if (Mathf.Abs(yaw) > 0.0001f) wish = Quaternion.AngleAxis(yaw, Vector3.up) * wish;
             push = Vector3.ProjectOnPlane(wish, ropeDir);
         }
@@ -278,6 +348,19 @@ public class DreamThreadController : MonoBehaviour
             push = tangent * input;
         }
         activeBody.AddForce(push * pumpAcceleration, ForceMode.Acceleration);
+    }
+
+    // PlayerMover.cs는 건드리지 않는다(교차 폴더 하드룰 + PortalSystem/PlayerRollModeReceiver와 같은
+    // 방침) — 그 클래스의 private EffectiveInputYaw()과 같은 식을 공개 멤버만으로 다시 계산한다.
+    // 고정 inputYawOffset만 쓰던 예전 코드는 궤도 카메라를 돌린 채 매달리면 A/D가 평소 이동과
+    // 반대로 꼬였다(2026-09-29 점검에서 발견 — 접지 이동에도 같은 결함이 있었다).
+    private float EffectiveInputYaw()
+    {
+        if (activeMover == null) return 0f;
+        float? viewYaw = PlayerFollowCamera.ViewYaw;
+        if (viewYaw.HasValue && (PlayerFollowCamera.MouseOrbitActive || activeMover.cameraRelativeInput))
+            return viewYaw.Value;
+        return activeMover.inputYawOffset;
     }
 
     /// <summary>무게가 임계 이상인 채로 흐른 시간을 누적하고, 유예를 다 썼으면 true(끊어야 함)를 준다.
@@ -356,6 +439,8 @@ public class DreamThreadController : MonoBehaviour
     // 매단 채 컨트롤러가 꺼지거나 파괴되면 플레이어를 영구 구속/외부주도 상태로 남기지 않도록 원복한다.
     void OnDisable()
     {
+        InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
         if (joint != null) Destroy(joint);
         if (activeBody != null) activeBody.constraints = savedConstraints;
         ReturnBodyToMover();
@@ -390,6 +475,18 @@ public class DreamThreadController : MonoBehaviour
 
         Rigidbody body = mover.GetComponent<Rigidbody>();
         if (body == null) return;
+
+        // 이미 다른 기믹이 붙잡고 있는 몸이면 매달지 않는다(2026-09-29 점검에서 발견 — 예: 투석기
+        // 조향석에 도킹된 채(ExternallyDriven+isKinematic) 근처 앵커에서 F를 누르면 이 컨트롤러가
+        // 위 상태를 모른 채 같은 Rigidbody에 조인트를 걸어 두 기믹이 동시에 소유권을 주장했다).
+        // ExternallyDriven만으로는 부족하다 — ThreadPinPlacer의 벽 부착처럼 isKinematic만 세우고
+        // ExternallyDriven은 안 건드리는 소유 방식도 있다(`Assets/CLAUDE.md` "소유 신호가 하나가
+        // 아니다" 참고).
+        if (mover.ExternallyDriven || body.isKinematic)
+        {
+            Debug.Log("[DreamThread] 이미 다른 기믹이 이 도형을 붙잡고 있어 매달 수 없습니다.");
+            return;
+        }
 
         // 게이트는 도형 종류(Kind)가 아니라 "무게"로 판정한다 — 실이 버티는 물리량이 질량이 아니라
         // 무게라, 무중력 버블 안에서는 네모(3.0 → 1.8)도 매달릴 수 있게 하려는 것이다.
@@ -530,11 +627,18 @@ public class DreamThreadController : MonoBehaviour
         return null;
     }
 
+    // 범위 안 가장 가까운 앵커까지의 거리. 없으면 -1.
+    private static float NearestAnchorDistance(Vector3 from)
+    {
+        ThreadAnchor a = FindNearestAnchorInRange(from);
+        return a != null ? Vector3.Distance(a.transform.position, from) : -1f;
+    }
+
     private static ThreadAnchor FindNearestAnchorInRange(Vector3 from)
     {
         ThreadAnchor best = null;
         float bestSqr = float.PositiveInfinity;
-        foreach (ThreadAnchor a in Object.FindObjectsOfType<ThreadAnchor>())
+        foreach (ThreadAnchor a in ThreadAnchor.All)
         {
             float sqr = (a.transform.position - from).sqrMagnitude;
             if (sqr <= a.connectRange * a.connectRange && sqr < bestSqr)

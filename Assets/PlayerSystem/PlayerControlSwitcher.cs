@@ -64,7 +64,7 @@ public class PlayerControlSwitcher : MonoBehaviour
 
     void Update()
     {
-        if (!Input.GetKeyDown(KeyCode.Tab)) return;
+        if (InputGate.Blocked || !Input.GetKeyDown(KeyCode.Tab)) return; // 일시정지 메뉴가 열려 있으면 전환하지 않는다(PauseMenuSystem).
 
         SortRoster();
         if (players.Count <= 1) return;

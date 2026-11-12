@@ -1,0 +1,137 @@
+{
+  "id": null,
+  "uid": "efk-pro-telemetry",
+  "title": "EFK-PRO Telemetry",
+  "tags": ["efk-pro", "loki"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "에러 발생 추이",
+      "description": "type=\"error\" 로그(Console의 LogType.Error/Exception이 자동으로 여기 찍힌다) 발생 추이.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+          "expr": "sum(count_over_time({job=\"efk-pro\", type=\"error\"}[$__interval]))",
+          "legendFormat": "error"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "게임 부팅(game_boot) 추이",
+      "description": "LokiClient.Awake()가 세션 시작마다 1회 보내는 game_boot 이벤트 — 실질적인 플레이 세션 수.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+          "expr": "sum(count_over_time({job=\"efk-pro\", type=\"event\", name=\"game_boot\"}[$__interval]))",
+          "legendFormat": "game_boot"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "에러 레벨 세분화 (error vs exception)",
+      "description": "type=\"error\"를 level 라벨(error/exception)로 나눠서 본다.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+          "expr": "sum by (level) (count_over_time({job=\"efk-pro\", type=\"error\"}[$__interval]))",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "패널 기믹 이상 징후 추이 (panel_jam / panel_stuck_recover 등)",
+      "description": "SpacePortalSystem/MovablePortalPanel.cs가 보내는 상태 전환 이벤트. panel_jam이 잦으면 해당 레벨의 패널 배치를 재검토할 신호.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+          "expr": "sum by (name) (count_over_time({job=\"efk-pro\", type=\"event\", name=~\"panel_jam|panel_unjam|panel_snap_start|panel_snap_done|panel_stuck_recover\"}[$__interval]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 5,
+      "type": "bargauge",
+      "title": "이벤트 종류별 분포 (선택된 시간 범위 총합)",
+      "description": "현재 대시보드 시간 범위 안에서 어떤 이벤트(name)가 얼마나 찍혔는지 한눈에.",
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+          "expr": "sum by (name) (count_over_time({job=\"efk-pro\", type=\"event\"}[$__range]))",
+          "legendFormat": "{{name}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 6,
+      "type": "logs",
+      "title": "실시간 로그",
+      "gridPos": { "h": 10, "w": 16, "x": 8, "y": 16 },
+      "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki_efk_pro" },
+          "expr": "{job=\"efk-pro\"}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ]
+}

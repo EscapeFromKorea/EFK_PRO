@@ -19,9 +19,13 @@ using UnityEngine.Networking;
 public class LokiClient : MonoBehaviour
 {
     const float FlushIntervalSeconds = 10f;
+    const int RequestTimeoutSeconds = 5;
     const string JobLabel = "efk-pro";
 
     static LokiClient _instance;
+    // OS 구분 라벨(macos/windows/linux/other). 그라파나 대시보드가 OS별로 갈라 보기 위함.
+    // SystemInfo는 메인 스레드에서만 안전하게 읽히므로 static 초기화 대신 Awake()에서 채운다.
+    string _osLabel = "other";
     LokiConfig _config;
     readonly List<(string key, Dictionary<string, string> labels, long ts, string line)> _buffer = new();
 
@@ -36,6 +40,7 @@ public class LokiClient : MonoBehaviour
     void Awake()
     {
         _instance = this; // AddComponent()가 반환되기 전에 Awake가 도니, Bootstrap의 대입을 기다리면 이 안에서 부르는 이벤트가 유실된다
+        _osLabel = ResolveOsLabel();
         _config = Resources.Load<LokiConfig>("LokiConfig");
         if (_config == null || string.IsNullOrEmpty(_config.token))
         {
@@ -70,12 +75,27 @@ public class LokiClient : MonoBehaviour
 
     public static void Enqueue(Dictionary<string, string> labels, string line) => _instance?.EnqueueInternal(labels, line);
 
+    /// <summary>텔레메트리가 실제로 켜져 있는지(LokiConfig 로드 성공). 꺼져 있으면 부가 수집기가 스스로 안 돌게 하는 용도.</summary>
+    public static bool IsActive => _instance != null && _instance.enabled;
+
     void EnqueueInternal(Dictionary<string, string> labels, string line)
     {
         if (!enabled) return;
         labels["job"] = JobLabel;
+        labels["os"] = _osLabel;
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000L;
         _buffer.Add((LabelsKey(labels), labels, ts, line));
+    }
+
+    static string ResolveOsLabel()
+    {
+        switch (SystemInfo.operatingSystemFamily)
+        {
+            case OperatingSystemFamily.MacOSX: return "macos";
+            case OperatingSystemFamily.Windows: return "windows";
+            case OperatingSystemFamily.Linux: return "linux";
+            default: return "other";
+        }
     }
 
     static string LabelsKey(Dictionary<string, string> labels)
@@ -167,12 +187,22 @@ public class LokiClient : MonoBehaviour
         return sb.ToString();
     }
 
+    // 로컬 docker Loki(인증 없음)를 1순위로 찌르고, 연결 자체가 안 되면(꺼져있음) 그 자리에서
+    // 클라우드로 우회한다 — 별도 헬스체크/상태 캐시 없이 매 배치마다 로컬을 먼저 시도하는 것으로
+    // 충분하다(로컬이 켜져있으면 실패할 이유가 없어 매번 재시도해도 비용이 없다).
     IEnumerator PostAsync(string body)
     {
-        using var req = BuildRequest(body);
-        yield return req.SendWebRequest();
-        if (req.result != UnityWebRequest.Result.Success)
-            Debug.LogWarning($"[LokiClient] push failed: {req.error}");
+        using (var req = BuildRequest(_config.localUrl, body, useAuth: false))
+        {
+            yield return req.SendWebRequest();
+            if (req.result == UnityWebRequest.Result.Success) yield break;
+        }
+        using (var req = BuildRequest(_config.url, body, useAuth: true))
+        {
+            yield return req.SendWebRequest();
+            if (req.result != UnityWebRequest.Result.Success)
+                Debug.LogWarning($"[LokiClient] push failed (local + cloud): {req.error}");
+        }
     }
 
     /// <summary>종료 경로 전용 동기 전송. 코루틴 대신 SendWebRequest의 비동기 오퍼레이션을 직접
@@ -180,22 +210,34 @@ public class LokiClient : MonoBehaviour
     /// 코루틴 없이도 완료까지 기다릴 수 있다.</summary>
     void PostSync(string body)
     {
-        using var req = BuildRequest(body);
-        var op = req.SendWebRequest();
-        while (!op.isDone) { }
-        if (req.result != UnityWebRequest.Result.Success)
-            Debug.LogWarning($"[LokiClient] quit-flush failed: {req.error}");
+        using (var req = BuildRequest(_config.localUrl, body, useAuth: false))
+        {
+            var op = req.SendWebRequest();
+            while (!op.isDone) { }
+            if (req.result == UnityWebRequest.Result.Success) return;
+        }
+        using (var req = BuildRequest(_config.url, body, useAuth: true))
+        {
+            var op = req.SendWebRequest();
+            while (!op.isDone) { }
+            if (req.result != UnityWebRequest.Result.Success)
+                Debug.LogWarning($"[LokiClient] quit-flush failed (local + cloud): {req.error}");
+        }
     }
 
-    UnityWebRequest BuildRequest(string body)
+    UnityWebRequest BuildRequest(string baseUrl, string body, bool useAuth)
     {
-        var url = _config.url.TrimEnd('/') + "/loki/api/v1/push";
+        var url = baseUrl.TrimEnd('/') + "/loki/api/v1/push";
         var req = new UnityWebRequest(url, "POST");
         req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
-        var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_config.user}:{_config.token}"));
-        req.SetRequestHeader("Authorization", $"Basic {auth}");
+        req.timeout = RequestTimeoutSeconds; // 오프라인/블랙홀 망에서 종료 시 스핀 대기가 무한히 걸리지 않게
+        if (useAuth)
+        {
+            var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_config.user}:{_config.token}"));
+            req.SetRequestHeader("Authorization", $"Basic {auth}");
+        }
         return req;
     }
 }

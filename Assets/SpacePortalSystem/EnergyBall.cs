@@ -10,16 +10,17 @@ public enum EnergyColor { Orange, Blue }
 ///
 /// Installed는 더 이상 영구 상태가 아니다(2026-09-15) — 설치(=사용) 시 <see cref="Respawn"/>이
 /// 함께 걸려, `respawnDelaySeconds`(기본 5초) 뒤 자동으로 원래 배치 자리에 Ground로 되돌아간다.
-/// 포탈 자체(<see cref="SpacePortal"/>)는 별개 오브젝트라 그대로 남는다 — 이 재생성은 "포탈을
-/// 다시 옮기고 싶을 때 R 2초 회수 없이도 새 볼을 집을 수 있게" 하는 것뿐, 3번째 볼이 생기는 게
-/// 아니다(그 색의 볼은 항상 하나뿐이고, 회수(R 2초)로 다시 들면 대기 중이던 재생성은 취소된다).
+/// 포탈 자체(<see cref="SpacePortal"/>)는 별개 오브젝트라 그대로 남는다 — 이 재생성은 "포탈을 다시 옮기고 싶을 때 새 볼을
+/// 집을 수 있게" 하는 것뿐, 3번째 볼이 생기는 게 아니다(그 색의 볼은 항상 하나뿐이다). 포탈 회수(R 2초)와 볼 드랍(R 짧게)은
+/// 2026-10-03 제거했다 — 자동 재생성이 있어 불필요하고, R은 리스폰 전용 키로 비운다(키맵 통합안).
 ///
-/// 발신자-수신자 분리 패턴을 따른다: F 획득은 AccelPad와 같은 "트리거 + 근접 판정"으로 직접
-/// 감지해 <see cref="PlayerEnergyReceiver"/>를 찾아 TryPickup(this)를 호출한다. 리시버가 없으면
+/// 발신자-수신자 분리 패턴을 따른다: 획득은 AccelPad와 같은 "트리거 + 근접 판정"으로 근처 플레이어를 감지하고,
+/// 키는 직접 읽지 않는다 — E 탭 액션으로 <see cref="InteractionController"/>에 올리면 중앙 입력이 골라
+/// <see cref="PlayerEnergyReceiver"/>의 TryPickup(this)를 부른다(키맵 통합안 §2-1). 리시버가 없으면
 /// Portal.cs의 "리시버는 포탈이 즉석에서 AddComponent" 관례처럼 그 자리에서 붙인다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class EnergyBall : MonoBehaviour
+public class EnergyBall : MonoBehaviour, IInteractionProvider
 {
     [Tooltip("이 볼의 색. 주황=입구, 파랑=출구(PRD §1 원문).")]
     public EnergyColor color = EnergyColor.Orange;
@@ -38,12 +39,12 @@ public class EnergyBall : MonoBehaviour
     public PlayerEnergyReceiver Owner { get; private set; }
 
     private Vector3 groundPosition;
-    private Vector3 originPosition; // 레벨에 최초 배치된 자리. groundPosition은 드랍마다 덮어써지므로 별도 보존.
+    private Vector3 originPosition; // 레벨에 최초 배치된 자리. groundPosition은 SetGround마다 덮어써지므로 별도 보존.
     private Renderer[] renderers;
     private Collider[] colliders;
 
     // 근접 후보. Portal.cs의 lastOverlapTime과 같은 "도장 찍기" 관용구 — OnTriggerStay가 매 물리
-    // 스텝 갱신하고, Update의 F 판정은 그 도장이 최근(fixedDeltaTime*2.5) 것일 때만 유효로 본다.
+    // 스텝 갱신하고, 액션 수집은 그 도장이 최근(fixedDeltaTime*2.5) 것일 때만 유효로 본다.
     private PlayerEnergyReceiver nearbyReceiver;
     private float nearbySeenTime = -1f;
 
@@ -61,6 +62,33 @@ public class EnergyBall : MonoBehaviour
         colliders = GetComponentsInChildren<Collider>();
     }
 
+    private System.Action onInteract;
+
+    private void OnEnable() => InteractionController.Register(this);
+    private void OnDisable() => InteractionController.Unregister(this);
+
+    // 바닥에 있고 조작 중인 플레이어가 근접해 있을 때만 E 탭 "줍기"를 올린다. 이미 다른 볼을 들고 있으면
+    // 회색 사유로 보여 준다(무반응 금지). 우선순위는 블록·패널보다 낮다(통합안 §3).
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        if (State != BallState.Ground || nearbyReceiver == null) return;
+        if (Time.time - nearbySeenTime > Time.fixedDeltaTime * 2.5f) return;
+        if (!nearbyReceiver.IsControlledByLocalPlayer) return;
+
+        EnergyBall carried = nearbyReceiver.CarriedBall;
+        onInteract ??= () => nearbyReceiver.TryPickup(this);
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = color == EnergyColor.Orange ? "주황 에너지볼 줍기" : "파랑 에너지볼 줍기",
+            enabled = carried == null,
+            reason = carried != null ? $"이미 {carried.color} 에너지볼을 들고 있어 주울 수 없습니다." : null,
+            priority = InteractionPriority.EnergyBall,
+            distance = Vector3.Distance(nearbyReceiver.transform.position, transform.position),
+            execute = onInteract,
+        });
+    }
+
     private void Update()
     {
         if (State != BallState.Ground) return;
@@ -68,10 +96,6 @@ public class EnergyBall : MonoBehaviour
         float y = groundPosition.y + Mathf.Sin(Time.time * bobSpeed) * bobHeight;
         transform.position = new Vector3(groundPosition.x, y, groundPosition.z);
         transform.Rotate(Vector3.up, spinSpeed * Time.deltaTime, Space.World);
-
-        bool fresh = nearbyReceiver != null && Time.time - nearbySeenTime <= Time.fixedDeltaTime * 2.5f;
-        if (fresh && nearbyReceiver.IsControlledByLocalPlayer && Input.GetKeyDown(KeyCode.F))
-            nearbyReceiver.TryPickup(this);
     }
 
     private void OnTriggerStay(Collider other)
@@ -90,8 +114,8 @@ public class EnergyBall : MonoBehaviour
 
     public void SetCarried(PlayerEnergyReceiver owner)
     {
-        // 설치 후 5초 재생성 대기 중(Respawn 코루틴 진행 중)에 회수(R 2초)로 다시 들면, 대기하던
-        // 코루틴이 나중에 끝나면서 손에 든 볼을 뜬금없이 원위치에 떨어뜨리는 경합을 막는다.
+        // 재생성 대기 코루틴이 남아 있다면 나중에 끝나면서 손에 든 볼을 뜬금없이 원위치에 떨어뜨리는
+        // 경합을 막는다.
         StopAllCoroutines();
         State = BallState.Carried;
         Owner = owner;
@@ -105,8 +129,7 @@ public class EnergyBall : MonoBehaviour
         SetVisible(false);
     }
 
-    /// <summary>드랍(R 짧게) 또는 회수(R 2초, 포탈이 다시 볼로 돌아올 때)로 Ground 상태로 되돌린다.
-    /// 회수는 소지자 몸 근처(현재 위치)로, 드랍은 드랍 시점 위치로 되돌아간다 — 호출자가 위치를 정한다.</summary>
+    /// <summary>Ground 상태로 되돌린다(재생성 때 원래 배치 자리로). 호출자가 위치를 정한다.</summary>
     public void SetGround(Vector3 position)
     {
         State = BallState.Ground;
@@ -116,9 +139,8 @@ public class EnergyBall : MonoBehaviour
         SetVisible(true);
     }
 
-    /// <summary>포탈로 설치(=사용)되어 <see cref="SetInstalled"/>로 넘어갈 때 함께 부른다 — 드랍(R)처럼
-    /// 플레이어 발밑이 아니라 레벨에 최초 배치된 자리로, 즉시가 아니라 <see cref="respawnDelaySeconds"/>
-    /// 뒤에 되돌아간다(그 사이 회수(R 2초)로 다시 들면 <see cref="SetCarried"/>가 이 대기를 취소한다).</summary>
+    /// <summary>포탈로 설치(=사용)되어 <see cref="SetInstalled"/>로 넘어갈 때 함께 부른다 — 레벨에 최초 배치된 자리로,
+    /// 즉시가 아니라 <see cref="respawnDelaySeconds"/> 뒤에 되돌아간다.</summary>
     public void Respawn()
     {
         StopAllCoroutines();

@@ -130,7 +130,11 @@ public class SyncObject : MonoBehaviour
         BuildLine();
     }
 
-    private void ResolvePartner()
+    // 짝이 늦게 생성·활성화되는 경우를 위해 짝이 없는 동안 이 간격(초)으로 조용히 다시 찾는다.
+    private const float PartnerRetrySeconds = 1f;
+    private float nextPartnerRetryTime;
+
+    private void ResolvePartner(bool quiet = false)
     {
         partner = null;
         if (!registry.TryGetValue(pairId, out List<SyncObject> list)) return;
@@ -141,7 +145,7 @@ public class SyncObject : MonoBehaviour
             if (s == null || s == this) continue;
             if (s.shapeKind != shapeKind)
             {
-                Debug.LogWarning($"[SyncObject] pairId '{pairId}' 짝의 도형이 다릅니다 " +
+                if (!quiet) Debug.LogWarning($"[SyncObject] pairId '{pairId}' 짝의 도형이 다릅니다 " +
                                  $"({shapeKind} vs {s.shapeKind}) — 동일 도형끼리만 동기화됩니다.", this);
                 continue;
             }
@@ -150,10 +154,10 @@ public class SyncObject : MonoBehaviour
 
         if (matches.Count == 0)
         {
-            Debug.LogWarning($"[SyncObject] pairId '{pairId}' 짝을 찾지 못했습니다.", this);
+            if (!quiet) Debug.LogWarning($"[SyncObject] pairId '{pairId}' 짝을 찾지 못했습니다.", this);
             return;
         }
-        if (matches.Count > 1)
+        if (matches.Count > 1 && !quiet)
             Debug.LogWarning($"[SyncObject] pairId '{pairId}'에 SyncObject가 3개 이상입니다 — 첫 번째만 짝으로 씁니다.", this);
 
         partner = matches[0];
@@ -163,6 +167,12 @@ public class SyncObject : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (partner == null && Time.time >= nextPartnerRetryTime)
+        {
+            nextPartnerRetryTime = Time.time + PartnerRetrySeconds;
+            ResolvePartner(quiet: true);
+        }
+
         if (partner == null)
         {
             SetLinkBlocked(true);
@@ -271,7 +281,7 @@ public class SyncObject : MonoBehaviour
     {
         float sum = 0f;
         foreach (KeyValuePair<Rigidbody, int> kv in overlaps)
-            if (kv.Key != null) sum += kv.Key.mass;
+            if (kv.Key != null) sum += PlayerWeight.Of(kv.Key); // 저장소 공통: 질량이 아니라 무게(실효 중력 반영)
         return sum;
     }
 

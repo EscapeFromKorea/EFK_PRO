@@ -72,7 +72,8 @@ public class SpacePortal : MonoBehaviour
 
     [Header("시각 — 포탈 너머 보기 (PRD §4.6)")]
     public bool enableViewThrough = true;
-    public int renderTextureResolution = 512;
+    // 뷰스루 켜기/끄기·포탈 속 그림자·렌더텍스처 해상도는 사용자 그래픽 설정(GraphicsOptions, ESC 메뉴)이 정한다.
+    // 포탈 속 그림자는 기본 꺼짐 — 2026-11-08 High 실측에서 켜면 casters 192→473, draw 크게 증가.
 
     /// <summary>씬에 색당 최대 하나만 존재한다는 것을 보장하는 전역 참조.</summary>
     public static SpacePortal Orange { get; private set; }
@@ -85,6 +86,7 @@ public class SpacePortal : MonoBehaviour
     private static readonly Quaternion Flip180 = Quaternion.Euler(0f, 180f, 0f);
 
     private BoxCollider trigger;
+    private static readonly Plane[] framePlanes = new Plane[6]; // LateUpdate는 메인 스레드 순차 호출이라 공유해도 안전.
 
     private class ClonePart
     {
@@ -170,12 +172,41 @@ public class SpacePortal : MonoBehaviour
 
     private bool IsInFront(Vector3 worldPos) => transform.InverseTransformPoint(worldPos).z >= 0f;
 
-    private void OnTriggerEnter(Collider other)
+    // ── 통과 중 알림 (몸에 물린 것들이 순간이동을 이상 상황으로 오판하지 않게) ───────────────
+    // 든 블록(BlockCarrySystem)·도킹 구조물(CubeDockSystem)은 "몸이 붙잡힘/고정됨/순간이동함"이면 스스로
+    // 놓는다 — 리스폰·실타래용 안전장치인데 포탈 통과가 세 조건을 전부 건드려 통과 순간 블록을 놓아 버렸다.
+    // 통과 중인 몸을 IsTraversing으로 알리고, 순간이동 직전 이동량을 PlayerTeleporting으로 알려
+    // 도킹 구조물이 같은 양만큼 따라오게 한다.
+    private static readonly HashSet<PlayerMover> traversing = new HashSet<PlayerMover>();
+
+    /// <summary>이 몸이 지금 포탈을 통과하는 중인가(순간이동 직전부터 조작 잠금이 풀릴 때까지).</summary>
+    public static bool IsTraversing(PlayerMover mover) => mover != null && traversing.Contains(mover);
+
+    /// <summary>플레이어 몸을 순간이동시키기 직전에 발행한다(몸, 월드 이동량). 몸에 물린 구조물을 같은 양만큼
+    /// 옮기려는 쪽이 구독한다. 회전은 전달하지 않는다 — 플레이어는 FreezeRotation이라 회전이 바뀌지 않는다.</summary>
+    public static event System.Action<PlayerMover, Vector3> PlayerTeleporting;
+
+    // 도메인 리로드를 끈 Enter Play Mode에서 이전 세션 잔재(구독자 포함)가 남지 않게 비운다.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        traversing.Clear();
+        PlayerTeleporting = null;
+    }
+
+    private void OnTriggerEnter(Collider other) => TryTrack(other);
+
+    // 쿨다운 중에 이미 겹쳐 있던 바디는 Enter가 다시 오지 않아 추적이 안 됐다 — 출구 트리거 안에 머문 채
+    // 쿨다운이 끝나면 되돌아가기가 안 먹었다(2026-10-10 코드 리뷰 중-19). Stay가 같은 판정을 이어 한다.
+    private void OnTriggerStay(Collider other) => TryTrack(other);
+
+    private void TryTrack(Collider other)
     {
         if (Partner == null) return;
 
         Rigidbody body = other.attachedRigidbody;
         if (body == null) return;
+        if (tracked.ContainsKey(body)) return; // Stay가 매 스텝 부르므로 가장 싼 검사를 먼저.
 
         PlayerShapeIdentity identity = body.GetComponentInParent<PlayerShapeIdentity>();
         if (identity != null)
@@ -303,6 +334,11 @@ public class SpacePortal : MonoBehaviour
         PlayerShapeIdentity identity = body.GetComponentInParent<PlayerShapeIdentity>();
         if (identity != null)
         {
+            // 굴리기 텀블 도중이면 AdvanceTumble이 순간이동 직후 몸을 옛 피벗 쪽으로 되끌어간다
+            // (2026-10-10 코드 리뷰 중-22). 순간이동은 모드 규칙과 양립하지 않으므로 모드를 끝내고 보낸다.
+            PlayerRollModeReceiver roll = body.GetComponent<PlayerRollModeReceiver>();
+            if (roll != null && roll.RollModeActive) roll.SetRollMode(false);
+
             // 플레이어는 몸 회전을 건드리지 않는다(§2 — FreezeRotation이라 회전이라는 물리량이 없다).
             StartCoroutine(TeleportPlayerRoutine(identity.GetComponent<PlayerMover>(), body, newPos, newVel, partner.exitControlLockSeconds));
         }
@@ -339,12 +375,19 @@ public class SpacePortal : MonoBehaviour
     {
         if (rb == null) yield break;
 
+        // 코루틴이 중간에 끊겨도(몸 파괴 등) 통과 표시가 남지 않게 finally에서 지운다.
+        if (mover != null) traversing.Add(mover);
+        try
+        {
         bool prevKinematic = rb.isKinematic;
         bool prevDriven = mover != null && mover.ExternallyDriven;
         RigidbodyInterpolation prevInterp = rb.interpolation;
         rb.interpolation = RigidbodyInterpolation.None; // 순간이동 한 프레임 늘어짐 방지(RespawnController와 동일 이유)
         rb.isKinematic = true;
         if (mover != null) mover.ExternallyDriven = true;
+
+        // 몸에 물린 구조물(도킹 등)을 같은 양만큼 옮기도록 알린다 — 몸만 옮기면 조인트가 끊기거나 끌려간다.
+        if (mover != null) PlayerTeleporting?.Invoke(mover, newPos - rb.position);
 
         rb.position = newPos;
         if (mover != null) mover.transform.position = newPos;
@@ -353,6 +396,9 @@ public class SpacePortal : MonoBehaviour
         PlayerAccelReceiver accel = rb.GetComponent<PlayerAccelReceiver>();
         if (accel != null) accel.CancelBoost();
 
+        // 출구로 나오는 방향(수평 성분)을 화면이 바라보게 한다 — 안 그러면 카메라는 들어갈 때 방향을 그대로 두어
+        // 출구에서 걸어 나오는 방향과 시점이 어긋난다(직관성, 2026-10-03). 위치 스냅과 같은 프레임에 맞춘다.
+        PlayerFollowCamera.FaceDirection(newVel, rb.transform);
         PlayerFollowCamera.SnapToTarget(rb.transform);
 
         yield return new WaitForFixedUpdate();
@@ -370,6 +416,11 @@ public class SpacePortal : MonoBehaviour
             yield return new WaitForSeconds(controlLockSeconds);
 
         if (mover != null) mover.ExternallyDriven = prevDriven;
+        }
+        finally
+        {
+            if (mover != null) traversing.Remove(mover);
+        }
     }
 
     // ── 클론 렌더링 ──────────────────────────────────────────────────────────
@@ -469,7 +520,7 @@ public class SpacePortal : MonoBehaviour
         camGo.transform.SetParent(transform, false);
         viewCamera = camGo.AddComponent<Camera>();
         viewCamera.enabled = false; // 자동 렌더 루프를 타지 않는다 — LateUpdate에서 수동 Render()만 쓴다.
-        viewTexture = new RenderTexture(Mathf.Max(64, renderTextureResolution), Mathf.Max(64, renderTextureResolution), 16);
+        viewTexture = new RenderTexture(GraphicsOptions.PortalResolution, GraphicsOptions.PortalResolution, 16);
         viewCamera.targetTexture = viewTexture;
     }
 
@@ -481,15 +532,32 @@ public class SpacePortal : MonoBehaviour
         // 포탈은 짝의 존재 여부와 무관하게 항상 보인다 — 짝이 없으면(단독 설치) 검정 단색으로 위치만
         // 표시하고, 짝이 생기면 뷰스루로 전환한다(2026-09-11 확정 — 예전엔 짝 없을 때 완전히
         // 안 보여 어디에 설치했는지 알 수 없었다).
-        if (!enableViewThrough || partner == null || viewCamera == null)
+        if (!enableViewThrough || !GraphicsOptions.PortalView || partner == null || viewCamera == null)
         {
             quadMaterial.mainTexture = blackTexture;
             return;
         }
+        // 설정에서 해상도가 바뀌면 렌더텍스처를 새로 만든다(정수 비교 한 번이라 평소 비용은 없다).
+        int res = GraphicsOptions.PortalResolution;
+        if (viewTexture.width != res)
+        {
+            viewCamera.targetTexture = null;
+            Destroy(viewTexture);
+            viewTexture = new RenderTexture(res, res, 16);
+            viewCamera.targetTexture = viewTexture;
+        }
         quadMaterial.mainTexture = viewTexture;
 
+        // 화면에 안 보이면(컬링됨) 매 프레임 씬 하나를 통째로 렌더텍스처에 다시 그리는 비용을
+        // 낸다 — 포탈이 여러 개거나 한동안 화면 밖에 있으면 무의미한 렌더가 쌓인다(2026-09-29
+        // 점검에서 발견). 텍스처는 마지막으로 보였을 때 값 그대로 남고, 다시 보이면 다음 프레임에
+        // 갱신된다(한 프레임 지연은 무해하다).
+        // isVisible는 "어느 카메라든" 보면 true라 짝 포탈의 뷰 카메라나 씬 뷰가 봐도 렌더가 돌았다 —
+        // 메인 카메라 절두체와 쿼드 bounds만 직접 본다(2026-11-08).
         Camera mainCam = Camera.main;
         if (mainCam == null) return;
+        GeometryUtility.CalculateFrustumPlanes(mainCam, framePlanes);
+        if (!GeometryUtility.TestPlanesAABB(framePlanes, quadRenderer.bounds)) return;
 
         // 메인 카메라를 "이 포탈 → 짝 포탈" 상대 변환으로 옮긴 위치/방향에서 찍어, 이 포탈 면에는
         // "짝 포탈 저편에서 본 장면"이 비친다(표준 포탈 카메라 트릭).
@@ -507,7 +575,10 @@ public class SpacePortal : MonoBehaviour
         // 비칠 수 있다는 것을 알고 감수한 타협이다(최종 보고 참고).
         if (renderDepth >= MaxRenderDepth) return; // 재귀 1단계 제한 — 더 안쪽은 직전 프레임 텍스처 그대로.
         renderDepth++;
+        float savedShadowDistance = QualitySettings.shadowDistance;
+        if (!GraphicsOptions.PortalShadows) QualitySettings.shadowDistance = 0f; // Render()는 동기라 메인 카메라 렌더엔 영향 없다.
         viewCamera.Render();
+        QualitySettings.shadowDistance = savedShadowDistance;
         renderDepth--;
     }
 

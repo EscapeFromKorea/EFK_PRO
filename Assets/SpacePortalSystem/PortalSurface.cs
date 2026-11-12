@@ -52,18 +52,10 @@ public class PortalSurface : MonoBehaviour
             foreach (Collider col in t.GetComponentsInChildren<Collider>())
                 Physics.IgnoreCollision(Box, col, occupied);
 
-        // 패널이 실제 벽 오브젝트(별도 GameObject) 앞/속에 겹쳐 배치된 경우, 패널 콜라이더만
-        // 뚫어도 그 벽이 여전히 막아 "간헐적으로 진입이 걸리는" 느낌이 났다(2026-09-11 실측 —
-        // 걸어 들어갈 때마다가 아니라 패널과 겹친 벽 콜라이더에 부딪히는 각도/타이밍에서만
-        // 막혀 비결정적으로 보였다). 패널 부피와 실제로 겹치는 모든 솔리드 콜라이더를 찾아
-        // 같이 뚫는다 — 위 두 루프와 겹칠 수 있지만 IgnoreCollision은 멱등이라 무해하다.
-        Vector3 worldCenter = transform.TransformPoint(Box.center);
-        Vector3 worldHalfExtents = Vector3.Scale(Box.size, transform.lossyScale) * 0.5f;
-        foreach (Collider h in Physics.OverlapBox(worldCenter, worldHalfExtents, transform.rotation, ~0, QueryTriggerInteraction.Ignore))
-        {
-            if (h == Box) continue;
-            Physics.IgnoreCollision(Box, h, occupied);
-        }
+        // [레벨 규칙] 패널 뒤/속에 다른 솔리드 콜라이더(벽)를 겹쳐 두지 않는다. 2026-09-11에 "겹친 벽도
+        // 뚫기" 루프(Box↔벽 쌍 IgnoreCollision)를 넣었으나 플레이어를 막는 쌍은 플레이어↔벽이라 효과가
+        // 없었고(정적끼리라 무반응), 플레이어↔벽으로 고치면 IgnoreCollision이 콜라이더 쌍 단위라 큰 벽·바닥이
+        // 통째로 뚫린다. 그래서 루프를 지우고 배치 규칙으로 막기로 했다(2026-10-25).
 
         // 패널의 시각 메쉬(PortalSurface_Visual)와 포탈 자신의 쿼드가 거의 같은 평면에 겹쳐
         // z-fighting/이중 렌더로 보였다(SpacePortal_BugImage, 2026-09-11). 포탈이 점유 중이면

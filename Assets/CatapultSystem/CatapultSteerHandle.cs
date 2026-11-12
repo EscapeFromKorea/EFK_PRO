@@ -49,14 +49,16 @@ using UnityEngine;
 ///   클수록 어긋남이 커진다). 가설 기반 수정이라 실측으로 완전히 검증되지는 않았다.
 /// - `PlayerMover.ExternallyDriven = true`(`mover.enabled`는 절대 건드리지 않는다 — Tab 로스터를
 ///   깨는 것은 이 저장소의 하드룰이다, `Assets/CLAUDE.md` 참고).
-/// - 구를 "링에 맞게" 확대한다 — `PlayerShapeController.ToggleScale(EScaleState.Grown)`을 재사용한다
-///   (`ScalingSystem/Playershapecontroller.cs`, 파일 미수정). 새 스케일 설정 메서드를
-///   ScalingSystem에 추가하지 않는다 — 교차 폴더 수정에 해당하고, `growMultiplier`가 이미 public
-///   필드라 불필요하다. 호출 직전에 `shapeController.growMultiplier = dockedScaleMultiplier`로
-///   확대 배율을 이 컴포넌트가 정하고, 이후 `ToggleScale`을 그대로 호출한다 — 전환 보간
-///   (`lerpSpeed`)은 `PlayerShapeController`가 스스로 처리하므로 여기서 새 스무딩 코드가
-///   필요 없다. `growMultiplier`는 도킹 해제 후에도 원래 값으로 복원하지 않는다(사용자 확정 —
-///   `ScalePad` 등 다른 기믹과 공유하는 필드라, 씬에 두 기믹이 공존하면 영향을 줄 수 있다).
+/// - 구를 "링에 맞게" 확대한다 — `PlayerShapeController.SetGrowMultiplier`/`SetScaleState`
+///   (2026-09-29 추가, ScalingSystem 교차 폴더 수정, 사용자 승인)를 쓴다. 전환 보간(`lerpSpeed`)은
+///   `PlayerShapeController`가 스스로 처리하므로 여기서 새 스무딩 코드가 필요 없다. `growMultiplier`는
+///   도킹 해제 후에도 원래 값으로 복원하지 않는다(사용자 확정 — `ScalePad` 등 다른 기믹과 공유하는
+///   필드라, 씬에 두 기믹이 공존하면 영향을 줄 수 있다).
+///   [2026-09-29 정정] 예전엔 `ToggleScale`(대칭 토글)을 도킹/해제 두 번 불렀다 — 이미 ScalePad로
+///   Grown/Shrunk인 채 도킹하면 토글이 반대로 작동해 오히려 꺼지거나(Grown→Normal) 잃어버리는
+///   (Shrunk→Grown→해제 시 Normal) 결함이 있었다(전 기믹 점검에서 발견). 지금은 도킹 전 상태를
+///   저장했다가 `SetScaleState`(멱등)로 그대로 복원한다 — ScalingSystem에 메서드를 추가하지 않던
+///   이전 방침은 유지할 수 없었다(대칭 토글로는 이 결함을 구조적으로 못 고친다).
 ///
 /// [입력 게이트 — 도킹된 플레이어가 조작 대상이 아니면 다른 플레이어의 C/A/D를 무시]
 /// `DreamThreadController`/`CatapultLoadController`가 이미 쓰는 패턴이다(2026-07-30 입력 게이트
@@ -102,12 +104,13 @@ using UnityEngine;
 ///
 /// [해제 — 자동 이탈 없음]
 /// 도킹된 플레이어가 다시 C를 누르면 링크 시의 모든 단계를 역순으로 되돌린다 —
-/// `ToggleScale(Grown)`을 다시 호출해(토글이라 자동으로 Normal로 돌아온다, 새 축소 로직을 추가하지
-/// 않는다), `isKinematic = false`, `mover.ExternallyDriven = false`. **자동 "튕겨나가기"는 없다
+/// `SetScaleState(preDockScaleState)`로 도킹 전 크기(Normal/Grown/Shrunk)를 그대로 복원하고
+/// (2026-09-29 정정 — 예전 `ToggleScale` 방식은 도킹 전 상태를 몰라 잘못 복원했다), `isKinematic =
+/// false`, `mover.ExternallyDriven = false`. **자동 "튕겨나가기"는 없다
 /// (사용자 명시적 확정)** — 구는 현재(도킹된, 확대된) 위치에서 그대로 다시 조작 가능해질 뿐이고,
 /// 걸어/뛰어 나가는 것은 플레이어 몫이다.
 /// </summary>
-public class CatapultSteerHandle : MonoBehaviour
+public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
 {
     [Header("도킹 대상 (구 전용)")]
     [Tooltip("도킹 지점 — 고리 시각 장식의 중심(또는 그 안의 빈 자식). CatapultMenuItem이 자동으로 " +
@@ -155,6 +158,11 @@ public class CatapultSteerHandle : MonoBehaviour
     private Rigidbody dockedBody;
     private PlayerMover dockedMover;
     private PlayerShapeController dockedShapeController;
+    // 도킹 전 크기 상태(Normal/Grown/Shrunk). ToggleScale은 대칭 토글이라 "이미 커진/작아진 채
+    // 도킹"하면 두 번째 토글(해제)이 엉뚱한 상태로 튄다(2026-09-29 점검에서 발견 — ScalePad로 이미
+    // Grown인 채 도킹하면 오히려 Normal로 꺼지고, Shrunk인 채 도킹하면 해제 후 Shrunk를 잃는다).
+    // SetScaleState(멱등, PlayerShapeController 2026-09-29 추가)로 대체해 이 문제를 없앴다.
+    private PlayerShapeController.EScaleState preDockScaleState;
     private Transform dockedOriginalParent;
     // 도킹 중 보간을 끈다(CatapultBucket.occupantOriginalInterpolation과 같은 이유·패턴, 클래스
     // 상단 "도킹 시 하는 일" 주석 참고). Undock()에서 원래 값으로 되돌린다.
@@ -165,10 +173,80 @@ public class CatapultSteerHandle : MonoBehaviour
         if (rootBody != null) baseYaw = rootBody.rotation.eulerAngles.y;
     }
 
+    private System.Action onInteract;
+
+    void OnEnable()
+    {
+        InteractionController.Register(this);
+        RespawnController.ReleaseHoldRequested += HandleReleaseHold;
+    }
+
+    void OnDisable()
+    {
+        InteractionController.Unregister(this);
+        RespawnController.ReleaseHoldRequested -= HandleReleaseHold;
+        // 비활성화로 갱신이 멈추면 도킹된 몸이 isKinematic+ExternallyDriven인 채 영구히 남는다(2026-10-10 점검).
+        if (dockedMover != null) Undock();
+    }
+
+    // 복귀가 도킹된 구를 지목하면 순간이동 전에 스스로 해제한다(2026-10-10 B안, docs/PRD/Respawn.md §310).
+    // 도킹은 isKinematic+ExternallyDriven이라 이 훅이 없으면 위험 피격 복귀가 거절된다.
+    private void HandleReleaseHold(PlayerMover mover)
+    {
+        if (dockedMover != null && dockedMover == mover) Undock();
+    }
+
+    // 키를 직접 읽지 않는다 — 도킹 중인 구에게는 해제(붙잡힌 상태에서도 허용), 그 외엔 구가 범위 안일 때
+    // 도킹을 E 탭 액션으로 올린다. 다른 플레이어가 도킹 중이면 회색 사유로 막는다(키맵 통합안 §2-1).
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        PlayerMover mover = InteractionController.Controlled;
+        if (mover == null) return;
+        onInteract ??= HandleDockInput;
+
+        if (dockedBody != null)
+        {
+            if (dockedMover == mover)
+            {
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "조향석 해제", enabled = true,
+                    priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteract,
+                    allowWhenGripped = true,
+                });
+            }
+            else if (dockAnchor != null && Vector3.Distance(mover.transform.position, dockAnchor.position) <= dockRange)
+            {
+                into.Add(new InteractionAction
+                {
+                    channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                    verb = "조향석 도킹", enabled = false,
+                    reason = "다른 플레이어가 조향석에 도킹되어 있습니다 — Tab으로 그 플레이어를 조작해 해제하세요.",
+                    priority = InteractionPriority.Panel, distance = 0f, execute = onInteract,
+                });
+            }
+            return;
+        }
+
+        if (dockAnchor == null || rootBody == null) return;
+        PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
+        if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Sphere) return;
+        Rigidbody body = mover.GetComponent<Rigidbody>();
+        if (body == null) return;
+
+        float d = Vector3.Distance(body.position, dockAnchor.position);
+        if (d > dockRange) return;
+        into.Add(new InteractionAction
+        {
+            channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+            verb = "조향석 도킹", enabled = true,
+            priority = InteractionPriority.Panel, distance = d, execute = onInteract,
+        });
+    }
+
     void Update()
     {
-        HandleDockInput();
-
         // 입력은 여기서 읽고, 실제 회전 대입은 FixedUpdate에서 한다(클래스 상단 "조향" 주석 참고).
         // `dockedBody != null`만으로는 부족하다 — Input.GetAxis("Horizontal")은 전역 축이라, 도킹된
         // 구가 Tab으로 파킹된 동안 다른 플레이어가 A/D를 눌러도 그 값이 그대로 여기 들어와 투석기가
@@ -200,8 +278,6 @@ public class CatapultSteerHandle : MonoBehaviour
 
     private void HandleDockInput()
     {
-        if (!Input.GetKeyDown(KeyCode.C)) return;
-
         if (dockedBody != null)
         {
             // 입력 게이트(DreamThreadController/CatapultLoadController와 같은 패턴, 클래스 상단
@@ -243,6 +319,13 @@ public class CatapultSteerHandle : MonoBehaviour
 
         Rigidbody body = mover.GetComponent<Rigidbody>();
         if (body == null) return;
+
+        // 이미 다른 기믹이 붙잡고 있는 몸이면 도킹시키지 않는다(2026-09-29 점검에서 발견).
+        if (mover.ExternallyDriven || body.isKinematic)
+        {
+            Debug.Log("[Catapult] 이미 다른 기믹이 이 구를 붙잡고 있어 도킹할 수 없습니다.");
+            return;
+        }
 
         float myDistance = Vector3.Distance(body.position, dockAnchor.position);
         if (myDistance > dockRange)
@@ -287,16 +370,22 @@ public class CatapultSteerHandle : MonoBehaviour
 
         mover.ExternallyDriven = true; // mover.enabled는 절대 건드리지 않는다(Tab 로스터 보존, 하드룰).
 
-        // ScalingSystem 파일은 건드리지 않는다 — growMultiplier가 이미 public 필드라 이 값만
-        // 투석기가 원하는 배율로 바꿔 두고 기존 ToggleScale을 그대로 호출한다. lerpSpeed 보간은
-        // PlayerShapeController가 이미 스스로 처리하므로 추가 스무딩 코드가 필요 없다.
+        // ScalingSystem 파일은 SetScaleState/SetGrowMultiplier(2026-09-29 추가, 사용자 승인 하
+        // 교차 폴더 수정)만 호출한다 — growMultiplier가 공유 필드라는 사실도, "해제 후 원래 값으로
+        // 되돌리지 않는다"는 기존 확정 방침(위 클래스 주석 §22차 개편 참고)도 그대로다.
         // growOnDock=false(미니 투석기)면 이 블록을 통째로 건너뛴다 — Undock()도 같은 조건으로
-        // 막아야 한다(안 그러면 "키운 적 없는데 Undock의 토글이 Grown을 새로 켜는" 반대 방향 버그가
-        // 난다, 아래 Undock() 참고).
+        // 막아야 한다.
+        //
+        // [2026-09-29 정정] 예전엔 ToggleScale(대칭 토글)을 도킹/해제 두 번 불렀다 — 이미 ScalePad로
+        // Grown인 채 도킹하면 두 번째 "토글"로 오인돼 오히려 Normal로 꺼지고, Shrunk인 채 도킹하면
+        // Grown으로 덮어써진 뒤 해제 시 Shrunk를 되찾지 못하고 Normal이 됐다(전 기믹 점검에서 발견).
+        // 이제 도킹 전 상태(preDockScaleState)를 저장해 뒀다가 해제 시 그대로 복원한다 — SetScaleState는
+        // 멱등(이미 그 상태면 무동작)이라 "몇 번 불렀는가"에 결과가 좌우되지 않는다.
         if (growOnDock && dockedShapeController != null)
         {
-            dockedShapeController.growMultiplier = dockedScaleMultiplier;
-            dockedShapeController.ToggleScale(PlayerShapeController.EScaleState.Grown);
+            preDockScaleState = dockedShapeController.CurrentState;
+            dockedShapeController.SetGrowMultiplier(dockedScaleMultiplier);
+            dockedShapeController.SetScaleState(PlayerShapeController.EScaleState.Grown);
         }
 
         Debug.Log("[Catapult] 구가 조향석에 도킹했습니다. 좌우 이동 입력으로 투석기를 조향하세요(다시 C로 해제).");
@@ -304,12 +393,12 @@ public class CatapultSteerHandle : MonoBehaviour
 
     private void Undock()
     {
-        // Dock()과 같은 growOnDock 조건이어야 한다 — Dock()에서 키운 적이 없는데 여기서
-        // ToggleScale(Grown)을 부르면 토글이 반대로 작동해 Normal→Grown으로 새로 켜버린다.
+        // Dock()과 같은 growOnDock 조건이어야 한다.
         if (growOnDock && dockedShapeController != null)
         {
-            // 토글이라 Grown 상태에서 다시 호출하면 Normal로 되돌아간다 — 새 축소 로직 불필요.
-            dockedShapeController.ToggleScale(PlayerShapeController.EScaleState.Grown);
+            // 도킹 전 크기로 정확히 되돌린다(ScalePad로 이미 Grown/Shrunk였던 상태도 보존) —
+            // growMultiplier 자체는 되돌리지 않는다(기존 확정 방침, 위 참고).
+            dockedShapeController.SetScaleState(preDockScaleState);
         }
 
         if (dockedBody != null)

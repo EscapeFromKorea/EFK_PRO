@@ -9,8 +9,9 @@ using UnityEngine;
 /// [도형 게이트] 정육면체(PlayerShapeIdentity.Kind == Cube)만 도킹한다. 구·정사면체는 조준·도킹을
 /// 스스로 거부한다.
 ///
-/// [입력 게이트] 새 도킹 / 해제는 이 플레이어가 조작 대상일 때만(IsControlled &amp;&amp;
-/// !ExternallyDriven) 받는다. "결합 해제는 정육면체 자신만" 요구를 이 게이트가 만족한다.
+/// [입력] 키를 직접 읽지 않는다. 도킹/해제는 E 탭 액션으로 <see cref="InteractionController"/>에 올린다
+/// (키맵 통합안 §7-1). 새 도킹 / 해제는 이 플레이어가 조작 대상일 때만(IsControlled &amp;&amp;
+/// !ExternallyDriven) 올린다. "결합 해제는 정육면체 자신만" 요구를 이 게이트가 만족한다.
 ///
 /// [왜 SnapBlock 프록시가 아니라 전용 조인트인가]
 /// SnapBlock은 블록↔블록 조인트만 관리하고 BoxCollider+Rigidbody를 요구한다. 플레이어에 프록시
@@ -27,7 +28,7 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerMover))]
 [RequireComponent(typeof(Rigidbody))]
 [DisallowMultipleComponent]
-public class PlayerCubeDock : MonoBehaviour
+public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
 {
     [Header("타겟팅 (근접)")]
     [Tooltip("이 거리(Unit) 안에서 가장 가까운 SnapBlock을 대상으로 삼는다.")]
@@ -46,10 +47,6 @@ public class PlayerCubeDock : MonoBehaviour
     public int maxDockedBlocks = 6;
     [Tooltip("도킹 가능한 결합 구조물의 최대 총 질량.")]
     public float maxDockedMass = 12f;
-
-    [Header("입력 키")]
-    [Tooltip("도킹 / 해제 토글 키. (G는 ThreadPinPlacer가 이미 써서 H로 변경 — 2026-09-14 QA에서 발견)")]
-    public KeyCode dockKey = KeyCode.H;
 
     [Header("자동 해제 감지")]
     [Tooltip("한 프레임에 플레이어가 이 거리(Unit) 넘게 순간이동하면 리스폰/리셋으로 보고 즉시 해제한다.")]
@@ -88,7 +85,12 @@ public class PlayerCubeDock : MonoBehaviour
     private Vector3 aimSelfFaceCenter, aimBlockFaceCenter, aimBlockFaceNormal;
     private bool hasCandidate;
     private string rejectReason;
+    private float aimedDistance;
     private float nextRetargetTime;
+
+    private bool interactable;
+    private System.Action onInteractTap;
+    private PlayerBlockCarrier carrier;          // 블록을 든 동안은 도킹을 올리지 않는다(들기·내려놓기와 같은 E 탭).
 
     private Transform reticle;
     private Renderer reticleRenderer;
@@ -118,10 +120,51 @@ public class PlayerCubeDock : MonoBehaviour
         selfBox = ResolveSelfBox();
         lastPos = transform.position;
         lastScale = transform.localScale;
+        onInteractTap = OnInteractTap;
+        carrier = GetComponent<PlayerBlockCarrier>();
+    }
+
+    // PlayerBlockCarrier는 BlockCarryController가 런타임에 AddComponent하므로 Awake 캐시가 비어 있을 수 있다.
+    private PlayerBlockCarrier ResolveCarrier()
+    {
+        if (carrier == null) carrier = GetComponent<PlayerBlockCarrier>();
+        return carrier;
+    }
+
+    private void OnEnable()
+    {
+        InteractionController.Register(this);
+        SpacePortal.PlayerTeleporting += OnPortalTeleporting;
+    }
+
+    // 포탈로 몸이 순간이동하면 도킹된 구조물 전체를 같은 양만큼 옮긴다 — 몸만 가면 조인트가 끊기거나 끌려간다.
+    // 회전은 옮기지 않는다(플레이어가 FreezeRotation이라 회전이 바뀌지 않는다). 출구 쪽 지형과 겹치는지는 보지 않는다.
+    private void OnPortalTeleporting(PlayerMover who, Vector3 delta)
+    {
+        if (who != mover || joint == null || dockedBlock == null) return;
+
+        var seen = new System.Collections.Generic.HashSet<SnapBlock> { dockedBlock };
+        var q = new System.Collections.Generic.Queue<SnapBlock>();
+        q.Enqueue(dockedBlock);
+        while (q.Count > 0)
+        {
+            SnapBlock b = q.Dequeue();
+            Rigidbody rb = b.Body;
+            if (rb != null)
+            {
+                rb.position += delta;
+                rb.transform.position += delta; // 렌더/즉시 조회 쪽도 같은 프레임에 맞춘다
+            }
+            foreach (SnapBlock n in b.ConnectedBlocks)
+                if (n != null && seen.Add(n)) q.Enqueue(n);
+        }
     }
 
     private void OnDisable()
     {
+        SpacePortal.PlayerTeleporting -= OnPortalTeleporting;
+        InteractionController.Unregister(this);
+        interactable = false;
         if (joint != null) Undock("컴포넌트 비활성화");
         HideReticle();
     }
@@ -151,6 +194,7 @@ public class PlayerCubeDock : MonoBehaviour
 
         RecordFrameSnapshot();
 
+        interactable = false;
         bool controllable = mover != null && mover.IsControlled && !mover.ExternallyDriven;
 
         if (!controllable || !IsCube)
@@ -171,11 +215,44 @@ public class PlayerCubeDock : MonoBehaviour
         }
 
         UpdateReticle();
+        interactable = true;
+    }
 
-        if (Input.GetKeyDown(dockKey))
+    // ── 중앙 입력 연동 ────────────────────────────────────────
+
+    private void OnInteractTap()
+    {
+        if (joint != null) Undock("수동 해제");
+        else TryDock();
+    }
+
+    public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
+    {
+        if (!interactable) return;
+
+        if (joint != null)
         {
-            if (joint != null) Undock("수동 해제");
-            else TryDock();
+            // 도킹 중에는 해제가 최우선이다(상태를 쥔 쪽) — 근처 블록 들기가 가로채지 못한다.
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "도킹 해제", enabled = true,
+                priority = InteractionPriority.StateOwner, distance = 0f, execute = onInteractTap,
+            });
+        }
+        else if (aimed != null && (ResolveCarrier() == null || carrier.Carried == null))
+        {
+            string reason = !hasCandidate
+                ? $"맞물릴 면이 없습니다 — 블록 면을 {snapDistance}칸 안, 나란히 맞대세요."
+                : rejectReason;
+            into.Add(new InteractionAction
+            {
+                channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
+                verb = "도킹", enabled = reason == null, reason = reason,
+                // 정육면체는 들기와 도킹이 같은 E 탭이다. 도킹 가능한 면 쌍을 맞댄 상태면 도킹이 이기고,
+                // 아니면(비활성) 들기만 활성이라 들기가 나간다.
+                priority = InteractionPriority.Block + 10, distance = aimedDistance, execute = onInteractTap,
+            });
         }
     }
 
@@ -220,6 +297,7 @@ public class PlayerCubeDock : MonoBehaviour
 
         if (best == null) return;
         aimed = best;
+        aimedDistance = Mathf.Sqrt(bestSqr);
 
         FindBestFacePair(best);
         if (hasCandidate)
@@ -319,8 +397,12 @@ public class PlayerCubeDock : MonoBehaviour
         if (snapAlignOnDock)
         {
             // 면 법선 방향으로만 밀어 두 면을 같은 평면에 맞춘다(측면 위치·회전 미변경 → FreezeRotation과 무충돌).
-            float gap = Vector3.Dot(aimBlockFaceCenter - aimSelfFaceCenter, aimBlockFaceNormal);
-            transform.position += aimBlockFaceNormal * gap;
+            // 가능하면 면 중심끼리 완전히 맞춘다(옆으로 치우친 채 결합돼 어긋나 보이던 문제). 옮긴 자리가
+            // 벽·바닥·다른 블록과 겹치면 예전처럼 법선 방향만 맞춘다.
+            Vector3 full = aimBlockFaceCenter - aimSelfFaceCenter;
+            float gap = Vector3.Dot(full, aimBlockFaceNormal);
+            Vector3 move = IsDockPoseClear(full) ? full : aimBlockFaceNormal * gap;
+            transform.position += move;
         }
 
         body.velocity = Vector3.zero;
@@ -381,6 +463,40 @@ public class PlayerCubeDock : MonoBehaviour
         Debug.Log($"[CubeDock] '{dockedBlock.name}' 구조물에 도킹했습니다.");
     }
 
+    // 정육면체를 offset만큼 옮긴 자리가 비어 있는가. 자기 몸·도킹 대상 구조물은 무시한다(면이 맞닿아 있으므로
+    // 5% 줄여 검사). 정육면체는 회전이 고정이라 축 정렬 박스로 충분하다.
+    private bool IsDockPoseClear(Vector3 offset)
+    {
+        if (selfBox == null || aimed == null) return false;
+        Bounds b = selfBox.bounds;
+        Collider[] hits = Physics.OverlapBox(b.center + offset, b.extents * 0.95f, Quaternion.identity,
+                                             ~0, QueryTriggerInteraction.Ignore);
+        foreach (Collider h in hits)
+        {
+            if (h.transform.IsChildOf(transform) || transform.IsChildOf(h.transform)) continue;
+            SnapBlock sb = h.GetComponentInParent<SnapBlock>();
+            if (sb != null && IsInStructure(sb, aimed)) continue;
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsInStructure(SnapBlock candidate, SnapBlock seed)
+    {
+        if (candidate == seed) return true;
+        var seen = new System.Collections.Generic.HashSet<SnapBlock> { seed };
+        var q = new System.Collections.Generic.Queue<SnapBlock>();
+        q.Enqueue(seed);
+        while (q.Count > 0)
+            foreach (SnapBlock n in q.Dequeue().ConnectedBlocks)
+                if (n != null && seen.Add(n))
+                {
+                    if (n == candidate) return true;
+                    q.Enqueue(n);
+                }
+        return false;
+    }
+
     private void Undock(string reason)
     {
         string blockName = dockedBlock != null ? dockedBlock.name : "블록";
@@ -402,6 +518,9 @@ public class PlayerCubeDock : MonoBehaviour
     {
         why = null;
 
+        // 포탈 통과 중에는 몸 고정·붙잡힘·순간이동으로 보지 않는다 — 구조물은 OnPortalTeleporting이 같이 옮긴다.
+        if (SpacePortal.IsTraversing(mover)) return false;
+
         if (mover != null && mover.ExternallyDriven)
         {
             why = "몸이 외부 기믹에 붙잡힘(실타래 등)";
@@ -412,7 +531,10 @@ public class PlayerCubeDock : MonoBehaviour
             why = "몸이 고정됨(굴리기 모드·벽 부착 등)";
             return true;
         }
-        if (GetComponent("PlayerRollModeReceiver") != null)
+        // 컴포넌트 존재가 아니라 모드 on 여부를 본다 — Portal은 첫 통과 때 붙인 뒤 떼지 않아서, 존재만 보면
+        // 포탈을 한 번 지난 도형은 영원히 도킹을 못 한다(2026-09-29 점검에서 발견, BlockCarrySystem과 동일 결함).
+        PlayerRollModeReceiver rollMode = GetComponent<PlayerRollModeReceiver>();
+        if (rollMode != null && rollMode.RollModeActive)
         {
             why = "굴리기 모드 진입";
             return true;

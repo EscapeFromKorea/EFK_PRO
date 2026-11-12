@@ -60,7 +60,12 @@ public class PlayerFollowCamera : MonoBehaviour
     public float cameraYawOffset = 90f;
 
     [Tooltip("위치 추적 부드러움(SmoothDamp 시간, 초). 작을수록 즉각적이고, 클수록 부드럽지만 느리다. " +
-             "[2026-09-15] 0.2→0.12→0.07로 낮춰 카메라가 플레이어를 더 즉각적으로 따라가게 했다.")]
+             "[2026-09-15] 0.2→0.12→0.07로 낮췄다. [2026-09-20] 구 플레이어에서 카메라가 꿀렁이는 " +
+             "증상이 나와 한때 0.5까지 올려 감쇠로 가렸었으나, [2026-09-21] 진짜 원인이 " +
+             "PlayerShapeController가 Player_Collider를 Root 원점에서 반지름만큼 띄워두던 것(자유 " +
+             "회전하는 구에서 그 오프셋이 궤도를 돌며 Root 위치 자체를 흔듦)으로 확정돼 " +
+             "ScalingSystem/Playershapecontroller.cs에서 고쳤다 — 구 Root의 실제 위치가 더 이상 안 " +
+             "흔들리므로 값을 0.07로 되돌린다.")]
     public float followSmoothness = 0.07f;
 
     [Tooltip("타깃의 Y(상하) 위치만 추가로 감쇠하는 배수(1 = X/Z와 동일). 정육면체/정사면체가 " +
@@ -70,6 +75,35 @@ public class PlayerFollowCamera : MonoBehaviour
 
     [Tooltip("시선이 향하는 지점을 타깃 위치에서 이만큼 위로 올린다(발밑이 아니라 몸통을 보게).")]
     public float lookHeightOffset = 1f;
+
+    // ═══════════ [지형 가림 방지] 2026-10-04 — docs/PRD/CameraCollision.md 요구사항 A ═══════════
+    // 시선점(타깃 위 lookHeightOffset)에서 "원하는 카메라 위치"까지 구를 쏴서 고정 지형이 끼면 카메라를
+    // 그 앞으로 당긴다. 궤도 각도(orbitYaw/orbitPitch)와 시선 방향은 건드리지 않는다 — orbitYaw는
+    // ViewYaw로 이동 방향 계산에 쓰이고, 시선은 "카메라→시선점"이라 같은 직선 위에서 당겨도 방향이
+    // 그대로다(회전 계산을 다시 안 읽으므로 2026-09-15에 없앤 화면 울렁임이 되살아나지 않는다).
+    // 당기는 쪽은 즉시, 풀어주는 쪽만 returnSpeed로 부드럽게 — 모서리에서 판정이 깜빡여도 카메라가
+    // 앞뒤로 왕복하지 못한다. 대상은 blockerLayerName 레이어의 비트리거 콜라이더뿐이라 플레이어·낙석·
+    // 트리거(포탈·버블·구름)는 자동으로 빠진다. 씬의 고정 지형에 이 레이어를 지정해야 작동한다.
+    [Header("지형 가림 방지 (CameraCollision PRD)")]
+    [Tooltip("끄면 기존처럼 지형을 무시하고 궤도 위치 그대로 간다.")]
+    public bool enableTerrainAvoidance = true;
+
+    [Tooltip("카메라가 지형 앞으로 당겨질 때 막는 대상 레이어 이름. 이 레이어를 씬의 벽·천장·바닥·계단 같은 " +
+             "고정 지형에 지정해야 한다(플레이어·낙석·트리거에는 지정하지 않는다). 지정이 빠진 지형은 카메라가 " +
+             "그대로 통과한다. 프로젝트에 이 이름의 레이어가 없으면 기능이 꺼진다.")]
+    public string blockerLayerName = "CameraBlocker";
+
+    [Tooltip("카메라 근접면이 지형에 파고들지 않게 하는 검사 구의 반지름(Unit). 곧 벽과 카메라 사이 " +
+             "여유 간격이다. [임시값 — PRD §7 미정, 실측 후 조정]")]
+    public float collisionRadius = 0.3f;
+
+    [Tooltip("가림이 사라진 뒤 원래 거리로 돌아오는 속도(Unit/초). 0 이하면 즉시 돌아온다. 당기는 쪽은 " +
+             "항상 즉시다. [임시값 — PRD §7 미정, 실측 후 조정]")]
+    public float returnSpeed = 6f;
+
+    private int blockerMask;
+    private float currentDistance = float.PositiveInfinity; // 시선점→카메라 실제 거리. +inf = 보간 상태 없음.
+    // ═══════════ [지형 가림 방지 끝] ═══════════
 
     // ═══════════ [mnppi 추가 시작] 마우스 궤도 회전 — feat/mnppi-orbit-cam (#75), 박진수 승인 2026-09-03 ═══════════
     // 원신/ZZZ식 3인칭: 마우스로 타깃 주변을 yaw/pitch 궤도 회전한다. 타깃의 "위치"만 읽는 기존 설계는
@@ -218,6 +252,43 @@ public class PlayerFollowCamera : MonoBehaviour
     void Awake()
     {
         instance = this;
+        blockerMask = LayerMask.GetMask(blockerLayerName); // 없는 레이어 이름이면 0 → 기능 꺼짐
+    }
+
+    private bool AnyBlockerCollider()
+    {
+        foreach (Collider c in FindObjectsOfType<Collider>())
+            if (!c.isTrigger && ((1 << c.gameObject.layer) & blockerMask) != 0) return true;
+        return false;
+    }
+
+    /// <summary>시선점→원하는 카메라 위치 사이에 고정 지형이 있으면 그 앞으로 당긴 카메라 위치를 돌려준다.
+    /// 지형이 없거나 기능이 꺼져 있으면 followPoint + rotatedOffset과 정확히 같다(회귀 없음).
+    /// 당김은 즉시, 복귀만 returnSpeed로 보간한다. LateUpdate와 SnapToTarget이 같은 식을 쓴다.</summary>
+    private Vector3 ResolveCameraPosition(Vector3 followPoint, Vector3 rotatedOffset)
+    {
+        Vector3 origin = followPoint + Vector3.up * lookHeightOffset;
+        Vector3 full = followPoint + rotatedOffset - origin;
+        float fullDist = full.magnitude;
+        if (!enableTerrainAvoidance || blockerMask == 0 || fullDist < 0.001f)
+        {
+            currentDistance = float.PositiveInfinity;
+            return origin + full;
+        }
+
+        Vector3 dir = full / fullDist;
+        float allowed = fullDist;
+        if (Physics.SphereCast(origin, collisionRadius, dir, out RaycastHit hit, fullDist,
+                               blockerMask, QueryTriggerInteraction.Ignore))
+            allowed = hit.distance;
+
+        if (allowed < currentDistance || returnSpeed <= 0f)
+            currentDistance = allowed;
+        else
+            currentDistance = Mathf.MoveTowards(currentDistance, allowed, returnSpeed * Time.deltaTime);
+        currentDistance = Mathf.Min(currentDistance, fullDist); // 궤도가 가까워지면(조준 블렌드 등) 같이 줄어든다
+
+        return origin + dir * currentDistance;
     }
 
     void OnDestroy()
@@ -236,6 +307,18 @@ public class PlayerFollowCamera : MonoBehaviour
         {
             smoothedTargetY = target.position.y;
             smoothedFollowPoint = target.position;   // [mnppi] 첫 프레임 카메라가 원점에서 날아오지 않게
+        }
+
+        // [지형 가림 방지] 레이어가 없거나 지정된 콜라이더가 하나도 없으면 카메라가 지형을 통과한다는 걸
+        // 알린다(PRD §6 "설정 오류를 찾을 수 있어야 한다"). 씬 로드 시점 기준 1회 — 나중에 추가 로드되는
+        // 씬의 지형은 이 검사가 보지 못한다.
+        if (enableTerrainAvoidance)
+        {
+            if (blockerMask == 0)
+                Debug.LogWarning($"[PlayerFollowCamera] '{blockerLayerName}' 레이어가 프로젝트에 없어 지형 가림 방지가 꺼진다.", this);
+            else if (!AnyBlockerCollider())
+                Debug.LogWarning($"[PlayerFollowCamera] '{blockerLayerName}' 레이어를 가진 콜라이더가 씬에 하나도 없다 — " +
+                                 "고정 지형에 이 레이어를 지정하지 않으면 카메라가 벽·바닥을 통과한다.", this);
         }
 
         // ─── [mnppi 추가] 궤도 각도 초기화 + 커서 락 ───
@@ -307,6 +390,9 @@ public class PlayerFollowCamera : MonoBehaviour
 
         // 타깃 Y(상하)만 더 강하게 감쇠한 뒤 위치/시선 계산 모두에 이 값을 쓴다 — 모서리를 넘을 때
         // 마다 생기는 실제 물리적 상하 튐을 완화한다(회전을 무시하는 것과 별개의 조치).
+        // [2026-09-19] Time.smoothDeltaTime 시도했으나 효과 없었고, deltaTime==0인 프레임에서
+        // Unity SmoothDamp 내부의 오버슈트 보정(x/deltaTime)이 NaN을 내 카메라가 완전히 멈추는
+        // 새 버그만 만들어 롤백한다(원인 규명 로그: transform.position NaN 경고로 확인).
         float verticalTime = followSmoothness * Mathf.Max(1f, verticalDampingMultiplier);
         smoothedTargetY = Mathf.SmoothDamp(smoothedTargetY, followSourceRaw.y, ref targetYVelocity, verticalTime);
         Vector3 smoothedTargetPos = new Vector3(followSourceRaw.x, smoothedTargetY, followSourceRaw.z);
@@ -328,7 +414,7 @@ public class PlayerFollowCamera : MonoBehaviour
         Quaternion orbitRotation = Quaternion.Euler(orbitPitch, orbitYaw, 0f);
         Vector3 rotatedOffset = orbitRotation * effectiveOffset;
         smoothedFollowPoint = Vector3.SmoothDamp(smoothedFollowPoint, smoothedTargetPos, ref followVelocity, followSmoothness);
-        transform.position = smoothedFollowPoint + rotatedOffset;
+        transform.position = ResolveCameraPosition(smoothedFollowPoint, rotatedOffset);
 
         // 회전: dir을 "카메라 실제 위치 → 타깃 실제 위치" 벡터로 매 프레임 재구성하지 않는다.
         // [2026-09-15, 3차 수정] 그 방식(smoothedTargetPos - transform.position)은 두 항이 서로
@@ -392,7 +478,9 @@ public class PlayerFollowCamera : MonoBehaviour
         // up*h - rotatedOffset과 대수적으로 같다(t.position이 상쇄된다). 그 사실을 식으로도 드러낸다.
         Quaternion orbitRotation = Quaternion.Euler(instance.orbitPitch, instance.orbitYaw, 0f);
         Vector3 rotatedOffset = orbitRotation * instance.offset;
-        instance.transform.position = t.position + rotatedOffset;
+        // [지형 가림 방지] 이전 당김 거리를 끌고 오지 않고 새 위치에서 즉시 유효 위치를 계산한다.
+        instance.currentDistance = float.PositiveInfinity;
+        instance.transform.position = instance.ResolveCameraPosition(t.position, rotatedOffset);
         Vector3 dir = Vector3.up * instance.lookHeightOffset - rotatedOffset;
         const float minHorizontal = 0.05f;
         Vector2 horizontal = new Vector2(dir.x, dir.z);
@@ -403,6 +491,26 @@ public class PlayerFollowCamera : MonoBehaviour
         }
         if (dir.sqrMagnitude > 0.0001f)
             instance.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
+    }
+
+    /// <summary>시점(궤도 yaw)을 월드 방향의 수평 성분으로 돌린다 — 포탈 출구처럼 몸이 어느 쪽을 향해 나오는지
+    /// 화면이 따라가야 할 때 쓴다. 카메라 위치가 <c>타깃 + Euler(pitch, yaw, 0) * offset</c>(offset.z &lt; 0)이라
+    /// yaw 0이면 +Z를 바라보므로 <c>yaw = atan2(d.x, d.z)</c>다. pitch는 건드리지 않는다.
+    ///
+    /// 수평 성분이 거의 없으면(바닥·천장을 향하는 방향) 바꿀 방향이 없으니 무시한다. onlyForTarget을 주면 그
+    /// 대상이 지금 따라가는 타깃일 때만 돌린다(<see cref="SnapToTarget"/>과 같은 이유 — 조작 중이 아닌 플레이어
+    /// 때문에 화면이 돌면 안 된다). 즉시 대입이므로 <see cref="SnapToTarget"/> 직전에 부르면 같은 프레임에
+    /// 위치와 시선이 함께 맞는다.</summary>
+    public static void FaceDirection(Vector3 worldDirection, Transform onlyForTarget = null)
+    {
+        if (instance == null || instance.target == null) return;
+        if (onlyForTarget != null && instance.target != onlyForTarget) return;
+
+        Vector2 horizontal = new Vector2(worldDirection.x, worldDirection.z);
+        const float minHorizontal = 0.1f;
+        if (horizontal.sqrMagnitude < minHorizontal * minHorizontal) return;
+
+        instance.orbitYaw = Mathf.Atan2(horizontal.x, horizontal.y) * Mathf.Rad2Deg;
     }
 
     // ─── [mnppi 추가] 커서 락 헬퍼 ───
@@ -426,6 +534,7 @@ public class PlayerFollowCamera : MonoBehaviour
             instance.smoothedTargetY = newTarget.position.y;
             instance.smoothedFollowPoint = newTarget.position;   // [mnppi] 추적 지점도 함께 스냅
             instance.rollBlend = 0f; // [PortalSystem] 새 타깃은 옛 타깃의 굴리기 기준점과 무관하다
+            instance.currentDistance = float.PositiveInfinity; // [지형 가림 방지] 이전 도형의 당김 거리를 끌고 오지 않는다
         }
     }
 }

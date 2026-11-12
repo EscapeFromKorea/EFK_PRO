@@ -186,9 +186,15 @@ public class FallingRock : MonoBehaviour
         Shatter(collision.relativeVelocity.magnitude);
     }
 
+    private bool shattered;
+
     /// <summary>파편을 흩뿌리고 자신은 소멸한다. impactSpeed(충돌 상대속도)가 클수록 세게 튄다.</summary>
     private void Shatter(float impactSpeed)
     {
+        // Destroy는 프레임 끝에 실행되므로 같은 스텝에 충돌 콜백이 둘 오면 파편이 두 배로 생긴다.
+        if (shattered) return;
+        shattered = true;
+
         if (shardCount > 0 && shardSizeRatio > 0f)
         {
             Renderer source = GetComponent<Renderer>();

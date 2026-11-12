@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3c2353f858e7a4a42a7db3ab8dc7a25f, type: 3}
+  m_Name: POWER_3
+  m_EditorClassIdentifier: 
+  circuitId: POWER_3
+  outputIds:
+  - A
+  - B
+  - C
+  inputIds:
+  - 1
+  - 2
+  - 3
+  pairs:
+  - outputId: A
+    inputId: 2
+  - outputId: B
+    inputId: 3
+  - outputId: C
+    inputId: 1
+  ruleText: "\uCD9C\uB825 \uB77C\uBCA8\uACFC \uC785\uB825 \uBC88\uD638\uAC00 A-2/B-3/C-1\uB85C
+    \uB300\uC751"

@@ -146,7 +146,9 @@ public static class CloudTrampolineMenuItem
             sphere.transform.SetParent(cloud.transform, false);
             sphere.transform.localPosition = puff.pos;
             sphere.transform.localScale = puff.scale;
-            sphere.GetComponent<Renderer>().sharedMaterial = mat;
+            var puffRenderer = sphere.GetComponent<Renderer>();
+            puffRenderer.sharedMaterial = mat;
+            puffRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; // 작은 장식 구 — 그림자 캐스터 절감(2026-11-08 성능 최적화)
         }
 
         AssetDatabase.SaveAssets();

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -25,6 +26,14 @@ public class ThreadAnchor : MonoBehaviour
              "조작이 자연스럽다(플레이테스트). 조인트가 원래 '앵커 중심 반지름 L의 구' 구속이라 평면 " +
              "고정만 빠져도 3D 진자가 물리적으로 그대로 성립한다.")]
     public bool lockToSidePlane = false;
+
+    // 활성 앵커의 자가 등록 목록 — 중앙 입력이 매 프레임 "범위 안에 걸 앵커가 있나"를 묻는데 씬 전체를
+    // FindObjectsOfType로 훑으면 매 프레임 GC가 생긴다(SnapBlock.AllBlocks와 같은 이유).
+    private static readonly List<ThreadAnchor> allAnchors = new List<ThreadAnchor>();
+    public static IReadOnlyList<ThreadAnchor> All => allAnchors;
+
+    void OnEnable() => allAnchors.Add(this);
+    void OnDisable() => allAnchors.Remove(this);
 
     // 씬 뷰에서 앵커 위치(작은 실구)와 연결 가능 범위(와이어 구)를 보여준다. 레벨 배치 시
     // 플레이어가 어디까지 다가가야 걸리는지 눈으로 확인하기 위함.

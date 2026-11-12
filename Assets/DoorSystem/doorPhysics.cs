@@ -67,7 +67,10 @@ public class doorPhysics : MonoBehaviour
 
         currentTargetPosition = isPadPressed ? doorTargetPosition : leverBasedPosition;
 
-        Vector3 moveTarget = isBlocked ? doorRigidbody.transform.position : currentTargetPosition;
+        // 끼임 방지는 내려갈 때만 — 올라가는(열리는) 문은 플레이어를 누를 일이 없다. 전엔 문에 붙어 선 플레이어의
+        // Player_Mesh 트리거 때문에 열리는 것까지 멈췄다(CH8 열쇠 문 "앞에 서 있으면 안 열림").
+        bool descending = currentTargetPosition.y < doorRigidbody.transform.position.y;
+        Vector3 moveTarget = isBlocked && descending ? doorRigidbody.transform.position : currentTargetPosition;
 
         doorRigidbody.MovePosition(
             Vector3.MoveTowards(doorRigidbody.transform.position, moveTarget, doorSpeed * Time.fixedDeltaTime)
@@ -78,6 +81,14 @@ public class doorPhysics : MonoBehaviour
     {
         isPadPressed = pressed;
     }
+
+    /// <summary>플레이어가 문틈(트리거)에 겹쳐 있어 내려가기를 멈춘 상태인가. 읽기 전용 —
+    /// IsolationEntryDoor가 격리 진입 시 끼임 안전검사에 쓴다(동작 변경 없음).</summary>
+    public bool IsBlocked => isBlocked;
+
+    /// <summary>문이 닫힘 위치(시작 위치)에 도달했는가. 읽기 전용 — 위와 같은 안전검사용.</summary>
+    public bool IsAtClosedPosition =>
+        doorRigidbody != null && (doorRigidbody.position - doorStartPosition).sqrMagnitude < 0.0001f;
 
     private void OnTriggerEnter(Collider other)
     {
