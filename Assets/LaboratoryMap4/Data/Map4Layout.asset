@@ -1,0 +1,79 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7828dc972915ce346aa8abdf9a2d330b, type: 3}
+  m_Name: Map4Layout
+  m_EditorClassIdentifier: 
+  sectors:
+  - id: 1
+    sectorName: "S1 \uCD94\uACA9"
+    width: 60
+    length: 188
+    floorHeight: 0
+    exitHeight: 0
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
+  - id: 2
+    sectorName: "S2 \uACA9\uB9AC \uAD6C\uCD9C"
+    width: 76
+    length: 84
+    floorHeight: 0
+    exitHeight: 0
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
+  - id: 3
+    sectorName: "S3 \uC810\uD504"
+    width: 56
+    length: 184
+    floorHeight: 0
+    exitHeight: 0
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
+  - id: 4
+    sectorName: "S4 \uBC18\uC911\uB825.\uBCF4\uC548"
+    width: 72
+    length: 124
+    floorHeight: 0
+    exitHeight: 18
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
+  - id: 5
+    sectorName: "S5 \uC678\uB2E4\uB9AC \uD568\uC815"
+    width: 60
+    length: 136
+    floorHeight: 18
+    exitHeight: 18
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
+  - id: 6
+    sectorName: "S6 \uD3EC\uD0C8"
+    width: 72
+    length: 98
+    floorHeight: 18
+    exitHeight: 34
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
+  - id: 7
+    sectorName: "S7 \uC11C\uBC84\uC2E4"
+    width: 84
+    length: 110
+    floorHeight: 34
+    exitHeight: 34
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
+  - id: 8
+    sectorName: "S8 \uC57D\uBB3C \uC870\uD569"
+    width: 88
+    length: 144
+    floorHeight: 34
+    exitHeight: 34
+    connectorLengthToNext: 12
+    connectorWidthToNext: 8
