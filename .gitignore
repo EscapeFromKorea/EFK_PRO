@@ -37,6 +37,8 @@ CLAUDE.md.meta
 PR양식.md
 .claude/
 .mcp.json
+# 코덱스(.agents) 폴더 제외
+.agents
 
 # 로컬 참고 자료 — 리뷰 보고서, 레퍼런스 메모, 플레이테스트 피드백 스크린샷
 PR*검토*.md
