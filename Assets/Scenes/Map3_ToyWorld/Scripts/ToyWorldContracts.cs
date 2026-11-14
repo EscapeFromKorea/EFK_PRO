@@ -34,7 +34,7 @@ public sealed class ToyWorldProgressState
     public bool AllInstalled => installationCompleted;
     public bool MusicBoxActivated => musicBoxActivated;
     public bool LevelCompleted => levelCompleted;
-    public bool CanExit => AllCollected && AllInstalled && musicBoxActivated;
+    public bool CanExit => !levelCompleted;
 
     public bool IsCollected(ToyWorldRepairItemType type) =>
         (collectedMask & Bit(type)) != 0;

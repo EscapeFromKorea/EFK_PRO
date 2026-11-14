@@ -55,23 +55,14 @@ namespace Map2KitchenDraft
             var mover = other.GetComponentInParent<PlayerMover>();
             if (mover == null || !mover.isActiveAndEnabled || mover.transform != qualifiedActor) return;
 
-            int buildIndex = SceneUtility.GetBuildIndexByScenePath(destinationScene);
-            if (buildIndex < 0 || !Application.CanStreamedLevelBeLoaded(buildIndex))
+            if (LevelManager.Instance == null)
             {
-                Debug.LogError("Map 3 is missing from the enabled scene list: " + destinationScene, this);
-                enabled = false;
+                Debug.LogError("LevelManager is missing; the stage cannot be completed.", this);
                 return;
             }
-
             IsLoading = true;
-            AsyncOperation loading = SceneManager.LoadSceneAsync(buildIndex, LoadSceneMode.Single);
-            if (loading == null)
-            {
-                Debug.LogError("Unity did not start loading Map 3: " + destinationScene, this);
-                enabled = false;
-                return;
-            }
             kitchen.NotifyExit(mover.transform);
+            LevelManager.Instance.CompleteLevel();
         }
     }
 }
