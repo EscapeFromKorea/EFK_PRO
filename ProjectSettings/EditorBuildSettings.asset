@@ -18,30 +18,30 @@ EditorBuildSettings:
     path: Assets/Scenes/Map3_ToyWorld/Map3_ToyWorld.unity
     guid: 06837d24342964e4da38054f560c13d5
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Map4_Master.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity
     guid: 55adc31ef68f72f4d9e51508289fb0a5
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S1.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S1.unity
     guid: 03836970172b0564a833b720c6a8cc8f
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S2.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S2.unity
     guid: d004ec86a7b40584f926c2bfe19e4f23
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S3.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S3.unity
     guid: 303e906d73363634ba10f7123fa268c6
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S4.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S4.unity
     guid: fe5a85c18d07e2841bcc543282284a85
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S5.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S5.unity
     guid: 5f385ad410223a44aaf18f51c7ec73de
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S6.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S6.unity
     guid: a63a76d9e3ac577498cd63b34e485eca
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S7.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S7.unity
     guid: af6d56790b6f1cd4b9e13cca447ed523
   - enabled: 1
-    path: Assets/LaboratoryMap4/Scenes/Sectors/Map4_S8.unity
+    path: Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S8.unity
     guid: 0d12d4d01d76fb74db9eeee39931ed05
   m_configObjects: {}

@@ -191,6 +191,8 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
     private void OnGUI()
     {
         if (!Completed) return;
+        if (LevelManager.Instance != null &&
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().path == "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity") return;
         if (completionStyle == null)
         {
             completionStyle = new GUIStyle(GUI.skin.box) { fontSize = 28,

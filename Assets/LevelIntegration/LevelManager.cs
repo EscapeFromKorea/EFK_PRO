@@ -44,6 +44,23 @@ public sealed class LevelManager : MonoBehaviour
     }
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        if (scene.path == "Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S8.unity" &&
+            SceneManager.GetActiveScene().path == "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity")
+        {
+            foreach (GameObject root in scene.GetRootGameObjects())
+                foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+                    if (child.name == "S8_FinalExit_Checkpoint")
+                    {
+                        var checkpointCollider = child.GetComponent<Collider>();
+                        if (checkpointCollider == null || !checkpointCollider.isTrigger)
+                            Debug.LogError("Map 4 final checkpoint requires a trigger collider.", child);
+                        else if (child.GetComponent<LevelGoal>() == null)
+                            child.gameObject.AddComponent<LevelGoal>();
+                        return;
+                    }
+            Debug.LogError("Map 4 final checkpoint was not found; the goal could not be created.");
+            return;
+        }
         if (scene.path != "Assets/Scenes/Map1_DayDream/Map1_DayDream.unity") return;
         var summit = GameObject.Find("P12_Summit_Collision");
         var crown = GameObject.Find("P12_Summit_Crown");

@@ -24,8 +24,8 @@ using UnityEngine.SceneManagement;
 /// </summary>
 public static class Map4SceneBuilder
 {
-    private const string LayoutPath = "Assets/LaboratoryMap4/Data/Map4Layout.asset";
-    private const string ScenesDir = "Assets/LaboratoryMap4/Scenes";
+    private const string LayoutPath = "Assets/Scenes/Map4_Laboratory/Data/Map4Layout.asset";
+    private const string ScenesDir = "Assets/Scenes/Map4_Laboratory/Scenes";
     private const string SectorScenesDir = ScenesDir + "/Sectors";
     private const string MasterScenePath = ScenesDir + "/Map4_Master.unity";
 
@@ -84,7 +84,7 @@ public static class Map4SceneBuilder
     /// Generate가 되돌리지 않는다"가 성립한다.</summary>
     public static Map4Layout EnsureLayout()
     {
-        EnsureFolder("Assets/LaboratoryMap4/Data");
+        EnsureFolder("Assets/Scenes/Map4_Laboratory/Data");
         Map4Layout layout = AssetDatabase.LoadAssetAtPath<Map4Layout>(LayoutPath);
         if (layout == null)
         {
@@ -509,7 +509,7 @@ public static class Map4SceneBuilder
     {
         if (GameObject.Find($"Player_{shape}") != null) return;
 
-        string path = $"Assets/LaboratoryMap4/Players/Player_{shape}.prefab";
+        string path = $"Assets/Scenes/Map4_Laboratory/Players/Player_{shape}.prefab";
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
         if (prefab == null)
         {

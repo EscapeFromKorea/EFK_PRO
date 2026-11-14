@@ -19,10 +19,10 @@ using UnityEngine.SceneManagement;
 /// </summary>
 public static class Lab_PlayerBuilder
 {
-    private const string Root = "Assets/LaboratoryMap4/Players";
+    private const string Root = "Assets/Scenes/Map4_Laboratory/Players";
     private const string BaseDir = Root + "/Base";
     private const string GeneratedDir = Root + "/Generated";
-    private const string ProfilesDir = "Assets/LaboratoryMap4/Profiles";
+    private const string ProfilesDir = "Assets/Scenes/Map4_Laboratory/Profiles";
 
     private static readonly string[] ShapeNames = { "Sphere", "Cube", "Tetrahedron" };
 
@@ -146,6 +146,14 @@ public static class Lab_PlayerBuilder
         }
 
         PersistRuntimeMeshesAndMaterials(created, shape);
+
+        int materialIndex = shape == "Sphere" ? 1 : shape == "Cube" ? 0 : 2;
+        Material playerMaterial = AssetDatabase.LoadAssetAtPath<Material>(
+            $"Assets/LevelDesignSystem/Materials/Codex/Codex_Player_{materialIndex}.mat");
+        Transform visual = created.transform.Find("Player_Mesh/Player_MeshVisual");
+        if (playerMaterial == null || visual == null || visual.GetComponent<Renderer>() == null)
+            throw new System.InvalidOperationException($"[Lab_PlayerBuilder] '{shape}' 시각 메쉬 또는 머티리얼이 없다.");
+        visual.GetComponent<Renderer>().sharedMaterial = playerMaterial;
 
         string path = $"{BaseDir}/Player_{shape}_Base.prefab";
         basePrefab = PrefabUtility.SaveAsPrefabAsset(created, path, out bool success);

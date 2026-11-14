@@ -42,11 +42,11 @@ public static class Map4Build
     private static Map4Palette GetPalette()
     {
         if (paletteCache != null) return paletteCache;
-        const string path = "Assets/LaboratoryMap4/Materials/Map4Palette.asset";
+        const string path = "Assets/Scenes/Map4_Laboratory/Materials/Map4Palette.asset";
         paletteCache = AssetDatabase.LoadAssetAtPath<Map4Palette>(path);
         if (paletteCache == null)
         {
-            EnsureDir("Assets/LaboratoryMap4/Materials");
+            EnsureDir("Assets/Scenes/Map4_Laboratory/Materials");
             paletteCache = ScriptableObject.CreateInstance<Map4Palette>();
             AssetDatabase.CreateAsset(paletteCache, path);
         }
@@ -66,7 +66,7 @@ public static class Map4Build
             return new Material(Shader.Find("Standard"));
         }
 
-        const string dir = "Assets/LaboratoryMap4/Materials/Generated";
+        const string dir = "Assets/Scenes/Map4_Laboratory/Materials/Generated";
         EnsureDir(dir);
         string path = $"{dir}/Map4_{entry.paletteName}.mat";
         Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
