@@ -110,6 +110,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
         }
 
         Debug.Log("[ToyWorld] MAP 3 COMPLETE", this);
+        if (LevelManager.Instance != null) LevelManager.Instance.CompleteLevel();
         ApplyProgressToScene();
         return true;
     }
