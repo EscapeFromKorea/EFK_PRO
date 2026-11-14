@@ -32,7 +32,7 @@ public static class S2_Dress
     // ───────────────────────── 이름·경로 ─────────────────────────
     private const string LightsGroupName = "VIS_S2_Lights";                         // [계약 C1-6]
     private const string DropLineName = "VIS_S2_Iso_DropLine";                      // [판정 2 · 초안 §2-7 :299]
-    private const string MaterialDir = "Assets/LaboratoryMap4/Materials/Generated"; // [계약 C1-6]
+    private const string MaterialDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated"; // [계약 C1-6]
     private const string WallPrefix = "GEO_S2_Wall_";                               // [계약 C2-2]
     private const string CeilPrefix = "GEO_S2_Ceil_";                               // [계약 C2-2]
     private const string ObstPrefix = "GEO_S2_Obst_";                               // [계약 C2-2]

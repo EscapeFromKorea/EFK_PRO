@@ -32,7 +32,7 @@ public static class S1_Lighting
     /// <summary>[추정] 깜빡임 시드 기준값(검사 재현용, 등 번호를 더한다). 임의값.</summary>
     private const int SeedBase = 4100;
 
-    private const string MaterialDir = "Assets/LaboratoryMap4/Materials/Generated";
+    private const string MaterialDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated";
     private const string MaterialPath = MaterialDir + "/M4_S1_EmergencyLight.mat";
 
     /// <summary>복도 천장에 노란 비상등을 z 15,23,...,95(11개) 배치한다.</summary>

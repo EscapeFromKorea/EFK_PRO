@@ -68,7 +68,7 @@ public static partial class Map4FunctionalChecks
     private const string SectorsKey = "Map4FunctionalChecks_Sectors_20260928";
     private const string SectorsNoteKey = "Map4FunctionalChecks_SectorsNote_20260928";
     private const string DeadlineKey = "Map4FunctionalChecks_Deadline_20260928";
-    private const string MasterScenePath = "Assets/LaboratoryMap4/Scenes/Map4_Master.unity";
+    private const string MasterScenePath = "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity";
     private const float WatchdogSeconds = 600f;     // [확정] 계약 C5 — PTF 10분(PTF-3: 하한)
     private const float WatchdogSecondsExtended = 900f; // [계약 R2-C4] 15분 상한(PTF-3: WatchdogFor의 상한 — 근거 보고서 PTF-2 §4·PTF-3 §4)
     private const float EditorWatchdogGrace = 60f;  // [구현 결정] 플레이 진입 실패 대비 예비 워치독 = 워치독+60초

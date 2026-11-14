@@ -821,7 +821,7 @@ public static class S1_Builder
         door.transform.SetParent(g, false);
         door.transform.position = L(0f, ExitWallH / 2f, SectorLength - ExitWallT / 2f);
         door.transform.localScale = new Vector3(ExitDoorHalfW * 2f, ExitWallH, ExitWallT);
-        Material mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/LaboratoryMap4/Materials/Generated/Map4_Door.mat");
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Scenes/Map4_Laboratory/Materials/Generated/Map4_Door.mat");
         if (mat != null) door.GetComponent<Renderer>().sharedMaterial = mat;
 
         Rigidbody rb = door.AddComponent<Rigidbody>();

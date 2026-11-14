@@ -64,8 +64,8 @@ using Object = UnityEngine.Object;
 public static class Map4StuckSweep
 {
     private const string PendingKey = "Map4StuckSweep_Pending_20260928";
-    private const string MasterScenePath = "Assets/LaboratoryMap4/Scenes/Map4_Master.unity";
-    private const string LayoutPath = "Assets/LaboratoryMap4/Data/Map4Layout.asset";
+    private const string MasterScenePath = "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity";
+    private const string LayoutPath = "Assets/Scenes/Map4_Laboratory/Data/Map4Layout.asset";
     private const string LogTag = "[Map4StuckSweep]";
 
     // ── 수치표(지시서 INF2 "정확한 수치표") ────────────────────────────────────────────
@@ -638,7 +638,7 @@ public static class Map4StuckSweep
                 Rigidbody srcRb = src.GetComponent<Rigidbody>();
                 Collider srcCol = FindSolidCollider(srcRb);
                 // 프리팹 루트 회전(FreezeRotation 도형의 고정 자세) — 인스턴스 현재 회전이 아니라 에셋에서 읽는다.
-                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/LaboratoryMap4/Players/Player_{ShapeNames[s]}.prefab");
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Scenes/Map4_Laboratory/Players/Player_{ShapeNames[s]}.prefab");
                 Quaternion baseRot = prefab != null ? prefab.transform.rotation : Quaternion.identity;
                 CollisionDetectionMode srcCdm = savedCdm[s]; // 파킹 전 런타임 값
 

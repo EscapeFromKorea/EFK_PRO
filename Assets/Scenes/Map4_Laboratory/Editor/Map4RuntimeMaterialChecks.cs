@@ -14,7 +14,7 @@ using UnityEngine;
 public static class Map4RuntimeMaterialChecks
 {
     private const string Tag = "[Map4RuntimeMaterialChecks]";
-    private const string MasterScene = "Assets/LaboratoryMap4/Scenes/Map4_Master.unity";
+    private const string MasterScene = "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity";
     private const string PendingKey = "Map4Materials_Pending_20261103";
     private const string ActiveKey = "Map4Materials_Active_20261103";
     private const string DeadlineKey = "Map4Materials_Deadline_20261103";

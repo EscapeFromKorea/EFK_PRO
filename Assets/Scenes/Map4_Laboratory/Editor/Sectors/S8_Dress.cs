@@ -31,7 +31,7 @@ using UnityEngine.Rendering;
 /// 그림자가 켜지면 천장(GEO_S8_Ceil_Main)이 방향광 직사광을 막는다. 환경광은 막지 못하므로 천장 차광 효과가
 /// 얼마인지는 Unity 실측 전까지 (추정)이다(초안 §1-1). 그래서 바닥·벽·천장 Visual도 어두운 재질로 칠해 둔다(PaintFrame).
 ///
-/// 머티리얼: Assets/LaboratoryMap4/Materials/Generated/M4_S8_&lt;이름&gt;.mat — Standard, 있으면 재사용·없으면 생성
+/// 머티리얼: Assets/Scenes/Map4_Laboratory/Materials/Generated/M4_S8_&lt;이름&gt;.mat — Standard, 있으면 재사용·없으면 생성
 /// [계약 K0-3] (S1_Lighting.cs 방식). Map4Palette.asset·Map4_*.mat·팀 머티리얼은 수정하지 않는다(새 에셋만 만들고
 /// 렌더러의 sharedMaterial 참조만 바꾼다).
 ///
@@ -191,7 +191,7 @@ public static class S8_Dress
     private const string GroupName = "S8_Dress";          // [계약 K0-3]
     private const string GimmickGroupName = "S8_Gimmicks";// [계약 K0-3] W 그룹 — 이 아래는 건드리지 않는다
     private const string VisualChildName = "Visual";      // Map4Build.CreateSolidBox(:450)가 붙이는 자식 이름
-    private const string MaterialDir = "Assets/LaboratoryMap4/Materials/Generated";
+    private const string MaterialDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated";
     private const string MaterialPrefix = "M4_S8_";       // [계약 K0-3]
 
     // ════════════════════════════════════════════════════════════════════════════════════

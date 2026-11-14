@@ -17,7 +17,7 @@ public static class Map4FollowupPreview
         try
         {
             if (!Map4SceneGuard.CanReplaceCurrentScenes()) throw new InvalidOperationException("Scene replacement cancelled");
-            EditorSceneManager.OpenScene("Assets/LaboratoryMap4/Scenes/Map4_Master.unity", OpenSceneMode.Single);
+            EditorSceneManager.OpenScene("Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity", OpenSceneMode.Single);
             Map4SceneBuilder.OpenAllSectors();
             string root = Directory.GetParent(Directory.GetParent(Application.dataPath).FullName).FullName;
             string folder = Path.Combine(root, "검증", "N03_preview_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));

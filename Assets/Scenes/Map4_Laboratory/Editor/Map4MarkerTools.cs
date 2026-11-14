@@ -36,8 +36,8 @@ using UnityEngine.SceneManagement;
 /// </summary>
 public static class Map4MarkerTools
 {
-    private const string LayoutPath = "Assets/LaboratoryMap4/Data/Map4Layout.asset";          // [해석] Map4SceneBuilder.LayoutPath와 같은 값
-    private const string S8ScenePath = "Assets/LaboratoryMap4/Scenes/Sectors/Map4_S8.unity";  // [계약 R3-INT-3]
+    private const string LayoutPath = "Assets/Scenes/Map4_Laboratory/Data/Map4Layout.asset";          // [해석] Map4SceneBuilder.LayoutPath와 같은 값
+    private const string S8ScenePath = "Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S8.unity";  // [계약 R3-INT-3]
     private const int SectorId = 8;
     private const float ExpectedLength = 144f;   // [판정 18] S8 length
     private const float LengthTol = 0.01f;       // [계약 R3-INT-3] ±0.01

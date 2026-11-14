@@ -37,7 +37,7 @@ public static class S4_Dress
     // ───────────────────────── 이름·경로 ─────────────────────────
     private const string LightsGroupName = "VIS_S4_Lights";                          // [계약 C1-6]
     private const string ShellName = "VIS_S4_BubbleShell";                           // [계약 C1-6 / 초안 :69]
-    private const string MaterialDir = "Assets/LaboratoryMap4/Materials/Generated";  // [계약 C1-6]
+    private const string MaterialDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated";  // [계약 C1-6]
     private const string FloorEntryName = "GEO_S4_Floor_Entry";                      // [계약 C2-4]
     private const string FloorCylName = "GEO_S4_Floor_Cyl";                          // [계약 C2-4]
     private const string RailTag = "_Rail";                                          // GEO_S4_Wall_RailW/E [계약 C2-4]

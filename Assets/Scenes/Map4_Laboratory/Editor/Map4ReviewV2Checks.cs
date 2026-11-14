@@ -16,7 +16,7 @@ using UnityEngine;
 public static class Map4ReviewV2Checks
 {
     private const string Tag = "[Map4ReviewV2Checks]";
-    private const string MasterScene = "Assets/LaboratoryMap4/Scenes/Map4_Master.unity";
+    private const string MasterScene = "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity";
     private const string DefaultSections = "5,8,flow";
     private const string PendingKey = "Map4ReviewV2_Pending_20261103";
     private const string ActiveKey = "Map4ReviewV2_Active_20261103";

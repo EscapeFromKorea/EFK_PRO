@@ -75,7 +75,7 @@ public static class S2_Builder
     private const string TeamLeverBodyName = "lever_body";                             // [팀] DoorSystemMenuItem.cs:191
 
     // ── 마찰 0 재질 (초안 §1-5 · 계약 C1-6) ──
-    private const string NoFrictionDir = "Assets/LaboratoryMap4/Materials/Generated";  // [계약 C1-6]
+    private const string NoFrictionDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated";  // [계약 C1-6]
     private const string NoFrictionName = "PM_Map4_NoFriction";                        // [계약 C1-6·C3]
     private const string NoFrictionPalette = "Floor";  // [제안 — 초안 §2-2는 'Generated 팔레트 머티리얼'만 지정, Map4Build.Ramp 기본과 같게]
     private const string HumpPrefix = "GEO_S2_Hump_";

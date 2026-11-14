@@ -14,12 +14,12 @@ using UnityEngine;
 /// 편집기가 LaboratoryMap4 밖 Assets 파일을 디스크에 쓰려는 저장 요청을 여기서 걸러 낸다.
 /// 메모리 안 에셋 상태는 그대로라 팀 기믹 생성·동작에는 영향이 없다.
 ///
-/// 허용: Assets/LaboratoryMap4/ 아래 전부, Assets 밖 경로(ProjectSettings/EditorBuildSettings.asset —
+/// 허용: Assets/Scenes/Map4_Laboratory/ 아래 전부, Assets 밖 경로(ProjectSettings/EditorBuildSettings.asset —
 /// 00_기반_설계 결정8 허용 예외 등). 이 장치는 기믹이 아니라 저장 경로 필터다. 걸러 낼 때마다 경고 로그를 남긴다.
 /// </summary>
 public class Lab_TeamAssetSaveGuard : AssetModificationProcessor
 {
-    private const string OurRoot = "Assets/LaboratoryMap4/";
+    private const string OurRoot = "Assets/Scenes/Map4_Laboratory/";
 
     private static string[] OnWillSaveAssets(string[] paths)
     {

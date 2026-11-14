@@ -36,7 +36,7 @@ public static class S3_Dress
 {
     // ───────────────────────── 이름·경로 ─────────────────────────
     private const string LightsGroupName = "VIS_S3_Lights";                       // [계약 C1-6]
-    private const string MaterialDir = "Assets/LaboratoryMap4/Materials/Generated"; // [계약 C1-6]
+    private const string MaterialDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated"; // [계약 C1-6]
     private const string PathPrefix = "GEO_S3_Path_";                              // [계약 C2-3]
     private const string ColPrefix = "GEO_S3_Col_";                                // [계약 C2-3]
     private const string SavePadName = "GEO_S3_Path_B1_P1";                        // [계약 C2-3 / 초안 §1-3]

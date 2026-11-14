@@ -14,7 +14,7 @@ using UnityEngine;
 public static class Map4FollowupChecks
 {
     private const string Tag = "[Map4FollowupChecks]";
-    private const string MasterScene = "Assets/LaboratoryMap4/Scenes/Map4_Master.unity";
+    private const string MasterScene = "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity";
     private const string DefaultSectors = "2,5,7,8";
     private const string PendingKey = "Map4Followup_Pending_20261103";
     private const string ActiveKey = "Map4Followup_Active_20261103";

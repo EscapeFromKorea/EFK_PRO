@@ -38,7 +38,7 @@ using UnityEngine;
 public static class Map4PlayTestRunner
 {
     private const string PendingKey = "Map4PlayTest_Pending_20260928";
-    private const string MasterScenePath = "Assets/LaboratoryMap4/Scenes/Map4_Master.unity";
+    private const string MasterScenePath = "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity";
     private const float WatchdogSeconds = 180f;
 
     // [PTC] 섹터 원점의 유일한 출처 — Map4SceneBuilder.LayoutPath(private)와 같은 경로. 이전엔
@@ -46,7 +46,7 @@ public static class Map4PlayTestRunner
     // 바뀌면 S2~S8 원점이 +56 밀려 고정값과 어긋난다. 씬 빌더가 섹터 루트를 layout.GetOrigin(id)에
     // 두므로(Map4SceneBuilder.BuildSectorScene) 검사도 같은 에셋에서 계산한다. 에셋이 없거나 섹터가
     // 빠져 있으면 [실패]로 기록하고 그 검사를 중단한다 — 옛 고정값으로 조용히 되돌아가지 않는다.
-    private const string LayoutAssetPath = "Assets/LaboratoryMap4/Data/Map4Layout.asset";
+    private const string LayoutAssetPath = "Assets/Scenes/Map4_Laboratory/Data/Map4Layout.asset";
 
     // [F1 재작업 판정 A1] 팀 기본값과 확실히 다른 시험용 값. 팀 기본값: Sphere 7.0 / Cube 3.5 /
     // Tetrahedron 5.0(PlayerObjectMenuItem.cs:185-194).
@@ -87,7 +87,7 @@ public static class Map4PlayTestRunner
     {
         foreach ((string shape, float sentinel) in Sentinels)
         {
-            string path = $"Assets/LaboratoryMap4/Profiles/Lab_{shape}Stats.asset";
+            string path = $"Assets/Scenes/Map4_Laboratory/Profiles/Lab_{shape}Stats.asset";
             PlayerShapeStats stats = AssetDatabase.LoadAssetAtPath<PlayerShapeStats>(path);
             if (stats == null)
             {
@@ -109,7 +109,7 @@ public static class Map4PlayTestRunner
     {
         foreach ((string shape, float _) in Sentinels)
         {
-            string path = $"Assets/LaboratoryMap4/Profiles/Lab_{shape}Stats.asset";
+            string path = $"Assets/Scenes/Map4_Laboratory/Profiles/Lab_{shape}Stats.asset";
             PlayerShapeStats stats = AssetDatabase.LoadAssetAtPath<PlayerShapeStats>(path);
             if (stats == null) continue;
             float orig = SessionState.GetFloat("Map4PlayTest_Orig_" + shape, stats.moveSpeed);

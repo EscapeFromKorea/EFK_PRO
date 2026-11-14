@@ -34,7 +34,7 @@ using UnityEngine.Rendering;
 /// 직사광을 막는다. 환경광은 불변(Skybox·강도 1 — 초안 §7-3). 서버실이 실제로 얼마나 어두워지는지는 Unity 실측 전까지 (추정)이고,
 /// 그래서 섹터 안 머티리얼 명도(알베도)와 발광 대비로도 어둡게 만든다.
 ///
-/// 머티리얼: Assets/LaboratoryMap4/Materials/Generated/M4_S7_&lt;이름&gt;.mat — Standard, 있으면 재사용·없으면 생성
+/// 머티리얼: Assets/Scenes/Map4_Laboratory/Materials/Generated/M4_S7_&lt;이름&gt;.mat — Standard, 있으면 재사용·없으면 생성
 /// (S1_Lighting.cs·S8_Dress 방식). Map4Palette.asset·Map4_*.mat·팀 머티리얼은 수정하지 않는다(새 에셋만 만들고
 /// 렌더러의 sharedMaterial 참조만 바꾼다). 글자(TextMesh)는 팀 선례(Ch8TestRoomMenuItem.cs:258-267)대로 내장 폰트의
 /// 머티리얼을 그대로 쓴다(새 머티리얼 아님).
@@ -291,7 +291,7 @@ public static class S7_Dress
     private const string VisualChildName = "Visual";      // Map4Build.CreateSolidBox(:450 `visual.name = "Visual"`)가 붙이는 자식 이름
     private const string TempExitDoorName = "TEMP_S7_ExitDoor_Open";   // [판정 17-S7 · 판정 C11 · 계약 K0-3 :502 · K7-0 :588·:593] TEMP 기간 출구 문 대신 빈 GO(B) — 이름 규약 조회, 읽기만
     private const string ExitLintelName = "GEO_S7_Wall_North_Lintel";  // [초안 §3-1 :85] 출구 개구 위 인방(B) — GEO_ 접두사 이름 읽기 선례(PaintFrameVisuals), GeoBox로 읽기만
-    private const string MaterialDir = "Assets/LaboratoryMap4/Materials/Generated";
+    private const string MaterialDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated";
     private const string MaterialPrefix = "M4_S7_";       // [계약 K0-3]
     private const string LogTag = "[S7_Dress]";
 

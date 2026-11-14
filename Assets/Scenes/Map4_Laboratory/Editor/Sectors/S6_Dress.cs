@@ -30,7 +30,7 @@ using UnityEngine.Rendering;
 /// 끝 면(+Z)은 그림자와 무관하게 방향광 내적 ≤ 0이다 [계산] → 패널 앞 보조등을 두는 근거는 그대로다.
 /// 섹터 안 등(천장 등·보조등·출구 등)이 방 밝기를 맡는다.
 ///
-/// 머티리얼: Assets/LaboratoryMap4/Materials/Generated/M4_S6_&lt;이름&gt;.mat — Standard, 있으면 재사용·없으면 생성
+/// 머티리얼: Assets/Scenes/Map4_Laboratory/Materials/Generated/M4_S6_&lt;이름&gt;.mat — Standard, 있으면 재사용·없으면 생성
 /// (S1_Lighting.cs·S8_Dress 방식). Map4Palette.asset·Map4_*.mat·팀 머티리얼은 수정하지 않는다(새 에셋만 만들고
 /// 렌더러의 sharedMaterial 참조만 바꾼다).
 ///
@@ -189,7 +189,7 @@ public static class S6_Dress
     private const string GimmickGroupName = "S6_Gimmicks";// [계약 K0-3] W 그룹 — 이 아래는 칠하지 않는다
     private const string GeoPrefix = "GEO_S6_";           // [계약 K0-3]
     private const string VisualChildName = "Visual";      // Map4Build.CreateSolidBox(:450)가 붙이는 자식 이름
-    private const string MaterialDir = "Assets/LaboratoryMap4/Materials/Generated";
+    private const string MaterialDir = "Assets/Scenes/Map4_Laboratory/Materials/Generated";
     private const string MaterialPrefix = "M4_S6_";       // [계약 K0-3]
     /// <summary>[제안] 윗면 y가 이 값 안이면 '방 바닥'으로 본다.</summary>
     private const float FloorTopTolerance = 0.05f;
