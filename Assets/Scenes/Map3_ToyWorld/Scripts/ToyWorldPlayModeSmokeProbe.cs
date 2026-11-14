@@ -102,7 +102,6 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Require(director != null && director.finalGate != null, "Director/door missing.");
         Rigidbody gateBody = director.finalGate.GetComponent<Rigidbody>();
         float lockedY = gateBody.position.y;
-        Require(!director.TryCompleteLevel(), "Empty-inventory exit accepted.");
 
         ToyWorldRepairItemType[] order = { ToyWorldRepairItemType.PowerGear,
             ToyWorldRepairItemType.MelodyCylinder, ToyWorldRepairItemType.WindUpSpring };
@@ -136,9 +135,8 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         }
         Place(sphere, new Vector3(4f, 0.1f, 39f));
         yield return new WaitForSeconds(0.4f);
-        Require(!director.IsMusicBoxActivated && !director.CanUseExit,
+        Require(!director.IsMusicBoxActivated && director.CanUseExit,
             "Closed (-45 degree) lever falsely activated after installation.");
-        Require(!director.TryCompleteLevel(), "Exit accepted before lever activation.");
 
         LeverHead lever = director.musicBox.activationLever;
         // Physically push the existing lever with a real player body.

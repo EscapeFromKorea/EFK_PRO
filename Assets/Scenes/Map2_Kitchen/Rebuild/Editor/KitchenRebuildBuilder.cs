@@ -228,21 +228,22 @@ namespace Map2KitchenDraft.Editor
 
         private static void SetupAtmosphere()
         {
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Custom;
-            RenderSettings.ambientLight = new Color(.58f, .64f, .68f);
-            var ambient = new UnityEngine.Rendering.SphericalHarmonicsL2();
-            ambient.AddAmbientLight(new Color(.63f, .68f, .69f));
-            RenderSettings.ambientProbe = ambient;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(.64f, .73f, .78f);
+            RenderSettings.ambientEquatorColor = new Color(.48f, .52f, .54f);
+            RenderSettings.ambientGroundColor = new Color(.32f, .3f, .32f);
             RenderSettings.fog = true;
             RenderSettings.fogColor = new Color(.14f, .19f, .22f);
             RenderSettings.fogDensity = .0017f;
             var daylight = new GameObject("Restaurant skylight").AddComponent<Light>();
             daylight.transform.SetParent(world);
             daylight.type = LightType.Directional;
-            daylight.intensity = 1.25f;
-            daylight.color = new Color(.94f, .96f, 1f);
+            daylight.intensity = 1.18f;
+            daylight.color = new Color(1f, .94f, .82f);
             daylight.transform.rotation = Quaternion.Euler(51, -34, 0);
             daylight.shadows = LightShadows.Soft;
+            daylight.shadowStrength = .65f;
+            daylight.shadowBias = .035f;
             sceneCamera.backgroundColor = RenderSettings.fogColor;
         }
 

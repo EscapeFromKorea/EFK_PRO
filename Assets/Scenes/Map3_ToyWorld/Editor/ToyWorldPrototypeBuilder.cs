@@ -242,6 +242,11 @@ public static class ToyWorldPrototypeBuilder
                 throw new InvalidOperationException("Could not invoke existing player builder: " + menuItems[i]);
             GameObject player = GameObject.Find(objectNames[i]);
             if (player == null) throw new InvalidOperationException("Existing PlayerSystem builder did not create " + objectNames[i]);
+            Transform visual = player.transform.Find("Player_Mesh/Player_MeshVisual");
+            int materialIndex = i == 0 ? 1 : i == 1 ? 0 : 2;
+            Material material = AssetDatabase.LoadAssetAtPath<Material>("Assets/LevelDesignSystem/Materials/Codex/Codex_Player_" + materialIndex + ".mat");
+            if (visual == null || material == null) throw new InvalidOperationException("Player visual or material missing: " + objectNames[i]);
+            visual.GetComponent<Renderer>().sharedMaterial = material;
             player.transform.SetParent(parent, true);
             player.transform.position = new Vector3(xPositions[i], 0.05f, -50f);
         }

@@ -193,6 +193,10 @@ public static class ToyWorldPrototypeValidator
 
     private static void ValidateProgressionModel(ref int errors)
     {
+        ToyWorldProgressState earlyExit = new ToyWorldProgressState();
+        Require(earlyExit.CanExit && earlyExit.TryCompleteLevel() && earlyExit.LevelCompleted,
+            "Exit must complete without puzzle progress.", ref errors);
+        Require(!earlyExit.TryCompleteLevel(), "Exit completed more than once.", ref errors);
         ToyWorldRepairItemType[][] orders =
         {
             new[] { ToyWorldRepairItemType.WindUpSpring, ToyWorldRepairItemType.PowerGear, ToyWorldRepairItemType.MelodyCylinder },
@@ -218,9 +222,9 @@ public static class ToyWorldPrototypeValidator
                 "Install order accepted Gear before Spring.", ref errors);
             Require(state.TryInstall(ToyWorldRepairItemType.WindUpSpring), "Spring installation failed.", ref errors);
             Require(state.TryInstall(ToyWorldRepairItemType.PowerGear), "Gear installation failed.", ref errors);
-            Require(!state.CanExit, "Exit became valid before all installation and activation conditions.", ref errors);
+            Require(state.CanExit, "Exit unavailable before installation is complete.", ref errors);
             Require(state.TryInstall(ToyWorldRepairItemType.MelodyCylinder), "Cylinder installation failed.", ref errors);
-            Require(!state.CanExit, "Exit became valid before Music Box activation.", ref errors);
+            Require(state.CanExit, "Exit unavailable before Music Box activation.", ref errors);
             Require(state.TryActivateMusicBox() && state.CanExit, "Music Box activation did not validate exit.", ref errors);
             Require(state.TryCompleteLevel() && state.LevelCompleted, "Final completion failed.", ref errors);
         }

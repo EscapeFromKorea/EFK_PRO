@@ -105,7 +105,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
         if (!state.TryCompleteLevel())
         {
             if (verboseLogging)
-                Debug.Log("[ToyWorld] Exit rejected: collect, install, and activate all three repair parts first.", this);
+                Debug.Log("[ToyWorld] Exit already completed.", this);
             return false;
         }
 

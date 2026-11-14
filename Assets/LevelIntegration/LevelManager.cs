@@ -46,15 +46,18 @@ public sealed class LevelManager : MonoBehaviour
     {
         if (scene.path != "Assets/Scenes/Map1_DayDream/Map1_DayDream.unity") return;
         var summit = GameObject.Find("P12_Summit_Collision");
+        var crown = GameObject.Find("P12_Summit_Crown");
         if (summit == null) { Debug.LogError("Map 1 summit was not found; the goal could not be created."); return; }
+        if (crown == null) { Debug.LogError("Map 1 summit crown was not found; the goal could not be created."); return; }
         var collider = summit.GetComponent<Collider>();
         if (collider == null) { Debug.LogError("Map 1 summit has no collider."); return; }
         Bounds bounds = collider.bounds;
         var goal = new GameObject("LevelGoal_Map1");
-        goal.transform.position = new Vector3(bounds.center.x, bounds.max.y + 1.5f, bounds.center.z);
+        goal.transform.position = new Vector3(crown.transform.position.x, bounds.max.y + 2f, crown.transform.position.z);
+        goal.transform.rotation = crown.transform.rotation;
         var trigger = goal.AddComponent<BoxCollider>();
         trigger.isTrigger = true;
-        trigger.size = new Vector3(bounds.size.x * 0.8f, 3f, bounds.size.z * 0.8f);
+        trigger.size = new Vector3(6f, 4f, 1f);
         goal.AddComponent<LevelGoal>();
     }
     private int CurrentIndex()

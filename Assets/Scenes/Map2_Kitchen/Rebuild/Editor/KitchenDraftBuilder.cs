@@ -624,6 +624,12 @@ namespace Map2KitchenDraft.Editor
                 mover.cameraRelativeInput = true;
                 mover.inputYawOffset = 0f;
                 PersistDynamicPlayerMeshes(root, menu[i]);
+                var visual = root.transform.Find("Player_Mesh/Player_MeshVisual");
+                if (visual == null) throw new InvalidOperationException("Player visual missing: " + menu[i]);
+                int materialIndex = i == 0 ? 1 : i == 1 ? 0 : 2;
+                var material = AssetDatabase.LoadAssetAtPath<Material>("Assets/LevelDesignSystem/Materials/Codex/Codex_Player_" + materialIndex + ".mat");
+                if (material == null) throw new InvalidOperationException("Player material missing: " + menu[i]);
+                visual.GetComponent<Renderer>().sharedMaterial = material;
             }
         }
 
