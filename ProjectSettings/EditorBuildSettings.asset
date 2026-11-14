@@ -4,5 +4,11 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/Map2_Kitchen/Rebuild/Scenes/Map2KitchenPlayable.unity
+    guid: 3b0c23a8fa4fdb0469dc48c34875de6b
+  - enabled: 1
+    path: Assets/Scenes/Map3_ToyWorld/Map3_ToyWorld.unity
+    guid: 06837d24342964e4da38054f560c13d5
   m_configObjects: {}
