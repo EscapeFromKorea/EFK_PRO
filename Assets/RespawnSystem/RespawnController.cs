@@ -98,6 +98,9 @@ public class RespawnController : MonoBehaviour
     /// 세션 간 저장도 하지 않는다(그건 세이브 시스템의 일이다).</summary>
     public int RespawnCount { get; private set; }
 
+    [Tooltip("Shows the temporary IMGUI respawn counter. Disable in finished scenes that provide no debug HUD.")]
+    public bool showDebugGui = true;
+
     /// <summary>복귀가 시작될 때(자동·수동 R·구간 복귀 모두) 대상 플레이어 Root를 넘겨 발신한다. 복귀는
     /// 개인의 이동일 뿐이라 역할·진행 상태는 그대로 두고 그 참가자의 화면(패널)만 닫으면 되는 시스템들이
     /// 구독한다(RoleAssignmentManager — docs/PRD/RoleClueTerminal.md §2.5). 다른 시스템의 존재를 이
@@ -789,6 +792,7 @@ public class RespawnController : MonoBehaviour
     // 메서드만 지우고 RespawnCount를 읽어 가면 된다. 내장 GUI 폰트에 한글 글리프가 없어 영문이다.
     private void OnGUI()
     {
+        if (!showDebugGui) return;
         GUI.Label(new Rect(12f, 12f, 220f, 22f), $"Respawns: {RespawnCount}");
     }
 

@@ -2,12 +2,14 @@ using UnityEngine;
 
 /// <summary>
 /// 판의 Rigidbody/HingeJoint 값을 왜 이렇게 잡았는지 인스펙터 hover로 보여주는 주석 전용
-/// 컴포넌트. Update/FixedUpdate가 없어 런타임 동작에는 전혀 관여하지 않는다 — 여기 필드는 실제
+/// 컴포넌트. Start에서 기존 시소의 하중 보정기를 연결하며, 여기 필드는 실제
 /// 물리 값을 복제하지 않는다(복제하면 둘이 어긋날 수 있다). 값 자체는 항상 위 Rigidbody/
 /// HingeJoint 컴포넌트에서 직접 조정한다.
 /// </summary>
 public class SeesawTuningNotes : MonoBehaviour
 {
+    private void Start() => SeesawWeightTilt.TryUpgrade(this);
+
     [Tooltip("Rigidbody > Mass. 판 자체 질량 — 낮출수록 회전 관성이 줄어 같은 무게 차이에도 더 " +
         "잘 기운다(뻑뻑하면 이 값부터 낮춰본다). 올릴수록 뻑뻑해진다.")]
     public string mass = "→ 위 Rigidbody 컴포넌트 참고";

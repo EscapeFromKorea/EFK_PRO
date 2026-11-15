@@ -20,6 +20,9 @@ using UnityEngine;
 /// </summary>
 public class PlayerControlSwitcher : MonoBehaviour
 {
+    [Tooltip("Optional deterministic player selected when the scene starts. Leave empty to keep the existing name-sorted fallback.")]
+    public PlayerMover initialPlayer;
+
     private static PlayerControlSwitcher instance;
 
     private readonly List<PlayerMover> players = new List<PlayerMover>();
@@ -43,6 +46,14 @@ public class PlayerControlSwitcher : MonoBehaviour
         // 직접 찾아 등록해 순서와 무관하게 항상 동작하도록 한다.
         foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
             RegisterPlayer(mover);
+
+        // A scene builder may explicitly choose the player shown by its starting camera. Without this,
+        // FindObjectsOfType's undefined order can give control to a different shape than the camera target.
+        if (initialPlayer != null && players.Contains(initialPlayer))
+        {
+            activePlayer = initialPlayer;
+            ApplyActive();
+        }
     }
 
     void OnDestroy()

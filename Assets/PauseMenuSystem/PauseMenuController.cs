@@ -96,6 +96,7 @@ public class PauseMenuController : MonoBehaviour
             if (_confirmLeft <= 0f) RevertScreen();
         }
 
+        if (LevelManager.Instance != null && LevelManager.Instance.IsCleared) return;
         if (!Input.GetKeyDown(KeyCode.Escape)) return;
         if (_confirmActive) { RevertScreen(); return; }
         switch (_state)

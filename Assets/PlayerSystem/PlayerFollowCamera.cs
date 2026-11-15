@@ -333,7 +333,7 @@ public class PlayerFollowCamera : MonoBehaviour
 
     void LateUpdate()
     {
-        if (target == null) return;
+        if (target == null || Time.deltaTime <= 0f) return;
 
         // ─── [mnppi 추가] 마우스 입력 → 궤도 각도 갱신 + 커서 락 유지 ───
         if (enableMouseOrbit)
