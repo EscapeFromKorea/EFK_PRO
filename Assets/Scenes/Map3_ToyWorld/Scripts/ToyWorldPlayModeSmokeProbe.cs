@@ -76,7 +76,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
             Destroy(frame); Destroy(target);
             Debug.Log("[ToyWorldArt] PLAY_CAMERA_CAPTURE_PASS (camera only, IMGUI excluded): " + preview);
         }
-        foreach (PlayerMover player in FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover player in FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (player.name == "Player_Sphere") sphere = player;
         Require(sphere != null, "Existing sphere player missing.");
         Require(PlayerControlSwitcher.ActiveTarget == sphere.transform && sphere.IsControlled,
@@ -95,10 +95,10 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Require(manualBody.linearVelocity.y > 1f, "Grounded manual jump input was not consumed by PlayerJump.");
         Debug.Log("[ToyWorldPlaySmoke] PASS deterministic Sphere control, grounded state, and manual jump path.");
 
-        foreach (PlayerMover player in FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover player in FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             player.SetControlled(false);
         Place(sphere, new Vector3(5f, 0.1f, -5f));
-        ToyWorldLevelDirector director = FindObjectOfType<ToyWorldLevelDirector>();
+        ToyWorldLevelDirector director = FindFirstObjectByType<ToyWorldLevelDirector>();
         Require(director != null && director.finalGate != null, "Director/door missing.");
         Rigidbody gateBody = director.finalGate.GetComponent<Rigidbody>();
         float lockedY = gateBody.position.y;
@@ -107,7 +107,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
             ToyWorldRepairItemType.MelodyCylinder, ToyWorldRepairItemType.WindUpSpring };
         for (int i = 0; i < order.Length; i++)
         {
-            ToyWorldRepairItem item = Array.Find(FindObjectsOfType<ToyWorldRepairItem>(), p => p.itemType == order[i]);
+            ToyWorldRepairItem item = Array.Find(FindObjectsByType<ToyWorldRepairItem>(FindObjectsSortMode.None), p => p.itemType == order[i]);
             Place(sphere, item.transform.position);
             yield return new WaitForSeconds(0.4f);
             Require(director.CollectedCount == i + 1, "Real pickup trigger failed: " + order[i]);
@@ -121,7 +121,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Require(!director.TryCollectItem(order[2]) && director.CollectedCount == 3, "Duplicate pickup changed count.");
         Debug.Log("[ToyWorldPlaySmoke] PASS real pickup triggers, 2/3 locked and 3/3 physical door motion.");
 
-        ToyWorldInstallSocket[] sockets = FindObjectsOfType<ToyWorldInstallSocket>();
+        ToyWorldInstallSocket[] sockets = FindObjectsByType<ToyWorldInstallSocket>(FindObjectsSortMode.None);
         ToyWorldInstallSocket gear = Array.Find(sockets, s => s.itemType == ToyWorldRepairItemType.PowerGear);
         Place(sphere, gear.transform.position);
         yield return new WaitForSeconds(0.2f);
@@ -156,7 +156,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
             "Physical push did not activate existing lever. Angle=" + lever.GetCurrentAngle() + ", player=" + sphereBody.position);
         Debug.Log("[ToyWorldPlaySmoke] PASS ordered install triggers, negative-angle regression and physical lever push.");
 
-        foreach (LiftPad pad in FindObjectsOfType<LiftPad>())
+        foreach (LiftPad pad in FindObjectsByType<LiftPad>(FindObjectsSortMode.None))
         {
             LiftPlatform lift = pad.targetLift;
             Rigidbody liftBody = lift.GetComponent<Rigidbody>();
@@ -186,7 +186,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Require(sphereBody.isKinematic && sphere.transform.parent == cart.transform,
             "Player shape did not board the RailCart.");
 
-        PlayerMover cube = Array.Find(FindObjectsOfType<PlayerMover>(), p => p.name == "Player_Cube");
+        PlayerMover cube = Array.Find(FindObjectsByType<PlayerMover>(FindObjectsSortMode.None), p => p.name == "Player_Cube");
         Rigidbody cubeBody = cube.GetComponent<Rigidbody>();
         Vector3 cartStart = cartBody.position;
         Vector3 forwardPush = -cart.axle.crank.forward;
@@ -246,7 +246,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Place(cube, new Vector3(30f, 0.1f, 20f));
         Debug.Log("[ToyWorldPlaySmoke] PASS bidirectional crank/cart travel, boarded rider sync, and player-only track pass-through.");
 
-        Portal[] portals = FindObjectsOfType<Portal>();
+        Portal[] portals = FindObjectsByType<Portal>(FindObjectsSortMode.None);
         Portal enter = Array.Find(portals, p => p.action == Portal.PortalAction.Enable);
         Portal leave = Array.Find(portals, p => p.action == Portal.PortalAction.Disable);
         Place(cube, new Vector3(enter.transform.position.x, 0.1f, enter.transform.position.z));
@@ -258,7 +258,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Require(!roll.RollModeActive, "Existing Portal Disable trigger failed.");
         Debug.Log("[ToyWorldPlaySmoke] PASS existing PortalSystem trigger pair.");
 
-        SnapBlock[] blocks = FindObjectsOfType<SnapBlock>();
+        SnapBlock[] blocks = FindObjectsByType<SnapBlock>(FindObjectsSortMode.None);
         SnapBlock a = blocks[0], b = blocks[1];
         PuzzleResettable resetA = a.GetComponent<PuzzleResettable>();
         Vector3 resetPosition = a.Body.position;
@@ -280,8 +280,8 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
 
         // Every intentionally placed launch bypass must produce a real collision-driven launch
         // for each existing shape. This checks the pad wiring, not keyboard steering/landing skill.
-        JumpPad[] jumpPads = FindObjectsOfType<JumpPad>();
-        PlayerMover[] shapes = FindObjectsOfType<PlayerMover>();
+        JumpPad[] jumpPads = FindObjectsByType<JumpPad>(FindObjectsSortMode.None);
+        PlayerMover[] shapes = FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
         foreach (PlayerMover shape in shapes)
         {
             foreach (JumpPad pad in jumpPads)
@@ -324,7 +324,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
             "Sticker retraction did not restore original ramp material.");
         Debug.Log("[ToyWorldPlaySmoke] PASS existing ramp sticker swap/retraction.");
 
-        RespawnController respawn = FindObjectOfType<RespawnController>();
+        RespawnController respawn = FindFirstObjectByType<RespawnController>();
         RespawnZone cp = GameObject.Find("CP_FinalRoom").GetComponent<RespawnZone>();
         // A fresh checkpoint permits checking the existing anti-rewind checkpoint contract.
         Place(sphere, cp.transform.position - Vector3.up);
@@ -339,7 +339,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Debug.Log("[ToyWorldPlaySmoke] PASS existing checkpoint respawn and progress persistence.");
 
         // Actual final trigger, after all physical/persistence checks.
-        ToyWorldExitTrigger exit = FindObjectOfType<ToyWorldExitTrigger>();
+        ToyWorldExitTrigger exit = FindFirstObjectByType<ToyWorldExitTrigger>();
         Place(sphere, exit.transform.position);
         yield return new WaitForSeconds(0.3f);
         Require(director.IsLevelCompleted, "Real final exit trigger failed.");

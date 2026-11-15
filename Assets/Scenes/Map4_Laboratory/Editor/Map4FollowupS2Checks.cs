@@ -124,7 +124,7 @@ public static class Map4FollowupS2Checks
         Move(inside, flow.transform.position);
         Physics.SyncTransforms();
         bool transferred = flow.HasTransferred || flow.TryTransfer(inside.gameObject);
-        Map4Director director = UnityEngine.Object.FindObjectOfType<Map4Director>();
+        Map4Director director = UnityEngine.Object.FindFirstObjectByType<Map4Director>();
         SectorController ch4 = null;
         if (director != null) director.TryGetSector(4, out ch4);
         bool atDistinctSlots = AtDistinctSpawnSlots(players, ch4, 0.5f);
@@ -133,7 +133,7 @@ public static class Map4FollowupS2Checks
         record("S2/중복통과차단", !flow.TryTransfer(inside.gameObject), $"한번만={flow.HasTransferred}");
 
         // 새 체크포인트를 로그나 private 상태가 아닌 실제 공용 복귀 행동으로 검증한다.
-        RespawnController respawn = UnityEngine.Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = UnityEngine.Object.FindFirstObjectByType<RespawnController>();
         RespawnZone cp4 = ch4 != null ? ch4.GetComponentsInChildren<RespawnZone>(true)
             .FirstOrDefault(z => z.name == "CP_S4_Start") : null;
         if (respawn == null || cp4 == null)

@@ -34,12 +34,12 @@ public static class KitchenTenSectorPlaySmoke
         try
         {
             int phase = EditorPrefs.GetInt(PhaseKey, 0);
-            PlayerMover[] players = UnityEngine.Object.FindObjectsOfType<PlayerMover>();
+            PlayerMover[] players = UnityEngine.Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             if (players.Length != 3) throw new Exception("플레이어 수: " + players.Length);
 
             if (phase == 0)
             {
-                ThreadBridge[] bridges = UnityEngine.Object.FindObjectsOfType<ThreadBridge>();
+                ThreadBridge[] bridges = UnityEngine.Object.FindObjectsByType<ThreadBridge>(FindObjectsSortMode.None);
                 if (bridges.Length != 5) throw new Exception("줄다리 수: " + bridges.Length);
                 foreach (ThreadBridge bridge in bridges)
                 {
@@ -48,7 +48,7 @@ public static class KitchenTenSectorPlaySmoke
                         span.GetComponentsInChildren<BoxCollider>().Length < bridge.segmentCount)
                         throw new Exception("줄다리 런타임 콜라이더 생성 실패: " + bridge.name);
                 }
-                ExitWeightPlate firstPlate = UnityEngine.Object.FindObjectsOfType<ExitWeightPlate>()
+                ExitWeightPlate firstPlate = UnityEngine.Object.FindObjectsByType<ExitWeightPlate>(FindObjectsSortMode.None)
                     .OrderBy(p => p.name).FirstOrDefault();
                 if (firstPlate == null) throw new Exception("3인 합류판이 없습니다.");
                 Teleport(players, firstPlate.transform.position - Vector3.up * .06f);
@@ -60,7 +60,7 @@ public static class KitchenTenSectorPlaySmoke
 
             if (phase >= 1 && phase <= 10)
             {
-                ExitWeightPlate[] plates = UnityEngine.Object.FindObjectsOfType<ExitWeightPlate>()
+                ExitWeightPlate[] plates = UnityEngine.Object.FindObjectsByType<ExitWeightPlate>(FindObjectsSortMode.None)
                     .OrderBy(p => p.name).ToArray();
                 if (plates.Length != 10) throw new Exception("3인 합류판 수: " + plates.Length);
                 ExitWeightPlate current = plates[phase - 1];
@@ -85,7 +85,7 @@ public static class KitchenTenSectorPlaySmoke
                 return;
             }
 
-            KitchenTeamGoal goal = UnityEngine.Object.FindObjectOfType<KitchenTeamGoal>();
+            KitchenTeamGoal goal = UnityEngine.Object.FindFirstObjectByType<KitchenTeamGoal>();
             if (goal == null) throw new Exception("목표 트리거가 없습니다.");
             FieldInfo completed = typeof(KitchenTeamGoal).GetField("completed", BindingFlags.NonPublic | BindingFlags.Instance);
             if (completed == null || !(bool)completed.GetValue(goal))

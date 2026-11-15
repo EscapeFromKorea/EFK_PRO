@@ -68,12 +68,12 @@ public static class Ch1LevelLayoutMenuItem
 
         GameObject floorGo = GameObject.Find("Cube");
         Collider floor = floorGo != null ? floorGo.GetComponent<BoxCollider>() : null;
-        RespawnController respawn = Object.FindObjectOfType<RespawnController>();
-        PathChaserController controller = Object.FindObjectOfType<PathChaserController>();
-        BreakableObject wall = Object.FindObjectOfType<BreakableObject>();
-        CatapultLoadController catapult = Object.FindObjectOfType<CatapultLoadController>();
-        WindupAxle axle = Object.FindObjectOfType<WindupAxle>();
-        RailCart[] carts = Object.FindObjectsOfType<RailCart>().OrderBy(c => c.name + c.GetInstanceID()).ToArray();
+        RespawnController respawn = Object.FindFirstObjectByType<RespawnController>();
+        PathChaserController controller = Object.FindFirstObjectByType<PathChaserController>();
+        BreakableObject wall = Object.FindFirstObjectByType<BreakableObject>();
+        CatapultLoadController catapult = Object.FindFirstObjectByType<CatapultLoadController>();
+        WindupAxle axle = Object.FindFirstObjectByType<WindupAxle>();
+        RailCart[] carts = Object.FindObjectsByType<RailCart>(FindObjectsSortMode.None).OrderBy(c => c.name + c.GetInstanceID()).ToArray();
         if (floor == null || respawn == null || controller == null || controller.agent == null || wall == null
             || catapult == null || axle == null || carts.Length != 3 || controller.safePreCounter == null
             || controller.safePostCounter == null)
@@ -89,8 +89,8 @@ public static class Ch1LevelLayoutMenuItem
             origin = Vector3.zero, parent = null, floor = floor, respawn = respawn, controller = controller,
             wall = wall, catapult = catapult, axle = axle, carts = carts,
             players = shapes.Select(GameObject.Find).ToArray(),
-            checkpoint = Object.FindObjectOfType<RespawnZone>(),
-            oob = Object.FindObjectOfType<OutOfBoundsVolume>(),
+            checkpoint = Object.FindFirstObjectByType<RespawnZone>(),
+            oob = Object.FindFirstObjectByType<OutOfBoundsVolume>(),
         });
 
         Undo.CollapseUndoOperations(undoGroup);

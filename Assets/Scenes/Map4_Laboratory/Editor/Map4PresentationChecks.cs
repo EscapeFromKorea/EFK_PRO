@@ -45,7 +45,7 @@ public static class Map4PresentationChecks
             $"ambientIntensity={RenderSettings.ambientIntensity:F3} probeL0RGB=({probe[0, 0]:F3},{probe[1, 0]:F3},{probe[2, 0]:F3}) " +
             $"activeColorSpace={QualitySettings.activeColorSpace}");
         Vector3 s1Spawn = sectors[0].spawnSlots[0].position;
-        Light[] activeLights = UnityEngine.Object.FindObjectsOfType<Light>()
+        Light[] activeLights = UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None)
             .Where(l => l != null && l.enabled && l.gameObject.activeInHierarchy).ToArray();
         summary.AppendLine($"LIGHTING activeLightCount={activeLights.Length} distanceReference=S1 first spawn {s1Spawn}");
         foreach (Light light in activeLights.OrderBy(l => Vector3.Distance(l.transform.position, s1Spawn)))
@@ -238,7 +238,7 @@ public static class Map4PresentationChecks
 
             // OnGUI는 RoleAssignmentManager가 활성화된 동안 전역 GUI 콜백으로 호출된다.
             // 실제 가시성은 게임 UI 화면에서 별도 관찰해야 하며, 여기서는 객체 활성·표시 옵션만 기록한다.
-            Lab_MapPresentation mapPresentation = UnityEngine.Object.FindObjectOfType<Lab_MapPresentation>();
+            Lab_MapPresentation mapPresentation = UnityEngine.Object.FindFirstObjectByType<Lab_MapPresentation>();
             record("PRESENT.hudAdapter", mapPresentation != null && mapPresentation.enabled,
                 mapPresentation != null ? "Map4 현재 챕터 HUD 표시 범위 어댑터 활성" : "Map4 현재 챕터 HUD 표시 범위 어댑터 없음");
             RoleAssignmentManager[] managers = Resources.FindObjectsOfTypeAll<RoleAssignmentManager>()

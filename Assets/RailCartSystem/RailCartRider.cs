@@ -156,7 +156,7 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
 
     private static PlayerMover FindControlledPlayer()
     {
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (m.IsControlled) return m;
         return null;
     }
@@ -165,7 +165,7 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
     // CatapultBucket.IsNearestBucket과 같은 이유(C는 전역 키).
     private bool IsNearestRider(Vector3 playerPosition, float myDistance)
     {
-        foreach (RailCartRider other in Object.FindObjectsOfType<RailCartRider>())
+        foreach (RailCartRider other in Object.FindObjectsByType<RailCartRider>(FindObjectsSortMode.None))
         {
             if (other == this) continue;
             float otherDistance = Vector3.Distance(playerPosition, other.transform.position);

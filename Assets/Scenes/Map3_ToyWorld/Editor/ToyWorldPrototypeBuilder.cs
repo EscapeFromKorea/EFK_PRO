@@ -254,7 +254,7 @@ public static class ToyWorldPrototypeBuilder
         PlayerMover initialPlayer = GameObject.Find("Player_Sphere").GetComponent<PlayerMover>();
         PlayerFollowCamera follow = camera.GetComponent<PlayerFollowCamera>();
         follow.target = initialPlayer.transform;
-        PlayerControlSwitcher switcher = UnityEngine.Object.FindObjectOfType<PlayerControlSwitcher>();
+        PlayerControlSwitcher switcher = UnityEngine.Object.FindFirstObjectByType<PlayerControlSwitcher>();
         if (switcher != null)
         {
             switcher.initialPlayer = initialPlayer;

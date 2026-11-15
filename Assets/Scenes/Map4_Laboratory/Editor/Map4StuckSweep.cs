@@ -161,7 +161,7 @@ public static class Map4StuckSweep
         if (!SessionState.GetBool(PendingKey, false)) return;
         SessionState.SetBool(PendingKey, false);
 
-        if (Object.FindObjectOfType<Driver>() != null) return;
+        if (Object.FindFirstObjectByType<Driver>() != null) return;
         new GameObject("Map4StuckSweep_RUNTIME").AddComponent<Driver>();
         Debug.Log($"{LogTag} 플레이 모드 진입 — 스윕 러너 생성.");
     }
@@ -502,7 +502,7 @@ public static class Map4StuckSweep
             layout = AssetDatabase.LoadAssetAtPath<Map4Layout>(LayoutPath);
             if (layout == null) { fatal.Add($"[치명] {LayoutPath} 없음 — 섹터 경계를 알 수 없다."); yield break; }
 
-            director = Object.FindObjectOfType<Map4Director>();
+            director = Object.FindFirstObjectByType<Map4Director>();
             if (director == null) { fatal.Add("[치명] Map4Director를 찾지 못했다."); yield break; }
 
             float loadDeadline = Time.realtimeSinceStartup + 30f;
@@ -510,7 +510,7 @@ public static class Map4StuckSweep
             log.AppendLine($"섹터 로드: {director.LoadedSectorCount}/8");
             // Director.RunStartup이 스폰을 끝내면 플레이어 useGravity를 되돌린다(Map4Director.cs RunStartup) —
             // 그 뒤에 파킹해야 Director가 나중에 섹터1 슬롯으로 다시 순간이동시키지 않는다.
-            PlayerMover[] players = Object.FindObjectsOfType<PlayerMover>();
+            PlayerMover[] players = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             float spawnDeadline = Time.realtimeSinceStartup + 15f;
             while (Time.realtimeSinceStartup < spawnDeadline)
             {
@@ -629,7 +629,7 @@ public static class Map4StuckSweep
         private void BuildPool()
         {
             GameObject holder = new GameObject("SWEEP_Probes");
-            PlayerMover[] players = Object.FindObjectsOfType<PlayerMover>();
+            PlayerMover[] players = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             for (int s = 0; s < 3; s++)
             {
                 PlayerMover src = null;
@@ -1449,7 +1449,7 @@ public static class Map4StuckSweep
         private static void TakeSnapshot(SweepCtx ctx)
         {
             ctx.snapshot.Clear();
-            foreach (Collider c in Object.FindObjectsOfType<Collider>())
+            foreach (Collider c in Object.FindObjectsByType<Collider>(FindObjectsSortMode.None))
                 ctx.snapshot[c] = new Pose(c.transform.position, c.transform.rotation);
         }
 

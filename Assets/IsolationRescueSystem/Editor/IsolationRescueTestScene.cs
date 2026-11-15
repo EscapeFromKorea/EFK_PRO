@@ -186,14 +186,14 @@ public class IsolationSceneVerifier : MonoBehaviour
     private IEnumerator Main()
     {
         // ── 씬 구성 점검 ────────────────────────────────────────────────
-        c = FindObjectOfType<IsolationRescueController>();
-        var entry = FindObjectOfType<IsolationEntryDoor>();
-        var levers = FindObjectsOfType<SequenceLever>();
-        var ready = FindObjectsOfType<IsolationReadyButton>();
-        var release = FindObjectOfType<ReleaseButton>();
-        var power = FindObjectOfType<PowerHoldSwitch>();
-        var roleReturn = FindObjectOfType<IsolationRoleReturn>();
-        PlayerMover[] movers = FindObjectsOfType<PlayerMover>();
+        c = FindFirstObjectByType<IsolationRescueController>();
+        var entry = FindFirstObjectByType<IsolationEntryDoor>();
+        var levers = FindObjectsByType<SequenceLever>(FindObjectsSortMode.None);
+        var ready = FindObjectsByType<IsolationReadyButton>(FindObjectsSortMode.None);
+        var release = FindFirstObjectByType<ReleaseButton>();
+        var power = FindFirstObjectByType<PowerHoldSwitch>();
+        var roleReturn = FindFirstObjectByType<IsolationRoleReturn>();
+        PlayerMover[] movers = FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
         foreach (PlayerMover m in movers)
         {
             if (m.name == "Player_Cube") cube = m;
@@ -204,8 +204,8 @@ public class IsolationSceneVerifier : MonoBehaviour
             c != null && entry != null && levers.Length == 3 && ready.Length == 2 && release != null && power != null);
         Check("씬: 플레이어 2명(Cube·Sphere)", cube != null && sphere != null);
         Check("씬: 카메라 추적·조작 전환·리스폰 컨트롤러·추락 복귀 연결",
-            FindObjectOfType<PlayerFollowCamera>() != null && FindObjectOfType<PlayerControlSwitcher>() != null &&
-            FindObjectOfType<RespawnController>() != null && roleReturn != null && roleReturn.respawn != null);
+            FindFirstObjectByType<PlayerFollowCamera>() != null && FindFirstObjectByType<PlayerControlSwitcher>() != null &&
+            FindFirstObjectByType<RespawnController>() != null && roleReturn != null && roleReturn.respawn != null);
         if (c == null || cube == null || sphere == null) { Finish(); yield break; }
 
         cubeRb = cube.GetComponent<Rigidbody>();
@@ -283,7 +283,7 @@ public class IsolationSceneVerifier : MonoBehaviour
         release.Press();
         Check("해제: 전원 ON에서 해제 성공", c.Current == IsolationRescueController.State.Success);
         yield return new WaitForSeconds(3f);
-        Check("해제: 해제문 개방", FindObjectOfType<doorPhysics>() != null && DoorYByName("C2_RELEASE_DOOR") > OpenY);
+        Check("해제: 해제문 개방", FindFirstObjectByType<doorPhysics>() != null && DoorYByName("C2_RELEASE_DOOR") > OpenY);
 
         Finish();
     }

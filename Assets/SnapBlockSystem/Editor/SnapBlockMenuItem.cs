@@ -64,7 +64,7 @@ public static class SnapBlockMenuItem
     [MenuItem("Tools/SnapBlockSystem/Create Controller")]
     private static void CreateController()
     {
-        SnapBlockController existing = Object.FindObjectOfType<SnapBlockController>();
+        SnapBlockController existing = Object.FindFirstObjectByType<SnapBlockController>();
         if (existing != null)
         {
             Debug.LogWarning("[SnapBlockSystem] 씬에 이미 SnapBlockController가 있습니다.");

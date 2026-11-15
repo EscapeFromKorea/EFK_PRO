@@ -346,7 +346,7 @@ public class RespawnController : MonoBehaviour
         nextRosterRefresh = Time.unscaledTime + 1f;
 
         players.Clear();
-        players.AddRange(Object.FindObjectsOfType<PlayerMover>());
+        players.AddRange(Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None));
 
         // 파괴된 플레이어가 남긴 항목 정리.
         pruneBuffer.Clear();

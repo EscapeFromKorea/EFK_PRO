@@ -17,7 +17,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
 
     private void Start()
     {
-        if (roleReturn != null) roleReturn.respawn = FindObjectOfType<RespawnController>();
+        if (roleReturn != null) roleReturn.respawn = FindFirstObjectByType<RespawnController>();
         if (controller != null) controller.onRestarted.AddListener(ResetTransfer);
         Collider trigger = GetComponent<Collider>();
         if (trigger == null || !trigger.isTrigger)
@@ -46,7 +46,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
         if (controller.InsidePlayer == null) return;
 
         Transform localFrame = roleReturn.transform.parent;
-        foreach (PlayerMover mover in FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             if (mover == null || mover.gameObject == controller.InsidePlayer) continue;
             Vector3 p = localFrame.InverseTransformPoint(mover.transform.position);
@@ -81,7 +81,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
             if (c.enabled && passage.bounds.Intersects(c.bounds)) { inPassage = true; break; }
         if (!inPassage) return false;
 
-        Map4Director director = FindObjectOfType<Map4Director>();
+        Map4Director director = FindFirstObjectByType<Map4Director>();
         if (director == null || !director.TryGetSector(4, out SectorController sector) || sector == null)
         {
             Debug.LogError("[Lab_IsolationFlow] CH4가 아직 로드되지 않아 이동을 보류한다.", this);
@@ -102,7 +102,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
             Debug.LogError("[Lab_IsolationFlow] CH4 시작 체크포인트 CP_S4_Start가 없다.", sector);
             return false;
         }
-        if (FindObjectOfType<RespawnController>() == null)
+        if (FindFirstObjectByType<RespawnController>() == null)
         {
             Debug.LogError("[Lab_IsolationFlow] 공용 복귀 컨트롤러가 없어 CH4 이동을 보류한다.", this);
             return false;
@@ -110,7 +110,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
 
         if (moveWholeTeam)
         {
-            PlayerMover[] movers = FindObjectsOfType<PlayerMover>();
+            PlayerMover[] movers = FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             if (movers.Length != 3)
             {
                 Debug.LogError($"[Lab_IsolationFlow] 도형 {movers.Length}개 — 3개여야 함께 이동할 수 있다.", this);

@@ -622,7 +622,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
     {
         // 스위처가 있으면 조작 중인 하나만 IsControlled=true. 스위처가 없는 단일 플레이어 테스트 씬에서는
         // 모두 기본값 true라 첫 번째를 집는다(테스트 씬엔 보통 하나뿐).
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (m.IsControlled) return m;
         return null;
     }

@@ -8,10 +8,10 @@ using UnityEngine.SceneManagement;
 public static class V3Gimmicks {
  // Team menu factory. Own only roots created synchronously by this call; retain all generated links.
  public static T Create<T>(string menu,Transform parent) where T:Component {
-  var before=new HashSet<int>(UnityEngine.Object.FindObjectsOfType<T>(true).Select(x=>x.GetInstanceID()));
+  var before=new HashSet<int>(UnityEngine.Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None).Select(x=>x.GetInstanceID()));
   var roots=new HashSet<int>(SceneManager.GetActiveScene().GetRootGameObjects().Select(x=>x.GetInstanceID()));
   if(!EditorApplication.ExecuteMenuItem(menu))throw new Exception("Missing team menu: "+menu);
-  var added=UnityEngine.Object.FindObjectsOfType<T>(true).Where(x=>!before.Contains(x.GetInstanceID())).ToArray();
+  var added=UnityEngine.Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None).Where(x=>!before.Contains(x.GetInstanceID())).ToArray();
   foreach(var root in SceneManager.GetActiveScene().GetRootGameObjects())if(!roots.Contains(root.GetInstanceID())){V3.MarkOwned(root,"Team menu: "+menu);if(parent!=null)root.transform.SetParent(parent,true);}
   if(added.Length!=1)throw new Exception(menu+": expected one "+typeof(T).Name+", got "+added.Length);
   return added[0];

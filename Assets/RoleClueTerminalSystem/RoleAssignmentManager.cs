@@ -111,7 +111,7 @@ public class RoleAssignmentManager : MonoBehaviour
     private void SubscribeRespawn()
     {
         if (subscribedRespawn != null) return;
-        if (respawnController == null) respawnController = Object.FindObjectOfType<RespawnController>();
+        if (respawnController == null) respawnController = Object.FindFirstObjectByType<RespawnController>();
         if (respawnController == null) return;
 
         subscribedRespawn = respawnController;
@@ -196,7 +196,7 @@ public class RoleAssignmentManager : MonoBehaviour
         if (Time.unscaledTime < nextRosterRefresh) return;
         nextRosterRefresh = Time.unscaledTime + 1f;
         roster.Clear();
-        roster.AddRange(Object.FindObjectsOfType<PlayerMover>());
+        roster.AddRange(Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None));
     }
 
     // ── 점유 배정 / 사용 종료 ─────────────────────────────────────────

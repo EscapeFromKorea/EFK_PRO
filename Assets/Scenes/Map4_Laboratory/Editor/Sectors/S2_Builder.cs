@@ -1011,7 +1011,7 @@ public static class S2_Builder
     private static Dictionary<doorPhysics, LeverHead> SnapshotDoorLevers()
     {
         Dictionary<doorPhysics, LeverHead> map = new Dictionary<doorPhysics, LeverHead>();
-        foreach (doorPhysics d in Object.FindObjectsOfType<doorPhysics>()) map[d] = d.leverHead;
+        foreach (doorPhysics d in Object.FindObjectsByType<doorPhysics>(FindObjectsSortMode.None)) map[d] = d.leverHead;
         return map;
     }
 

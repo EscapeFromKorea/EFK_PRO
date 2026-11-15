@@ -46,7 +46,7 @@ public static class Ch1TestRoomMenuItem
             return;
         }
 
-        RespawnController respawn = Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = Object.FindFirstObjectByType<RespawnController>();
         if (respawn == null)
         {
             Debug.LogWarning("[CH1 Room] 씬에 RespawnController가 없어 구간 복귀를 배선할 수 없다 " +
@@ -157,7 +157,7 @@ public static class Ch1TestRoomMenuItem
             return;
         }
 
-        PlayerShapeIdentity[] players = Object.FindObjectsOfType<PlayerShapeIdentity>();
+        PlayerShapeIdentity[] players = Object.FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
         System.Array.Sort(players, (a, b) => a.Kind.CompareTo(b.Kind));
         for (int i = 0; i < players.Length; i++)
         {

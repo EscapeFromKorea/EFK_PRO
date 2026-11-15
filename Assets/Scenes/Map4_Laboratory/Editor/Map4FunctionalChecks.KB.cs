@@ -108,7 +108,7 @@ public static partial class Map4FunctionalChecks
             List<KB_Cand> list = new List<KB_Cand>();
             if (holder == null) return list;
             List<InteractionAction> buf = new List<InteractionAction>();
-            foreach (MonoBehaviour mb in Object.FindObjectsOfType<MonoBehaviour>())
+            foreach (MonoBehaviour mb in Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
             {
                 if (mb == null || !mb.isActiveAndEnabled) continue;
                 IInteractionProvider ip = mb as IInteractionProvider;
@@ -888,7 +888,7 @@ public static partial class Map4FunctionalChecks
             if (all.Count == 0) { NA(id, $"검사불가(이름 불일치): 'S4_AL_Stair_*'/'S4_AL_Bubble_*' 없음(CharacterLockedLaser 전체 {s4.AllAim})"); yield break; }
 
             // Start 시점 증거 — 팀 CharacterLockedLaser는 플레이어 목록을 Start에서 한 번만 모은다(CharacterLockedLaser.cs:59-67, FindObjectsOfType<PlayerShapeIdentity>).
-            int idCount = Object.FindObjectsOfType<PlayerShapeIdentity>().Length;
+            int idCount = Object.FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None).Length;
             string playerScenes = string.Join(", ", players.Select(p => $"{p.gameObject.scene.name}(로드 순번 {KB_SceneIndex(p.gameObject.scene)})").Distinct());
             string laserScenes = string.Join(", ", all.Select(a => $"{a.gameObject.scene.name}(로드 순번 {KB_SceneIndex(a.gameObject.scene)})").Distinct());
             int pIdx = players.Count > 0 ? KB_SceneIndex(players[0].gameObject.scene) : -1;
@@ -964,8 +964,8 @@ public static partial class Map4FunctionalChecks
             RoleSlot book = slots.FirstOrDefault(x => x.roleId == "Book") ?? slots.FirstOrDefault(x => x.name == "S7_Slot_Book");
             RoleSlot comp = slots.FirstOrDefault(x => x.roleId == "Computer") ?? slots.FirstOrDefault(x => x.name == "S7_Slot_Computer");
             if (book == null || comp == null) { NA(id, "검사불가(이름 불일치): 책/컴퓨터 RoleSlot(roleId 'Book'·'Computer' 또는 이름 S7_Slot_Book·_Computer)을 못 찾음"); yield break; }
-            if (Object.FindObjectOfType<InteractionController>() == null) { NA(id, "검사불가: 씬에 InteractionController 없음(팀 중앙 입력이 아직 안 만들어짐)"); yield break; }
-            if (Object.FindObjectOfType<PlayerControlSwitcher>() == null) { NA(id, "검사불가: 씬에 PlayerControlSwitcher 없음 — 조작권을 넘길 방법이 없다"); yield break; }
+            if (Object.FindFirstObjectByType<InteractionController>() == null) { NA(id, "검사불가: 씬에 InteractionController 없음(팀 중앙 입력이 아직 안 만들어짐)"); yield break; }
+            if (Object.FindFirstObjectByType<PlayerControlSwitcher>() == null) { NA(id, "검사불가: 씬에 PlayerControlSwitcher 없음 — 조작권을 넘길 방법이 없다"); yield break; }
 
             // S7_GimmickRoot는 도형이 전실 활성기에 들어와야 켜진다([판정 13]) — S7-1 주행이 켜 두었는지 보고, 꺼져 있으면 활성기 구역에 도형을 한 번 넣어 본다.
             if (!book.isActiveAndEnabled || !comp.isActiveAndEnabled)
@@ -1133,8 +1133,8 @@ public static partial class Map4FunctionalChecks
             ManagerUsePoint up = InScene<ManagerUsePoint>(s8.Scene).FirstOrDefault();
             if (kp == null || kd == null || kd.door == null || kp.manager == null) na.Add($"③ 열쇠 흐름 검사불가: ManagerKeyPoint {Nm(kp)} · ManagerKeyDoor {Nm(kd)} · door {(kd != null ? Nm(kd.door) : "-")} · manager {(kp != null ? Nm(kp.manager) : "-")}");
             else if (ctrls.Count > 1) na.Add($"③ 검사불가: ManagerChapterController {ctrls.Count}개 — 자동 시작 차단(SetParticipantPaused)을 어느 쪽에 걸지 정할 수 없음");
-            else if (Object.FindObjectOfType<InteractionController>() == null) na.Add("③ 검사불가: 씬에 InteractionController 없음");
-            else if (Object.FindObjectOfType<PlayerControlSwitcher>() == null) na.Add("③ 검사불가: 씬에 PlayerControlSwitcher 없음 — 열쇠·문은 manager.ControlledPlayer()(스위처 활성 도형)를 쓴다");
+            else if (Object.FindFirstObjectByType<InteractionController>() == null) na.Add("③ 검사불가: 씬에 InteractionController 없음");
+            else if (Object.FindFirstObjectByType<PlayerControlSwitcher>() == null) na.Add("③ 검사불가: 씬에 PlayerControlSwitcher 없음 — 열쇠·문은 manager.ControlledPlayer()(스위처 활성 도형)를 쓴다");
             else if (!kp.isActiveAndEnabled || !kd.isActiveAndEnabled) na.Add($"③ 검사불가: 열쇠 자리 활성 {kp.isActiveAndEnabled}·열쇠 문 활성 {kd.isActiveAndEnabled}");
             else yield return KB_S8KeyFlow(kp, kd, up, ctrl, bad, na, tail);
 

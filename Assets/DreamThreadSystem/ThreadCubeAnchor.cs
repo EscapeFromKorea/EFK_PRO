@@ -68,7 +68,7 @@ public class ThreadCubeAnchor : MonoBehaviour
         // ponytail: 주기 재탐색 — 플레이어 수가 크게 늘면 등록식(정적 목록)으로 바꾼다.
         if (Time.unscaledTime >= nextScanTime)
         {
-            players = Object.FindObjectsOfType<PlayerShapeIdentity>();
+            players = Object.FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
             nextScanTime = Time.unscaledTime + RescanInterval;
         }
 

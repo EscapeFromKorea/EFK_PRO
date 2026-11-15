@@ -61,7 +61,7 @@ public class FallingRockCurtainWindow : EditorWindow
             new GUIContent("구 이동속도 (U/s)", "사양 §0 기준 7. 실제 도형 스탯(PlayerShapeStats)이 " +
                                                 "조정되면 여기도 맞춰야 판정이 유효하다."), sphereSpeed));
 
-        SlowZone zone = Object.FindObjectOfType<SlowZone>();
+        SlowZone zone = Object.FindFirstObjectByType<SlowZone>();
         Collider zoneCol = zone != null ? zone.GetComponent<Collider>() : null;
 
         // 낙하 높이 = 감속 구역 높이. 스폰은 구역 상단, 통과 통로는 구역 하단이라는 전제

@@ -81,7 +81,7 @@ public class ManagerAgent : MonoBehaviour
         {
             if (players == null)
             {
-                players = FindObjectsOfType<PlayerShapeIdentity>();
+                players = FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
                 System.Array.Sort(players, (a, b) => a.Kind.CompareTo(b.Kind));
             }
             return players;

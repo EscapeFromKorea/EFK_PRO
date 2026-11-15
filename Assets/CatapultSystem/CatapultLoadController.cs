@@ -376,7 +376,7 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
     // 더 작은 것)이 있으면 false를 반환해 연결을 양보한다.
     private bool IsNearestCatapult(Vector3 playerPosition, float myDistance)
     {
-        foreach (CatapultLoadController other in FindObjectsOfType<CatapultLoadController>())
+        foreach (CatapultLoadController other in FindObjectsByType<CatapultLoadController>(FindObjectsSortMode.None))
         {
             if (other == this || other.anchor == null) continue;
 
@@ -408,7 +408,7 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
 
     private static PlayerMover FindControlledPlayer()
     {
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (m.IsControlled) return m;
         return null;
     }

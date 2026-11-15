@@ -4,7 +4,7 @@ using UnityEngine;
 public static class V3Play {
  public static bool SetupPlay() {
   if(!V3.EnsureOwnedScene("Team Setup Play"))return false;
-  foreach(Camera camera in UnityEngine.Object.FindObjectsOfType<Camera>(true))
+  foreach(Camera camera in UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None))
    if(!V3.IsOwned(camera.gameObject)){Debug.LogError("Team Setup: Empty 전용 씬에서 실행하세요. 기존 카메라는 변경하지 않습니다.");return false;}
   try {
    // The team factory attaches its camera script to an existing scene Camera.
@@ -16,8 +16,8 @@ public static class V3Play {
     if(go==null)go=V3Gimmicks.Create<PlayerMover>("Tools/PlayerSystem/Create Player/"+shapes[i],null).gameObject;
     go.transform.position=pos[i];
    }
-   if(UnityEngine.Object.FindObjectOfType<PlayerFollowCamera>()==null)throw new Exception("Team PlayerFollowCamera missing");
-   if(UnityEngine.Object.FindObjectOfType<Light>()==null){var g=new GameObject("Kitchen_Sun");V3.MarkOwned(g,"TeamSetup");var l=g.AddComponent<Light>();l.type=LightType.Directional;l.intensity=1.1f;g.transform.rotation=Quaternion.Euler(55,-30,0);}
+   if(UnityEngine.Object.FindFirstObjectByType<PlayerFollowCamera>()==null)throw new Exception("Team PlayerFollowCamera missing");
+   if(UnityEngine.Object.FindFirstObjectByType<Light>()==null){var g=new GameObject("Kitchen_Sun");V3.MarkOwned(g,"TeamSetup");var l=g.AddComponent<Light>();l.type=LightType.Directional;l.intensity=1.1f;g.transform.rotation=Quaternion.Euler(55,-30,0);}
    return true;
   }catch(Exception e){Debug.LogException(e);return false;}
  }

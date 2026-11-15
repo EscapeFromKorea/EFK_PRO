@@ -204,7 +204,7 @@ public static class IsolationRescueMenuItem
         fallCol.size = new Vector3(80f, 2f, 130f);
         r.roleReturn = fall.AddComponent<IsolationRoleReturn>();
         r.roleReturn.controller = r.controller;
-        r.roleReturn.respawn = Object.FindObjectOfType<RespawnController>();
+        r.roleReturn.respawn = Object.FindFirstObjectByType<RespawnController>();
         r.roleReturn.insideSafePoint = r.insideSafe;
         r.roleReturn.outsideSafePoint = r.outsideSafe;
 
@@ -316,7 +316,7 @@ public static class IsolationRescueMenuItem
 
         // SpawnLever가 받침대(lever_body)를 씬 루트에 따로 만든다 — 같은 위치의 것을 찾아 마운트 아래로 옮긴다.
         // (받침대는 피벗의 자식이 아니라 돌지 않지만, 마운트를 돌려도 크기 대칭이라 모양은 같다.)
-        foreach (Transform t in Object.FindObjectsOfType<Transform>())
+        foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
         {
             if (t.name != "lever_body" || t.parent != null) continue;
             if ((t.position - (world + new Vector3(0.2f, -0.5835f, 0.4338f))).sqrMagnitude > 0.01f) continue;

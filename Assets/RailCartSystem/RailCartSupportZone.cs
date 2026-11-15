@@ -27,7 +27,7 @@ public class RailCartSupportZone : MonoBehaviour
     private void Start()
     {
         zone = GetComponent<Collider>();
-        carts = FindObjectsOfType<RailCart>();
+        carts = FindObjectsByType<RailCart>(FindObjectsSortMode.None);
         bodies = new Rigidbody[carts.Length];
         for (int i = 0; i < carts.Length; i++) bodies[i] = carts[i].GetComponent<Rigidbody>();
     }

@@ -376,7 +376,7 @@ public static class Map4Ch8FlowChecks
         record("CH8-15", gathered, "완료 후 세 도형이 서로 다른 최종 슬롯에 있고 collider 발이 탈출 바닥 위이며 도형끼리 겹치지 않음.");
         if (!gathered) yield break;
 
-        RespawnController respawn = UnityEngine.Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = UnityEngine.Object.FindFirstObjectByType<RespawnController>();
         if (respawn == null) { record("CH8-16", false, "공용 RespawnController 없음."); yield break; }
         Teleport(ordered[0], sector.transform.TransformPoint(new Vector3(0f, 0.8f, 130f)));
         respawn.RespawnPlayer(ordered[0].gameObject); // 수동 R과 같은 공개 공용 체크포인트 경로

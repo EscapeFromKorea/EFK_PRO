@@ -13,7 +13,7 @@ public static class BlockCarryMenuItem
     [MenuItem("Tools/BlockCarrySystem/Create Controller")]
     private static void CreateController()
     {
-        BlockCarryController existing = Object.FindObjectOfType<BlockCarryController>();
+        BlockCarryController existing = Object.FindFirstObjectByType<BlockCarryController>();
         if (existing != null)
         {
             Debug.LogWarning("[BlockCarrySystem] 씬에 이미 BlockCarryController가 있습니다.");

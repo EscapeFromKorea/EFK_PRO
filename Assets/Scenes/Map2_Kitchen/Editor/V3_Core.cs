@@ -111,9 +111,9 @@ public static class V3
         List<string> foreign = new List<string>();
         foreach (GameObject go in AllSceneObjects(true))
             if (Array.IndexOf(ReservedNames, go.name) >= 0 && !IsOwned(go)) foreign.Add(go.name);
-        foreach (RespawnController c in UnityEngine.Object.FindObjectsOfType<RespawnController>(true))
+        foreach (RespawnController c in UnityEngine.Object.FindObjectsByType<RespawnController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             if (!IsOwned(c.gameObject)) foreign.Add("RespawnController(" + c.name + ")");
-        foreach (PlayerControlSwitcher s in UnityEngine.Object.FindObjectsOfType<PlayerControlSwitcher>(true))
+        foreach (PlayerControlSwitcher s in UnityEngine.Object.FindObjectsByType<PlayerControlSwitcher>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             if (!IsOwned(s.gameObject)) foreign.Add("PlayerControlSwitcher(" + s.name + ")");
         if (foreign.Count > 0)
         {

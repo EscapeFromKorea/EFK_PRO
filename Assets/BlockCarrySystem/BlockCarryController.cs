@@ -41,7 +41,7 @@ public class BlockCarryController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExists()
     {
-        if (Object.FindObjectOfType<BlockCarryController>() != null) return;
+        if (Object.FindFirstObjectByType<BlockCarryController>() != null) return;
 
         GameObject go = new GameObject("BlockCarryController (auto)");
         go.AddComponent<BlockCarryController>();
@@ -77,7 +77,7 @@ public class BlockCarryController : MonoBehaviour
 
     private void ScanAndAttach()
     {
-        foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             PlayerBlockCarrier carrier = mover.GetComponent<PlayerBlockCarrier>();
             if (carrier == null)

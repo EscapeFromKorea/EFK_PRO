@@ -62,7 +62,7 @@ public class CharacterLockedLaser : MonoBehaviour
             Debug.LogWarning($"[SecurityLaser] '{name}'의 targetKinds가 비어 있다 — 최소 1개 이상 " +
                              "지정해야 록온할 수 있다.", this);
 
-        candidates = FindObjectsOfType<PlayerShapeIdentity>();
+        candidates = FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
         EnterPhase(Phase.WaitingForTarget);
     }
 

@@ -16,7 +16,7 @@ public static class SecurityLaserRespawnWiring
     [MenuItem("Tools/SecurityLaserSystem/Wire Hits To Respawn")]
     public static void WireHitsToRespawn()
     {
-        RespawnController controller = Object.FindObjectOfType<RespawnController>();
+        RespawnController controller = Object.FindFirstObjectByType<RespawnController>();
         if (controller == null)
         {
             Debug.LogWarning("[SecurityLaserSystem] 씬에 RespawnController가 없어 배선할 수 없다. " +
@@ -24,7 +24,7 @@ public static class SecurityLaserRespawnWiring
             return;
         }
 
-        LaserBeam[] beams = Object.FindObjectsOfType<LaserBeam>();
+        LaserBeam[] beams = Object.FindObjectsByType<LaserBeam>(FindObjectsSortMode.None);
         if (beams.Length == 0)
         {
             Debug.LogWarning("[SecurityLaserSystem] 씬에 보안 레이저가 없다. 먼저 Create Character " +

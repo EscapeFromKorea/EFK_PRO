@@ -78,7 +78,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
     {
         reason = null;
         if (exitFloor == null || exitFloor.isTrigger || finalCheckpoint == null ||
-            FindObjectOfType<RespawnController>() == null ||
+            FindFirstObjectByType<RespawnController>() == null ||
             finalSlots == null || finalSlots.Length != 3)
         { reason = "최종 바닥·공용 복귀 컨트롤러·체크포인트·세 안전 위치 참조 누락"; return false; }
 
@@ -89,7 +89,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
             entrantSolid.isTrigger || !trigger.bounds.Intersects(entrantSolid.bounds))
         { reason = "출구 통과 트리거와 실제 도형 몸통 교차 판정 실패"; return false; }
 
-        PlayerShapeIdentity[] identities = FindObjectsOfType<PlayerShapeIdentity>();
+        PlayerShapeIdentity[] identities = FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
         List<PlayerMover> movers = new List<PlayerMover>(3);
         foreach (PlayerShapeIdentity id in identities)
         {

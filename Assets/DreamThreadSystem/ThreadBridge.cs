@@ -203,7 +203,7 @@ public class ThreadBridge : MonoBehaviour
     {
         into.Clear();
 
-        if (pinPlacer == null) pinPlacer = Object.FindObjectOfType<ThreadPinPlacer>();
+        if (pinPlacer == null) pinPlacer = Object.FindFirstObjectByType<ThreadPinPlacer>();
         pinBuf.Clear();
         if (pinPlacer != null) pinPlacer.CollectPins(pinBuf);
 
@@ -340,7 +340,7 @@ public class ThreadBridge : MonoBehaviour
 
         // ponytail: 매 FixedUpdate FindObjectsOfType — 플레이어가 3명뿐이라 무시할 비용이고
         // 이 폴더의 기존 컴포넌트들도 같은 방식이다. 플레이어가 많아지면 트리거 기반 집계로 바꾼다.
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             Rigidbody rb = m.GetComponent<Rigidbody>();
             if (rb == null || rb.isKinematic) continue; // 벽 부착 중인 세모 등은 줄에 하중을 주지 않는다

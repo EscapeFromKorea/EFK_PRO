@@ -64,7 +64,7 @@ public static class SpacePortalMenuItem
     {
         MovablePortalPanel best = null;
         float bestSqr = float.PositiveInfinity;
-        foreach (MovablePortalPanel p in Object.FindObjectsOfType<MovablePortalPanel>())
+        foreach (MovablePortalPanel p in Object.FindObjectsByType<MovablePortalPanel>(FindObjectsSortMode.None))
         {
             float sqr = (p.transform.position - from).sqrMagnitude;
             if (sqr >= bestSqr) continue;

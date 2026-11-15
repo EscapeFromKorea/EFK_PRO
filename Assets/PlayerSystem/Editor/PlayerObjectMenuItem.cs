@@ -294,7 +294,7 @@ public static class PlayerObjectMenuItem
 
     private static void EnsureSwitcher()
     {
-        if (Object.FindObjectOfType<PlayerControlSwitcher>() != null) return;
+        if (Object.FindFirstObjectByType<PlayerControlSwitcher>() != null) return;
 
         GameObject switcherObj = new GameObject("PlayerControlSwitcher");
         Undo.RegisterCreatedObjectUndo(switcherObj, "Create PlayerControlSwitcher");
@@ -309,10 +309,10 @@ public static class PlayerObjectMenuItem
     /// </summary>
     private static void EnsureFollowCamera()
     {
-        if (Object.FindObjectOfType<PlayerFollowCamera>() != null) return;
+        if (Object.FindFirstObjectByType<PlayerFollowCamera>() != null) return;
 
         Camera cam = Camera.main;
-        if (cam == null) cam = Object.FindObjectOfType<Camera>();
+        if (cam == null) cam = Object.FindFirstObjectByType<Camera>();
         if (cam == null) return;
 
         Undo.AddComponent<PlayerFollowCamera>(cam.gameObject);

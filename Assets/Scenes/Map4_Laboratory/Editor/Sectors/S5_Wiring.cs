@@ -448,7 +448,7 @@ public static class S5_Wiring
     /// 배치 모드에서 Selection 수신은 실측 기록이 없으므로(S5_팀API.md §0-2 "모르겠다") 호출 전후 목록 비교로도 찾는다.</summary>
     private static T CreateByTeamMenu<T>(System.Action create, string menuLabel) where T : Component
     {
-        HashSet<T> before = new HashSet<T>(Object.FindObjectsOfType<T>(true));
+        HashSet<T> before = new HashSet<T>(Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None));
         Selection.activeGameObject = null;
         create();
 
@@ -461,7 +461,7 @@ public static class S5_Wiring
         }
         if (made == null)
         {
-            foreach (T c in Object.FindObjectsOfType<T>(true))
+            foreach (T c in Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 if (!before.Contains(c)) { made = c; break; }
         }
         if (made == null) Debug.LogError($"[S5_Wiring] 팀 메뉴 '{menuLabel}' 생성물({typeof(T).Name})을 찾지 못했다.");

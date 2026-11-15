@@ -74,23 +74,23 @@ public static class Map1CodexBuilder
             throw new InvalidOperationException("Map1 Codex must contain exactly P01-P12 phase roots.");
         if (environment == null)
             throw new InvalidOperationException("Map1 Codex is missing its environment-art root.");
-        if (UnityEngine.Object.FindObjectsOfType<PlayerMover>(true).Length != 3)
+        if (UnityEngine.Object.FindObjectsByType<PlayerMover>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length != 3)
             throw new InvalidOperationException("Map1 Codex must contain exactly three player shapes.");
-        if (UnityEngine.Object.FindObjectsOfType<JumpPad>(true).Length < 7)
+        if (UnityEngine.Object.FindObjectsByType<JumpPad>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 7)
             throw new InvalidOperationException("Map1 Codex is missing planned jump pads.");
-        if (UnityEngine.Object.FindObjectsOfType<AccelPad>(true).Length < 2)
+        if (UnityEngine.Object.FindObjectsByType<AccelPad>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 2)
             throw new InvalidOperationException("Map1 Codex is missing acceleration sections.");
-        if (UnityEngine.Object.FindObjectsOfType<CloudTrampoline>(true).Length < 8)
+        if (UnityEngine.Object.FindObjectsByType<CloudTrampoline>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 8)
             throw new InvalidOperationException("Map1 Codex is missing the P3 cloud sequence.");
-        if (UnityEngine.Object.FindObjectsOfType<ThreadAnchor>(true).Length < 10)
+        if (UnityEngine.Object.FindObjectsByType<ThreadAnchor>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 10)
             throw new InvalidOperationException("Map1 Codex is missing thread anchors.");
-        if (UnityEngine.Object.FindObjectsOfType<doorPhysics>(true).Length < 3)
+        if (UnityEngine.Object.FindObjectsByType<doorPhysics>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 3)
             throw new InvalidOperationException("Map1 Codex is missing cooperation gates.");
-        if (UnityEngine.Object.FindObjectsOfType<ZeroGravityBubble>(true).Length < 3)
+        if (UnityEngine.Object.FindObjectsByType<ZeroGravityBubble>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 3)
             throw new InvalidOperationException("Map1 Codex is missing the P11 bubble current.");
-        if (UnityEngine.Object.FindObjectsOfType<RainbowBridgeSwitch>(true).Length < 3)
+        if (UnityEngine.Object.FindObjectsByType<RainbowBridgeSwitch>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 3)
             throw new InvalidOperationException("Map1 Codex is missing rainbow bridge routes.");
-        if (UnityEngine.Object.FindObjectsOfType<RespawnZone>(true).Length < 8)
+        if (UnityEngine.Object.FindObjectsByType<RespawnZone>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length < 8)
             throw new InvalidOperationException("Map1 Codex needs at least eight recovery checkpoints.");
 
         Transform[] decorations = environment.GetComponentsInChildren<Transform>(true)
@@ -123,19 +123,19 @@ public static class Map1CodexBuilder
             scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
 
         var replaced = new HashSet<GameObject>();
-        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<AccelPad>(true), "Gimmick_SpeedPad", replaced);
-        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<JumpPad>(true), "Gimmick_JumpPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsByType<AccelPad>(FindObjectsInactive.Include, FindObjectsSortMode.None), "Gimmick_SpeedPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsByType<JumpPad>(FindObjectsInactive.Include, FindObjectsSortMode.None), "Gimmick_JumpPad", replaced);
 
-        foreach (ScalePad pad in UnityEngine.Object.FindObjectsOfType<ScalePad>(true))
+        foreach (ScalePad pad in UnityEngine.Object.FindObjectsByType<ScalePad>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             string model = pad.padType == ScalePad.EPadType.Grow ? "Gimmick_GrowPad" : "Gimmick_ShrinkPad";
             ReplaceGameplayVisual(pad.gameObject, model);
             replaced.Add(pad.gameObject);
         }
 
-        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<PadTrigger>(true), "Gimmick_DoorSwitchPad", replaced);
-        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<ExitWeightPlate>(true), "Gimmick_DoorSwitchPad", replaced);
-        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsOfType<RainbowBridgeSwitch>(true), "Gimmick_BridgeSustainPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsByType<PadTrigger>(FindObjectsInactive.Include, FindObjectsSortMode.None), "Gimmick_DoorSwitchPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsByType<ExitWeightPlate>(FindObjectsInactive.Include, FindObjectsSortMode.None), "Gimmick_DoorSwitchPad", replaced);
+        ReplaceVisualsForComponents(UnityEngine.Object.FindObjectsByType<RainbowBridgeSwitch>(FindObjectsInactive.Include, FindObjectsSortMode.None), "Gimmick_BridgeSustainPad", replaced);
 
         foreach (Transform candidate in scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Transform>(true)))
         {
@@ -846,7 +846,7 @@ public static class Map1CodexBuilder
         camera.transform.position = new Vector3(0, 8, -14);
         camera.transform.rotation = Quaternion.Euler(18f, 0, 0);
         camera.farClipPlane = 600f;
-        Light light = UnityEngine.Object.FindObjectOfType<Light>();
+        Light light = UnityEngine.Object.FindFirstObjectByType<Light>();
         if (light != null)
         {
             light.transform.rotation = Quaternion.Euler(48f, -32f, 0f);

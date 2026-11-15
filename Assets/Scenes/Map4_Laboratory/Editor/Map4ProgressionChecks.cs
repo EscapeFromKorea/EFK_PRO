@@ -31,7 +31,7 @@ public static class Map4ProgressionChecks
             if (byId[id] == null) { record("진행/섹터등록", false, $"섹터 {id} 누락"); yield break; }
         record("진행/섹터등록", true, "CH1~8 모두 등록됨");
 
-        RespawnController respawn = UnityEngine.Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = UnityEngine.Object.FindFirstObjectByType<RespawnController>();
         RespawnZone cp1 = byId[1].GetComponentInChildren<RespawnZone>(true);
         if (respawn != null && cp1 != null) RespawnController.SetCheckpoint(cp1); // 시험 초기 조건
         record("진행/CP초기조건", respawn != null && cp1 != null,

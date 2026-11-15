@@ -44,7 +44,7 @@ public class PlayerControlSwitcher : MonoBehaviour
         // 지나간 PlayerMover.OnEnable()의 등록 시도가 instance==null이라 무시되어 아무도
         // 등록되지 않는 문제가 생긴다. 그래서 씬에 이미 존재하는 PlayerMover를 여기서
         // 직접 찾아 등록해 순서와 무관하게 항상 동작하도록 한다.
-        foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             RegisterPlayer(mover);
 
         // A scene builder may explicitly choose the player shown by its starting camera. Without this,

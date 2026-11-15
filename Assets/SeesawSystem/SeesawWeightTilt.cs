@@ -123,10 +123,10 @@ public class SeesawWeightTilt : MonoBehaviour
 
     private static void UpgradeExistingSeesaws()
     {
-        foreach (SeesawTuningNotes notes in UnityEngine.Object.FindObjectsOfType<SeesawTuningNotes>(true))
+        foreach (SeesawTuningNotes notes in UnityEngine.Object.FindObjectsByType<SeesawTuningNotes>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             TryUpgrade(notes);
 
-        foreach (RotatingPlate plate in UnityEngine.Object.FindObjectsOfType<RotatingPlate>(true))
+        foreach (RotatingPlate plate in UnityEngine.Object.FindObjectsByType<RotatingPlate>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             TryUpgrade(plate);
     }
 

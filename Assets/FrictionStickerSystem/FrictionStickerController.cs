@@ -38,7 +38,7 @@ public class FrictionStickerController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExists()
     {
-        if (Object.FindObjectOfType<FrictionStickerController>() != null) return;
+        if (Object.FindFirstObjectByType<FrictionStickerController>() != null) return;
 
         GameObject go = new GameObject("FrictionStickerController (auto)");
         go.AddComponent<FrictionStickerController>();
@@ -74,7 +74,7 @@ public class FrictionStickerController : MonoBehaviour
 
     private void ScanAndAttach()
     {
-        foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             PlayerStickerCarrier carrier = mover.GetComponent<PlayerStickerCarrier>();
             if (carrier == null)

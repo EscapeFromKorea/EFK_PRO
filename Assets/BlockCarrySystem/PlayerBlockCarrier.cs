@@ -249,7 +249,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         SnapBlock best = null;
 
         blockBuf.Clear();
-        blockBuf.AddRange(Object.FindObjectsOfType<SnapBlock>());
+        blockBuf.AddRange(Object.FindObjectsByType<SnapBlock>(FindObjectsSortMode.None));
         foreach (SnapBlock b in blockBuf)
         {
             if (b == null) continue;
@@ -315,7 +315,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         carriedRotation = SnapToAxes(rb.rotation);
 
         // SnapBlock 컴포넌트를 비활성화 — SnapBlockController(용접 대상 탐색)와 PlayerCubeDock
-        // (도킹 대상 탐색)는 전부 FindObjectsOfType<SnapBlock>()로 후보를 찾는데, 비활성 컴포넌트는
+        // (도킹 대상 탐색)는 전부 FindObjectsByType<SnapBlock>(FindObjectsSortMode.None)로 후보를 찾는데, 비활성 컴포넌트는
         // 기본 오버로드에서 제외된다. 든 블록을 숨기지 않으면: 든 채로 다른 플레이어가 용접하면
         // 다음 프레임 이 컴포넌트의 강제 위치 갱신이 그 결합을 덮어쓰고, 내려놓는 순간 물리가 밀린
         // 조인트 오차를 한 번에 해소하며 블록이 먼 파트너 쪽으로 튕겨나간다(PR #92 리뷰에서 지적).

@@ -13,7 +13,7 @@ public static class FrictionStickerMenuItem
     [MenuItem("Tools/FrictionStickerSystem/Create Controller")]
     private static void CreateController()
     {
-        FrictionStickerController existing = Object.FindObjectOfType<FrictionStickerController>();
+        FrictionStickerController existing = Object.FindFirstObjectByType<FrictionStickerController>();
         if (existing != null)
         {
             Debug.LogWarning("[FrictionStickerSystem] 씬에 이미 FrictionStickerController가 있습니다.");

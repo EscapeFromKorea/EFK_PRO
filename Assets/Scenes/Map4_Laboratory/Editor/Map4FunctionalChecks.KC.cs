@@ -159,7 +159,7 @@ public static partial class Map4FunctionalChecks
                 NA(id, "검사불가(패널 못 찾음 — 이름 불일치 가능): MovablePortalPanel 0개(기대 S6_MovPanel_1·2 [S6_Wiring.cs:49·:252])" + NearNames(gen, "MovPanel"));
                 yield break;
             }
-            SpacePortal[] existing = Object.FindObjectsOfType<SpacePortal>();
+            SpacePortal[] existing = Object.FindObjectsByType<SpacePortal>(FindObjectsSortMode.None);
             if (SpacePortal.Orange != null || SpacePortal.Blue != null || existing.Length > 0)
             {
                 NA(id, $"검사불가(기존 포탈 있음): SpacePortal {existing.Length}개(Orange={Nm(SpacePortal.Orange)}, Blue={Nm(SpacePortal.Blue)}) — 포탈이 놓인 패널은 도형 충돌이 꺼져 라이더를 올릴 수 없다");

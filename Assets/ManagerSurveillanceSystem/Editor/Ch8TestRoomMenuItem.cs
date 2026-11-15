@@ -27,7 +27,7 @@ public static class Ch8TestRoomMenuItem
             return;
         }
 
-        RespawnController respawn = Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = Object.FindFirstObjectByType<RespawnController>();
         if (respawn == null)
         {
             Debug.LogWarning("[CH8] 씬에 RespawnController가 없어 전원 복귀를 배선할 수 없다 " +
@@ -175,14 +175,14 @@ public static class Ch8TestRoomMenuItem
     [MenuItem("Tools/ManagerSurveillanceSystem/Move Players To CH8 Start")]
     public static void MovePlayersToStart()
     {
-        ManagerChapterController controller = Object.FindObjectOfType<ManagerChapterController>();
+        ManagerChapterController controller = Object.FindFirstObjectByType<ManagerChapterController>();
         if (controller == null || controller.startPoints == null || controller.startPoints.Length == 0)
         {
             Debug.LogWarning("[CH8] 시작 지점이 연결된 ManagerChapterController가 없다 — 테스트 방부터 만들어라.");
             return;
         }
 
-        PlayerShapeIdentity[] players = Object.FindObjectsOfType<PlayerShapeIdentity>();
+        PlayerShapeIdentity[] players = Object.FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
         System.Array.Sort(players, (a, b) => a.Kind.CompareTo(b.Kind));
         for (int i = 0; i < players.Length; i++)
         {

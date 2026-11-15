@@ -116,7 +116,7 @@ public static class RespawnMenuItem
     [MenuItem("Tools/Respawn/Create Respawn Controller")]
     public static void CreateController()
     {
-        if (Object.FindObjectOfType<RespawnController>() != null)
+        if (Object.FindFirstObjectByType<RespawnController>() != null)
         {
             Debug.LogWarning("[Respawn] 씬에 RespawnController가 이미 있다 — 하나만 둔다.");
             return;

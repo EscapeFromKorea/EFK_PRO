@@ -24,7 +24,7 @@ public static class FixMissingPlayerShapeIdentity
     {
         int fixedCount = 0;
 
-        foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             GameObject root = mover.gameObject;
             if (root.GetComponent<PlayerShapeIdentity>() != null) continue;

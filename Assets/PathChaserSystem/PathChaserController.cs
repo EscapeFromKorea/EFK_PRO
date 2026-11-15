@@ -101,7 +101,7 @@ public class PathChaserController : MonoBehaviour
         }
 
         agent.maxWaypointIndex = Mathf.Clamp(wallStopWaypointIndex, 0, FinalWaypointIndex);
-        players = FindObjectsOfType<PlayerShapeIdentity>();
+        players = FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
     }
 
     private void FixedUpdate()

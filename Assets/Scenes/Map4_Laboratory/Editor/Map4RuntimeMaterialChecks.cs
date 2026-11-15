@@ -64,7 +64,7 @@ public static class Map4RuntimeMaterialChecks
         if (state == PlayModeStateChange.EnteredPlayMode && SessionState.GetBool(PendingKey, false))
         {
             SessionState.SetBool(PendingKey, false);
-            if (UnityEngine.Object.FindObjectOfType<Driver>() == null)
+            if (UnityEngine.Object.FindFirstObjectByType<Driver>() == null)
                 new GameObject("Map4RuntimeMaterials_RUNTIME").AddComponent<Driver>();
         }
         else if (state == PlayModeStateChange.EnteredEditMode && SessionState.GetBool(ActiveKey, false))
@@ -218,7 +218,7 @@ public static class Map4RuntimeMaterialChecks
 
         private IEnumerator Work()
         {
-                Map4Director director = UnityEngine.Object.FindObjectOfType<Map4Director>();
+                Map4Director director = UnityEngine.Object.FindFirstObjectByType<Map4Director>();
                 if (director == null) { report.Add("HARNESS.master", "(Master)", "Runner", "", "", "FAIL", "Map4Director 없음"); yield break; }
                 float loadDeadline = Time.realtimeSinceStartup + 20f;
                 while (Time.realtimeSinceStartup < loadDeadline && director.LoadedSectorCount < 8) yield return null;
@@ -232,7 +232,7 @@ public static class Map4RuntimeMaterialChecks
                 PlayerMover[] players = null;
                 while (Time.realtimeSinceStartup < playerDeadline)
                 {
-                    players = UnityEngine.Object.FindObjectsOfType<PlayerMover>();
+                    players = UnityEngine.Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
                     if (players.Length == 3 && players.All(p => p != null && p.GetComponent<Rigidbody>() != null && p.GetComponent<Rigidbody>().useGravity)) break;
                     yield return null;
                 }
