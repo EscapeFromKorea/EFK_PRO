@@ -81,24 +81,24 @@ namespace Map2KitchenDraft
             // Actual Rigidbody simulation in both horizontal axes, with gameplay input bypassed.
             bool originalExternal = actor.ExternallyDriven;
             Vector3 originalPosition = body.position;
-            Vector3 originalVelocity = body.velocity;
+            Vector3 originalVelocity = body.linearVelocity;
             actor.ExternallyDriven = true;
             body.position = controller.chapterStarts[0].position + Vector3.up;
-            body.velocity = Vector3.right * 3f;
+            body.linearVelocity = Vector3.right * 3f;
             Physics.SyncTransforms();
             Vector3 xStart = body.position;
             yield return new WaitForSecondsRealtime(0.32f);
             float dx = body.position.x - xStart.x;
             Add("Rigidbody physically travels X", dx > 0.4f, "X displacement=" + dx.ToString("F3") + " m");
             body.position = controller.chapterStarts[0].position + Vector3.up;
-            body.velocity = Vector3.forward * 3f;
+            body.linearVelocity = Vector3.forward * 3f;
             Physics.SyncTransforms();
             Vector3 zStart = body.position;
             yield return new WaitForSecondsRealtime(0.32f);
             float dz = body.position.z - zStart.z;
             Add("Rigidbody physically travels Z", dz > 0.4f, "Z displacement=" + dz.ToString("F3") + " m");
             body.position = originalPosition;
-            body.velocity = originalVelocity;
+            body.linearVelocity = originalVelocity;
             actor.ExternallyDriven = originalExternal;
             Physics.SyncTransforms();
             PlayerFollowCamera.SnapToTarget(actor.transform);
@@ -190,7 +190,7 @@ namespace Map2KitchenDraft
                 Vector3 keyAt = controller.key.position;
                 body.position = keyAt + new Vector3(0.2f, 0f, 0.2f);
                 actor.transform.position = body.position;
-                body.velocity = Vector3.zero;
+                body.linearVelocity = Vector3.zero;
                 Physics.SyncTransforms();
                 float actualDistance = Vector3.Distance(actor.transform.position, keyAt);
                 bool enabledBefore = actor.isActiveAndEnabled;
@@ -207,7 +207,7 @@ namespace Map2KitchenDraft
                     Vector3 dropStart = new Vector3(-30.2f, 7.4f, -10f);
                     body.position = dropStart;
                     actor.transform.position = dropStart;
-                    body.velocity = Vector3.zero;
+                    body.linearVelocity = Vector3.zero;
                     Physics.SyncTransforms();
                 }
             }

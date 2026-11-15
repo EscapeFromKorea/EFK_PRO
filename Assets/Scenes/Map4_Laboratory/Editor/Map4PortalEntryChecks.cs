@@ -44,7 +44,7 @@ public static class Map4PortalEntryChecks
         record("S6/P1" + label + "/준비", ready, ready ? "P1·P2, " + shape + " 강체, 빈 포탈 슬롯" : "구성 또는 강체 상태 누락");
         if (!ready) yield break;
 
-        Vector3 originalPosition = body.position, originalVelocity = body.velocity;
+        Vector3 originalPosition = body.position, originalVelocity = body.linearVelocity;
         Vector3 originalAngularVelocity = body.angularVelocity;
         bool originalControlled = cube.IsControlled;
         SpacePortal entrance = null, exit = null;
@@ -67,7 +67,7 @@ public static class Map4PortalEntryChecks
             Vector3 ground = south ? new Vector3(-10f, 0f, 19.7f) : new Vector3(-10f, 0f, 28.3f);
             Vector3 start = sector.transform.TransformPoint(ground + Vector3.up * 0.6f);
             Vector3 direction = sector.transform.TransformDirection(south ? Vector3.forward : Vector3.back).normalized;
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             body.position = start;
             Physics.SyncTransforms();
             Vector3 previous = body.position;
@@ -142,7 +142,7 @@ public static class Map4PortalEntryChecks
         {
             if (motor != null) { motor.Active = false; UnityEngine.Object.Destroy(motor); }
             cube.SetControlled(originalControlled);
-            body.velocity = originalVelocity;
+            body.linearVelocity = originalVelocity;
             body.angularVelocity = originalAngularVelocity;
             body.position = originalPosition;
             Physics.SyncTransforms();
@@ -228,21 +228,21 @@ public sealed class Map4PortalVelocityFixture : MonoBehaviour
         float localZ = sector.InverseTransformPoint(body.position).z;
         if (brakeAtCenter && Mathf.Abs(localZ - 24f) <= 0.1f)
         {
-            Vector3 before = body.velocity;
+            Vector3 before = body.linearVelocity;
             ReleaseTick = DrivenTicks;
             ReleaseZ = localZ;
             ReleaseAirborne = !grounded;
             ReleaseHorizontalBefore = new Vector2(before.x, before.z).magnitude;
             ReleaseAngularBefore = body.angularVelocity.magnitude;
-            body.velocity = new Vector3(0f, before.y, 0f);
+            body.linearVelocity = new Vector3(0f, before.y, 0f);
             Released = true;
             Active = false; // 다음 틱부터 팀 PlayerMover 무입력 처리만 적용한다.
             return;
         }
         float commanded = groundSpeed * (grounded ? 1f : mover.airControlMultiplier);
-        Vector3 current = body.velocity;
+        Vector3 current = body.linearVelocity;
         Vector3 horizontal = direction * commanded;
-        body.velocity = new Vector3(horizontal.x, current.y, horizontal.z);
+        body.linearVelocity = new Vector3(horizontal.x, current.y, horizontal.z);
         MaxCommandedHorizontal = Mathf.Max(MaxCommandedHorizontal, horizontal.magnitude);
         if (!grounded) AirTicks++;
         DrivenTicks++;

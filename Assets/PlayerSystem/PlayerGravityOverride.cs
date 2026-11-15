@@ -38,7 +38,7 @@ public class PlayerGravityOverride : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        defaultDrag = rb.drag;
+        defaultDrag = rb.linearDamping;
     }
 
     void OnEnable() => ForceRestoreImmediate();
@@ -57,7 +57,7 @@ public class PlayerGravityOverride : MonoBehaviour
         rb.useGravity = false;
         targetScale = scale;
         lerpSpeed = transitionTime > 0f ? 1f / transitionTime : 999f;
-        rb.drag = defaultDrag * dragMultiplier;
+        rb.linearDamping = defaultDrag * dragMultiplier;
         this.uplift = uplift;
         this.jumpMultiplier = jumpMultiplier;
     }
@@ -89,7 +89,7 @@ public class PlayerGravityOverride : MonoBehaviour
         if (!overriding) return; // 이미 정상이면 할 일 없음.
         targetScale = 1f;
         lerpSpeed = transitionTime > 0f ? 1f / transitionTime : 999f;
-        rb.drag = defaultDrag;
+        rb.linearDamping = defaultDrag;
         uplift = 0f;
         jumpMultiplier = 1f; // 구역을 벗어난 순간 점프 강화는 바로 끊는다(중력 복원 전이와 무관하게).
     }
@@ -120,6 +120,6 @@ public class PlayerGravityOverride : MonoBehaviour
         if (rb == null) return; // OnDestroy 경로에서 바디가 이미 사라진 경우
         // 오버라이드를 건 적이 없으면(OnEnable 등) 바디의 useGravity를 건드리지 않는다.
         if (wasOverriding) rb.useGravity = defaultUseGravity;
-        rb.drag = defaultDrag;
+        rb.linearDamping = defaultDrag;
     }
 }

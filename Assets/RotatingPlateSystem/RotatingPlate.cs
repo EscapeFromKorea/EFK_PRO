@@ -84,7 +84,7 @@ public class RotatingPlate : MonoBehaviour
         // 인스펙터에서 직접 붙였을 때도 바로 그럴듯하게 동작하도록 기본 배선.
         Rigidbody body = GetComponent<Rigidbody>();
         body.useGravity = false;
-        body.angularDrag = angularResistance;
+        body.angularDamping = angularResistance;
 
         HingeJoint hj = GetComponent<HingeJoint>();
         hj.axis = rotationAxis;
@@ -114,7 +114,7 @@ public class RotatingPlate : MonoBehaviour
     private void ApplyConfig()
     {
         rb.useGravity = plateUseGravity;
-        rb.angularDrag = Mathf.Max(0f, angularResistance);
+        rb.angularDamping = Mathf.Max(0f, angularResistance);
         rb.maxAngularVelocity = Mathf.Max(0.01f, maxAngularSpeedDeg * Mathf.Deg2Rad);
 
         hinge.axis = rotationAxis.sqrMagnitude > 1e-6f ? rotationAxis : Vector3.right;

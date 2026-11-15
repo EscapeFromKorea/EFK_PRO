@@ -120,7 +120,7 @@ public class FallingRock : MonoBehaviour
 
         if (stuckTimeout <= 0f) return;
 
-        if (rb.velocity.sqrMagnitude > 0.0025f) // 0.05 U/s 이상이면 아직 움직이는 중.
+        if (rb.linearVelocity.sqrMagnitude > 0.0025f) // 0.05 U/s 이상이면 아직 움직이는 중.
         {
             movingSince = Time.time;
             return;

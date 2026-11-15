@@ -405,9 +405,9 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
             transform.position += move;
         }
 
-        body.velocity = Vector3.zero;
+        body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
-        blockBody.velocity = Vector3.zero;
+        blockBody.linearVelocity = Vector3.zero;
         blockBody.angularVelocity = Vector3.zero;
 
         joint = gameObject.AddComponent<ConfigurableJoint>();

@@ -131,7 +131,7 @@ public class Lab_AntiStuck : MonoBehaviour
         // 시간 값 자체를 읽는 팀 공개 API는 없어(private) 속도 휴리스틱으로 근사한다(정확한
         // 해법은 아니라는 한계를 밝혀 둔다).
         bool cleanThisFrame = maxDepth <= profile.penetrationThreshold;
-        bool restingOnGround = IsGroundedNow() && Mathf.Abs(rb.velocity.y) < profile.safeSampleMaxVerticalSpeed;
+        bool restingOnGround = IsGroundedNow() && Mathf.Abs(rb.linearVelocity.y) < profile.safeSampleMaxVerticalSpeed;
         if (cleanThisFrame && restingOnGround) SampleSafePosition();
 
         if (!cleanThisFrame)
@@ -236,7 +236,7 @@ public class Lab_AntiStuck : MonoBehaviour
         int lastIndex = (safeCursor - 1 + safePositions.Count) % safePositions.Count;
         Vector3 target = safePositions[lastIndex];
 
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         rb.position = target;
         transform.position = target;

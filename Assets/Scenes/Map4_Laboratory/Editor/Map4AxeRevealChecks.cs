@@ -94,7 +94,7 @@ public static class Map4AxeRevealChecks
         record("CH5.reveal.camera", viewReady,
             viewReady ? $"기존 Main Camera와 PlayerFollowCamera.FaceDirection으로 접근 방향 정렬; PNG 경로={viewFolder}; API fixture 시야, IMGUI/사용자 입력·완주 아님" : "기존 활성 Main Camera/PlayerFollowCamera 없음");
 
-        Vector3 original = body.position, oldVelocity = body.velocity, oldAngular = body.angularVelocity;
+        Vector3 original = body.position, oldVelocity = body.linearVelocity, oldAngular = body.angularVelocity;
         bool hit = false;
         UnityAction<GameObject> onHit = root => { if (root == player.gameObject) hit = true; };
         if (axe.OnHazardHit != null) axe.OnHazardHit.AddListener(onHit);
@@ -232,7 +232,7 @@ public static class Map4AxeRevealChecks
             }
             if (axe.OnHazardHit != null) axe.OnHazardHit.RemoveListener(onHit);
             Put(body, original);
-            body.velocity = oldVelocity;
+            body.linearVelocity = oldVelocity;
             body.angularVelocity = oldAngular;
         }
     }
@@ -340,6 +340,6 @@ public static class Map4AxeRevealChecks
     { if (players != null) foreach (PlayerMover p in players) if (p != null && p.GetComponent<Rigidbody>() != null) return p; return null; }
 
     private static void Put(Rigidbody body, Vector3 position)
-    { body.velocity = Vector3.zero; body.angularVelocity = Vector3.zero; body.position = position; Physics.SyncTransforms(); }
+    { body.linearVelocity = Vector3.zero; body.angularVelocity = Vector3.zero; body.position = position; Physics.SyncTransforms(); }
 }
 #endif

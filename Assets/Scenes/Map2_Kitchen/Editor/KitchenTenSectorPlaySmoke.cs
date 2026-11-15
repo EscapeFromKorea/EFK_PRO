@@ -105,7 +105,7 @@ public static class KitchenTenSectorPlaySmoke
         for (int i = 0; i < players.Length; i++)
         {
             Rigidbody body = players[i].GetComponent<Rigidbody>();
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
             body.position = center + new Vector3((i - 1) * 1.2f, 0, 0);
         }

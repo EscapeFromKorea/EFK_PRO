@@ -125,7 +125,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
             { reason = $"안전 위치·몸체 준비 실패({i})"; return false; }
             oldPosition[i] = mover.transform.position;
             oldRotation[i] = mover.transform.rotation;
-            oldVelocity[i] = bodies[i].velocity;
+            oldVelocity[i] = bodies[i].linearVelocity;
             oldAngular[i] = bodies[i].angularVelocity;
             Bounds current = solids[i].bounds;
             float footBelowPivot = mover.transform.position.y - current.min.y;
@@ -156,7 +156,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
         {
             for (int i = 0; i < 3; i++)
             {
-                bodies[i].velocity = Vector3.zero;
+                bodies[i].linearVelocity = Vector3.zero;
                 bodies[i].angularVelocity = Vector3.zero;
                 bodies[i].position = destination[i];
                 movers[i].transform.position = destination[i];
@@ -179,7 +179,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
             {
                 bodies[i].position = oldPosition[i];
                 movers[i].transform.SetPositionAndRotation(oldPosition[i], oldRotation[i]);
-                bodies[i].velocity = oldVelocity[i];
+                bodies[i].linearVelocity = oldVelocity[i];
                 bodies[i].angularVelocity = oldAngular[i];
             }
             Physics.SyncTransforms();

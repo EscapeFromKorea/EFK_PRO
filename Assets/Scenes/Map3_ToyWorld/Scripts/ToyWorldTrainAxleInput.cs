@@ -28,7 +28,7 @@ public sealed class ToyWorldTrainAxleInput : MonoBehaviour
         if (body == null) return;
         if (lastHitTime.TryGetValue(body, out float lastHit) && Time.time - lastHit < 0.25f) return;
 
-        Vector3 push = body.velocity;
+        Vector3 push = body.linearVelocity;
         PlayerRollModeReceiver rollMode = identity.GetComponent<PlayerRollModeReceiver>();
         if (rollMode != null && rollMode.RollModeActive && rollMode.CurrentTumbleDirection.sqrMagnitude > 0.0001f)
             push = rollMode.CurrentTumbleDirection;

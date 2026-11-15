@@ -615,7 +615,7 @@ public static class Map4PlayTestRunner
                 Rigidbody rb = p.GetComponent<Rigidbody>();
                 if (rb == null) continue;
                 Vector3 park = ParkBase + Vector3.right * (i * ParkSpacing);
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.position = park;
                 rb.transform.position = park;
@@ -739,7 +739,7 @@ public static class Map4PlayTestRunner
         {
             if (rb != null)
             {
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.position = s.position;
                 rb.rotation = s.rotation;
@@ -787,7 +787,7 @@ public static class Map4PlayTestRunner
 
         private static void TeleportBody(Rigidbody rb, Vector3 pos)
         {
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             rb.position = pos;
             rb.transform.position = pos;
@@ -1013,7 +1013,7 @@ public static class Map4PlayTestRunner
             yield return null;
 
             rb.position = trapCenter; rb.transform.position = trapCenter;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
 
             int before = stuck.InterventionCount;
             float deadline = Time.time + 5f;
@@ -1059,7 +1059,7 @@ public static class Map4PlayTestRunner
 
             rb.position = wall.transform.position - Vector3.forward * (0.5f - 0.3f); // 0.3U 관통.
             rb.transform.position = rb.position;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
 
             int before = stuck.InterventionCount;
             float deadline = Time.time + 8f;
@@ -1192,13 +1192,13 @@ public static class Map4PlayTestRunner
                     // Tetrahedron의 오프셋이 1.996(낙하 시작 높이 2.0에서 물리 스텝 1~2개치만
                     // 떨어진 값)로 찍혀 명백히 착지 전에 폴링이 끝난 것이었다. 아래 경사로 드롭과
                     // 같은 검증된 고정 대기(2초 — 2U 자유낙하 시간 0.64초보다 훨씬 김)로 통일한다.
-                    rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
+                    rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
                     rb.position = flatTarget; rb.transform.position = flatTarget;
                     yield return new WaitForSeconds(2.0f);
                     float footOffset = rb.position.y - s.floorHeight;
 
                     // 2) 경사로 중간에 떨어뜨려 실측.
-                    rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
+                    rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
                     rb.position = rampTarget; rb.transform.position = rampTarget;
                     yield return new WaitForSeconds(2.0f);
 

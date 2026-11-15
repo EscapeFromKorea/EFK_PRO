@@ -232,7 +232,7 @@ public static class Map4FollowupS2Checks
     {
         Rigidbody rb = mover != null ? mover.GetComponent<Rigidbody>() : null;
         if (rb == null) return;
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         rb.position = position;
         rb.transform.position = position;

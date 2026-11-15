@@ -94,7 +94,7 @@ public static class HourglassMenuItem
 
         Rigidbody rockRb = rock.AddComponent<Rigidbody>();
         rockRb.mass = 2f;
-        rockRb.drag = 1f; // 살짝 무거운 느낌 - 네모가 밀 때 미끄러지듯 날아가지 않게.
+        rockRb.linearDamping = 1f; // 살짝 무거운 느낌 - 네모가 밀 때 미끄러지듯 날아가지 않게.
         // 밀림 정책(FallingRockFlip.lockUnlessPushedByCube)의 기본 상태 = 잠김. 런타임에는 Awake가
         // 이 값을 다시 세팅하지만, 씬 파일에도 잠긴 상태로 직렬화해두면 (1) Play 없이 인스펙터를
         // 봐도 정책이 드러나고 (2) 에디터에서 이 오브젝트가 바닥 없는 공중에 놓여도 흘러내리지 않는다.

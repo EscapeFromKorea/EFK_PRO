@@ -158,9 +158,9 @@ public class SnapBlock : MonoBehaviour
 
         AlignTo(other, myFace, otherFace);
 
-        body.velocity = Vector3.zero;
+        body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
-        other.body.velocity = Vector3.zero;
+        other.body.linearVelocity = Vector3.zero;
         other.body.angularVelocity = Vector3.zero;
 
         ConfigurableJoint j = gameObject.AddComponent<ConfigurableJoint>();

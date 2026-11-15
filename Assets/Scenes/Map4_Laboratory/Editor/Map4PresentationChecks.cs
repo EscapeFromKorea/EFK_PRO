@@ -66,7 +66,7 @@ public static class Map4PresentationChecks
                 if (rb == null)
                 { record("PRESENT.body." + i, false, "Rigidbody 없음"); continue; }
                 Transform slot = sectors[0].spawnSlots[i];
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.position = slot.position;
                 rb.transform.position = slot.position;

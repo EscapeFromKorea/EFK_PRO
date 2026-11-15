@@ -35,7 +35,7 @@ public class RespawningFallingDebris : MonoBehaviour
         if (rb.position.y < startPosition.y - fallDistance)
         {
             rb.position = startPosition;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
 
             // 순간이동은 SlowZone의 트리거 Exit 통보에 의존할 수 없는 경로다(구역 안 -> 구역 밖으로
             // 한 프레임에 건너뛴다). 통보가 늦거나 누락되면 구역 밖에서도 감속이 걸린 채 남아

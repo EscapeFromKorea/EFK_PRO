@@ -179,8 +179,8 @@ public class IsolationSceneVerifier : MonoBehaviour
     private static void Drive(Rigidbody rb, Vector3 v)
     {
         if (rb == null) return;
-        Vector3 cur = rb.velocity;
-        rb.velocity = new Vector3(v.x, cur.y, v.z);
+        Vector3 cur = rb.linearVelocity;
+        rb.linearVelocity = new Vector3(v.x, cur.y, v.z);
     }
 
     private IEnumerator Main()
@@ -327,7 +327,7 @@ public class IsolationSceneVerifier : MonoBehaviour
         while (t < 3f && lever.Armed)
         {
             if (Mathf.Approximately(t % 0.5f, 0f) || t < 0.03f)
-                Debug.Log($"[Verify]   t={t:0.00} pos {pusher.transform.position} vel {pusher.velocity} 각도 {head.GetCurrentAngle():0.0}");
+                Debug.Log($"[Verify]   t={t:0.00} pos {pusher.transform.position} vel {pusher.linearVelocity} 각도 {head.GetCurrentAngle():0.0}");
             setVel(push * 3f);
             best = Mathf.Max(best, head.GetCurrentAngle());
             t += Time.fixedDeltaTime;
@@ -351,7 +351,7 @@ public class IsolationSceneVerifier : MonoBehaviour
 
     private static void Teleport(Rigidbody rb, Vector3 p)
     {
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.position = p;
         rb.transform.position = p;
     }

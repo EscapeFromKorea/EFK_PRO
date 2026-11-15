@@ -255,7 +255,7 @@ public class CatapultArm : MonoBehaviour
                 Rigidbody occupant = bucket != null ? bucket.ConsumeOccupant() : null;
                 if (occupant != null)
                 {
-                    occupant.velocity = pendingLaunchVelocity;
+                    occupant.linearVelocity = pendingLaunchVelocity;
                 }
 
                 // 램프가 이미 팔을 restAngle까지 데려다 놨으므로, 이어서 8차 개편의 반동 스프링을

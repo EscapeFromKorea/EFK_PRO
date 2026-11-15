@@ -193,7 +193,7 @@ public static class Map4FollowupS7Checks
         Rigidbody body = player.GetComponent<Rigidbody>();
         if (body != null)
         {
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
             body.position = position;
         }

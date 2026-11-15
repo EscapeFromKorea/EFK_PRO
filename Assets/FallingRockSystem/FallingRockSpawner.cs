@@ -231,7 +231,7 @@ public class FallingRockSpawner : MonoBehaviour
         if (keepLane)
             rb.constraints = RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ
                              | RigidbodyConstraints.FreezeRotation;
-        rb.velocity = Vector3.down * initialFallSpeed; // 초기 속도 1회 대입. 이후 속도는 물리에 맡긴다.
+        rb.linearVelocity = Vector3.down * initialFallSpeed; // 초기 속도 1회 대입. 이후 속도는 물리에 맡긴다.
 
         FallingRock rock = go.GetComponent<FallingRock>();
         if (rock == null) rock = go.AddComponent<FallingRock>();

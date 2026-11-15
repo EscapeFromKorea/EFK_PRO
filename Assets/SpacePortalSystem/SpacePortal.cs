@@ -328,7 +328,7 @@ public class SpacePortal : MonoBehaviour
         // 속력(크기)은 여전히 보존한다). 대각선으로 비스듬히 들어가도 항상 정면으로 튀어나온다.
         // exitForwardSpeed는 진입 속도가 0에 가까워도 최소 추진력을 보장하고, exitHopSpeed는
         // 살짝 뜨는 연출을 더한다.
-        float speed = body.velocity.magnitude;
+        float speed = body.linearVelocity.magnitude;
         Vector3 newVel = partner.transform.forward * (speed + partner.exitForwardSpeed) + partner.transform.up * partner.exitHopSpeed;
 
         PlayerShapeIdentity identity = body.GetComponentInParent<PlayerShapeIdentity>();
@@ -351,7 +351,7 @@ public class SpacePortal : MonoBehaviour
 
             body.position = newPos;
             body.rotation = rotDelta * body.rotation;
-            body.velocity = newVel;
+            body.linearVelocity = newVel;
             body.angularVelocity = newAngVel;
         }
 
@@ -406,7 +406,7 @@ public class SpacePortal : MonoBehaviour
         if (rb == null) yield break;
         rb.isKinematic = prevKinematic;
         rb.interpolation = prevInterp;
-        rb.velocity = newVel;
+        rb.linearVelocity = newVel;
 
         // ExternallyDriven을 여기서 바로 풀면 다음 FixedUpdate에 PlayerMover.LegacyVelocityFixedUpdate가
         // (입력이 없으면 특히) velocity.x/z를 즉시 0으로 재대입해 방금 넣은 출구 속도가 물리 틱 하나

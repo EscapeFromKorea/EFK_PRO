@@ -37,7 +37,7 @@ public static class SeesawMenuItem
         rb.mass = 5f;
         // SeesawWeightTilt가 실제 하중 토크를 보강한다. 과도한 angularDrag는 한쪽 하중에도
         // 판이 거의 안 기울게 하므로, 흔들림은 보정 스크립트의 제한 각도로 제어한다.
-        rb.angularDrag = 0.75f;
+        rb.angularDamping = 0.75f;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 

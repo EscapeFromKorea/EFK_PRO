@@ -107,11 +107,11 @@ public class ZeroGravityBubble : MonoBehaviour
         if (rb == null || rb.isKinematic) return; // 벽 부착 중(ThreadPinPlacer)이면 velocity 대입 금지.
         if (!entryHeightY.TryGetValue(rb, out float baseY)) return;
 
-        if (rb.position.y - baseY >= maxRiseHeight && rb.velocity.y > 0f)
+        if (rb.position.y - baseY >= maxRiseHeight && rb.linearVelocity.y > 0f)
         {
-            Vector3 v = rb.velocity;
+            Vector3 v = rb.linearVelocity;
             v.y = 0f;
-            rb.velocity = v;
+            rb.linearVelocity = v;
         }
     }
 

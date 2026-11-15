@@ -190,15 +190,15 @@ public class SlowZone : MonoBehaviour
             ramp = new FallRamp
             {
                 startTime = Time.time,
-                startFallSpeed = Mathf.Max(0f, -rb.velocity.y)
+                startFallSpeed = Mathf.Max(0f, -rb.linearVelocity.y)
             };
             affected[body] = ramp;
 
             // 진입 순간에만 수평 속도를 한 번 깎는다(매 프레임 곱하면 기하급수적으로 감쇠해 멈춘다).
             // 세로는 일부러 건드리지 않는다 - 하강은 아래 램프가 담당하고, 여기서 같이 곱하면
             // 진입 프레임에 하강 속도가 한 번 더 꺾여 없애려던 급정지가 되살아난다(클래스 주석 참고).
-            rb.velocity = new Vector3(rb.velocity.x * slowMultiplier, rb.velocity.y,
-                                      rb.velocity.z * slowMultiplier);
+            rb.linearVelocity = new Vector3(rb.linearVelocity.x * slowMultiplier, rb.linearVelocity.y,
+                                      rb.linearVelocity.z * slowMultiplier);
             Debug.Log($"[SlowZone] '{rb.name}' 진입 - 감속 시작 (중력 x{slowMultiplier}, 하강 " +
                       $"{ramp.startFallSpeed:F1} → {maxFallSpeed} U/s를 {transitionTime}초에 걸쳐)");
         }
@@ -208,8 +208,8 @@ public class SlowZone : MonoBehaviour
         if (maxFallSpeed <= 0f) return; // 0 = 상한 없음(중력 배율만).
 
         float ceiling = FallSpeedCeiling(ramp);
-        if (rb.velocity.y < -ceiling)
-            rb.velocity = new Vector3(rb.velocity.x, -ceiling, rb.velocity.z);
+        if (rb.linearVelocity.y < -ceiling)
+            rb.linearVelocity = new Vector3(rb.linearVelocity.x, -ceiling, rb.linearVelocity.z);
     }
 
     /// <summary>지금 이 순간 허용할 하강 속도 상한(양수). 진입 속도에서 maxFallSpeed까지

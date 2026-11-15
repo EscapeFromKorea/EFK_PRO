@@ -85,10 +85,10 @@ public class PlayerVisualRoll : MonoBehaviour
         // 것처럼 보인다. 진짜 체공은 수직 속도가 뚜렷하다는 점을 함께 걸어(FreezeRotation이라
         // 물리 자체는 절대 안 기울므로 화면 기울임의 유일한 원인이 이 스크립트다), 평지에서는
         // y속도≈0이라 접지 판정이 깜빡여도 기울임이 나오지 않게 한다.
-        bool airborne = !grounded && Mathf.Abs(rb.velocity.y) > airborneVerticalSpeed;
+        bool airborne = !grounded && Mathf.Abs(rb.linearVelocity.y) > airborneVerticalSpeed;
 
         // 기울임 축/세기는 공중 텀블과 접지 슬라이드 기울임이 같은 식(이동 방향 기준)을 공유한다.
-        Vector3 horiz = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+        Vector3 horiz = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
         float speed = horiz.magnitude;
         Vector3 tiltAxis = speed > 0.01f ? Vector3.Cross(Vector3.up, horiz.normalized) : Vector3.zero;
         float speedT = speedForMaxTumble > 0.01f ? Mathf.Clamp01(speed / speedForMaxTumble) : 1f;

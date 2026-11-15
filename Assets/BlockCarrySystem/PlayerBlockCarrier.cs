@@ -331,7 +331,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         // 엔진이 "그 값을 다시 지난 프레임과 보간"하려다 매 FixedUpdate마다 위치가 살짝 튀었다
         // 복구되는 것처럼 보여 꿀렁거림/미세 회전 아티팩트로 나타난다(구가 구를 때 눈에 띔).
         rb.interpolation = RigidbodyInterpolation.None;
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
         IgnoreCollisionWithPlayer(carried, true);
@@ -393,7 +393,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
             rb.transform.SetPositionAndRotation(pos, rot);
             rb.isKinematic = carriedKinematicWas;
             rb.interpolation = carriedInterpWas;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
 
@@ -484,7 +484,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
-            Vector3 v = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
+            Vector3 v = Vector3.ProjectOnPlane(rb.linearVelocity, Vector3.up);
             if (v.sqrMagnitude > 0.04f) return v.normalized;
         }
 

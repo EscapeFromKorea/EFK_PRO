@@ -42,8 +42,8 @@ public static class SyncObjectMenuItem
         // drag는 유지 — 밀면 이동하다 자연히 멈추게(마찰 없이 영원히 미끄러지는 문제 방지).
         if (role == SyncObject.SyncRole.Leader)
         {
-            rb.drag = 3f;
-            rb.angularDrag = 3f;
+            rb.linearDamping = 3f;
+            rb.angularDamping = 3f;
             go.AddComponent<SyncDemoGravityToggle>();
         }
 

@@ -128,7 +128,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
                 if (rb == null) { Debug.LogError($"[Lab_IsolationFlow] {mover.name}에 Rigidbody가 없다.", mover); return false; }
                 bodies.Add(rb);
                 positions.Add(rb.position);
-                velocities.Add(rb.velocity);
+                velocities.Add(rb.linearVelocity);
                 angularVelocities.Add(rb.angularVelocity);
             }
             transferInProgress = true;
@@ -139,7 +139,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
                 {
                     bodies[i].position = positions[i];
                     bodies[i].transform.position = positions[i];
-                    bodies[i].velocity = velocities[i];
+                    bodies[i].linearVelocity = velocities[i];
                     bodies[i].angularVelocity = angularVelocities[i];
                 }
                 Physics.SyncTransforms();

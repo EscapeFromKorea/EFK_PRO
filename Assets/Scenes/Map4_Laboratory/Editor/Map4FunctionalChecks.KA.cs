@@ -687,7 +687,7 @@ public static partial class Map4FunctionalChecks
                 Vector3 apNow = lc.anchor.transform.position;
                 Vector3 radial = new Vector3(trb.position.x - apNow.x, 0f, trb.position.z - apNow.z);
                 Vector3 pushDir = radial.sqrMagnitude > 0.01f ? radial.normalized : dir;
-                Vector3 v = trb.velocity;
+                Vector3 v = trb.linearVelocity;
                 trb.AddForce(pushDir * speed - PredictMoverHoriz(tetra, new Vector3(v.x, 0f, v.z)), ForceMode.VelocityChange);
                 yield return new WaitForFixedUpdate();
                 if (tetra == null || trb == null) { stopWhy = "몸이 사라짐"; break; }
@@ -938,7 +938,7 @@ public static partial class Map4FunctionalChecks
                     rel.y = 0f;
                     float lat = Vector3.Dot(rel, rt);
                     Vector3 want = f * speed - rt * Mathf.Clamp(lat * 2f, -1.5f, 1.5f);
-                    Vector3 v = srb.velocity;
+                    Vector3 v = srb.linearVelocity;
                     srb.AddForce(want - PredictMoverHoriz(pusher, new Vector3(v.x, 0f, v.z)), ForceMode.VelocityChange);
                     yield return new WaitForFixedUpdate();
                     if (pusher == null || srb == null) { why = "도형 사라짐"; break; }

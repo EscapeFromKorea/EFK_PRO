@@ -80,7 +80,7 @@ public static class Map4FollowupS5S8Checks
             yield break;
         }
 
-        Vector3 original = body.position, oldVelocity = body.velocity, oldAngular = body.angularVelocity;
+        Vector3 original = body.position, oldVelocity = body.linearVelocity, oldAngular = body.angularVelocity;
         try
         {
             // 가시를 먼저 시험하면 먼저 켠 도끼의 물리 날이 다음 구역 접근을 막는 교란을 피할 수 있다.
@@ -168,7 +168,7 @@ public static class Map4FollowupS5S8Checks
                 counter.OnThresholdReached.RemoveListener(onThreshold);
             }
         }
-        finally { Put(body, original); body.velocity = oldVelocity; body.angularVelocity = oldAngular; }
+        finally { Put(body, original); body.linearVelocity = oldVelocity; body.angularVelocity = oldAngular; }
     }
 
     private static void RunS8(SectorController sector, PlayerMover[] players, Action<string, bool, string> record)
@@ -214,7 +214,7 @@ public static class Map4FollowupS5S8Checks
         forward.Normalize();
         Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
         Vector3 observer = waypoints[0].position;
-        Vector3 oldPosition = body.position, oldVelocity = body.velocity, oldAngular = body.angularVelocity;
+        Vector3 oldPosition = body.position, oldVelocity = body.linearVelocity, oldAngular = body.angularVelocity;
         try
         {
             Put(body, observer + forward * 6f + Vector3.up * 0.5f); // 서쪽 외곽 통로, 책장 밖
@@ -224,7 +224,7 @@ public static class Map4FollowupS5S8Checks
             record("CH8.bookshelfLinecast", visibleInAisle && !visibleBehindShelf,
                 $"공개 CanSee: 통로 거리 {clearDistance:F2}U/보임 {visibleInAisle}, 책장 뒤 거리 {hiddenDistance:F2}U/보임 {visibleBehindShelf}; 같은 시작 시선, Root 직접 배치 기동 시험");
         }
-        finally { Put(body, oldPosition); body.velocity = oldVelocity; body.angularVelocity = oldAngular; }
+        finally { Put(body, oldPosition); body.linearVelocity = oldVelocity; body.angularVelocity = oldAngular; }
     }
 
     private static PlayerMover FirstBody(PlayerMover[] players)
@@ -256,7 +256,7 @@ public static class Map4FollowupS5S8Checks
 
     private static void Put(Rigidbody body, Vector3 position)
     {
-        body.velocity = Vector3.zero;
+        body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
         body.position = position;
         Physics.SyncTransforms();

@@ -92,7 +92,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Require(queue != null, "PlayerJump input queue field is missing.");
         queue.SetValue(manualJump, true);
         yield return tick;
-        Require(manualBody.velocity.y > 1f, "Grounded manual jump input was not consumed by PlayerJump.");
+        Require(manualBody.linearVelocity.y > 1f, "Grounded manual jump input was not consumed by PlayerJump.");
         Debug.Log("[ToyWorldPlaySmoke] PASS deterministic Sphere control, grounded state, and manual jump path.");
 
         foreach (PlayerMover player in FindObjectsOfType<PlayerMover>())
@@ -148,7 +148,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
             if (i == 0) Place(sphere, new Vector3(approach.x, 0.15f, approach.z));
             Vector3 direction = lever.transform.position - sphereBody.position;
             direction.y = 0f;
-            sphereBody.velocity = direction.normalized * 3f + Vector3.up * sphereBody.velocity.y;
+            sphereBody.linearVelocity = direction.normalized * 3f + Vector3.up * sphereBody.linearVelocity.y;
             yield return tick;
         }
         sphere.ExternallyDriven = false;
@@ -192,7 +192,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Vector3 forwardPush = -cart.axle.crank.forward;
         cube.ExternallyDriven = true;
         Place(cube, cart.axle.crank.position + cart.axle.crank.right * 0.9f - forwardPush * 1.2f);
-        cubeBody.velocity = forwardPush * 3f;
+        cubeBody.linearVelocity = forwardPush * 3f;
         for (int i = 0; i < 60 && cart.axle.CurrentCharge == 0f; i++) yield return tick;
         cube.ExternallyDriven = false;
         Require(cart.axle.CurrentCharge > 0f,
@@ -222,7 +222,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Vector3 reversePush = crank.forward;
         cube.ExternallyDriven = true;
         Place(cube, crank.position + crank.right * 0.9f - reversePush * 1.2f);
-        cubeBody.velocity = reversePush * 3f;
+        cubeBody.linearVelocity = reversePush * 3f;
         for (int i = 0; i < 60 && cart.axle.CurrentCharge >= 0f; i++) yield return tick;
         cube.ExternallyDriven = false;
         Require(cart.axle.CurrentCharge < 0f,
@@ -294,7 +294,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
                 for (int i = 0; i < 90; i++)
                 {
                     yield return tick;
-                    if (shape.GetComponent<Rigidbody>().velocity.y > 3f)
+                    if (shape.GetComponent<Rigidbody>().linearVelocity.y > 3f)
                     {
                         launched = true;
                         break;
@@ -351,7 +351,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Rigidbody body = player.GetComponent<Rigidbody>();
         if (!body.isKinematic)
         {
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
         }
         body.position = position;

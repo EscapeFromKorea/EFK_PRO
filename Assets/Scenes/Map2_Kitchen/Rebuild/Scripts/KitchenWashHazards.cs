@@ -112,7 +112,7 @@ namespace Map2KitchenDraft
             if (mover != null && mover.ExternallyDriven)
                 return false;
 
-            Vector3 horizontalVelocity = body.velocity;
+            Vector3 horizontalVelocity = body.linearVelocity;
             horizontalVelocity.y = 0f;
             if (horizontalVelocity.sqrMagnitude < movementSpeedThreshold * movementSpeedThreshold)
                 return false;

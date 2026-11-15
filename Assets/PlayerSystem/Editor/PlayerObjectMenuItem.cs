@@ -53,7 +53,7 @@ public static class PlayerObjectMenuItem
         rb.constraints = shape == PlayerShapeType.Sphere
             ? RigidbodyConstraints.None
             : RigidbodyConstraints.FreezeRotation;
-        rb.angularDrag = 0.5f;
+        rb.angularDamping = 0.5f;
         ConfigureContinuousRollPhysics(rb, shape);
         // 토크+마찰 물리 구르기(ConfigureTorqueRollPhysics / useTorqueRolling)는 더 이상 켜지 않는다.
         // 코드는 PlayerMover에 플래그(useTorqueRolling=false 기본) 뒤로 남겨둬, 추후 "착지까지 실제
@@ -157,7 +157,7 @@ public static class PlayerObjectMenuItem
     private static void ConfigureTorqueRollPhysics(Rigidbody rb)
     {
         rb.centerOfMass = new Vector3(0f, 0.5f, 0f);
-        rb.angularDrag = 0.1f;
+        rb.angularDamping = 0.1f;
         rb.maxAngularVelocity = 20f;
     }
 

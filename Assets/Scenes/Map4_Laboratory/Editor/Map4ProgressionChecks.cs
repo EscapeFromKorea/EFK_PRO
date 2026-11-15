@@ -82,7 +82,7 @@ public static class Map4ProgressionChecks
                 float footOffset = PivotToFoot(player);
                 Vector3 start = new Vector3(to.transform.position.x + (i - 1) * 2f,
                     floorY + footOffset + 0.12f, seamZ - 11.5f);
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.position = start;
                 rb.transform.position = start;
@@ -110,11 +110,11 @@ public static class Map4ProgressionChecks
                 bool reached = false;
                 for (int step = 0; step < 450; step++)
                 {
-                    rb.velocity = new Vector3(0f, rb.velocity.y, speed);
+                    rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, speed);
                     yield return new WaitForFixedUpdate();
                     if (rb.position.z >= endZ - 0.25f) { reached = true; break; }
                 }
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 player.ExternallyDriven = priorDriven;
                 rb.useGravity = priorGravity;
                 Vector3 end = rb.position;
@@ -155,7 +155,7 @@ public static class Map4ProgressionChecks
         Vector3 ground = expected.FindGroundPoint();
         Rigidbody rb = victim.GetComponent<Rigidbody>();
         Vector3 away = sector.transform.TransformPoint(new Vector3(0f, 1f, -6f));
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.position = away;
         rb.transform.position = away;
         Physics.SyncTransforms();

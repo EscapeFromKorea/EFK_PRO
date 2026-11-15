@@ -80,7 +80,7 @@ public class Map4Director : MonoBehaviour
             Rigidbody rb = mover.GetComponent<Rigidbody>();
             if (rb == null) continue;
             rb.useGravity = false;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             masterPlayerBodies.Add(rb);
         }
@@ -161,7 +161,7 @@ public class Map4Director : MonoBehaviour
             target = sector.transform.position + Vector3.up * 1f;
         }
 
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         rb.position = target;
         rb.transform.position = target;

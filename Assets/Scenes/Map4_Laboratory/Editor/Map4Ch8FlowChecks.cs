@@ -345,7 +345,7 @@ public static class Map4Ch8FlowChecks
             walker.MovePosition(walker.position + forward * 0.08f);
             yield return new WaitForFixedUpdate();
         }
-        walker.velocity = Vector3.zero;
+        walker.linearVelocity = Vector3.zero;
         Vector3 end = sector.transform.InverseTransformPoint(lead.transform.position);
         bool escaped = finalFlow.Completed && finalFlow.CompletionCount == 1 &&
                        finalFlow.FirstEntrantKind == expectedLead &&
@@ -513,7 +513,7 @@ public static class Map4Ch8FlowChecks
         Rigidbody rb = actor.GetComponent<Rigidbody>();
         if (rb != null)
         {
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             rb.position = worldPosition;
         }

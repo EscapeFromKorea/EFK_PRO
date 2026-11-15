@@ -55,7 +55,7 @@ public class CatapultWheelVisual : MonoBehaviour
 
         // 12차 개편 — 수평(XZ) 속도만 굴림 속도로 쓴다. 전체 velocity.magnitude를 쓰면 낙하/바운스의
         // 수직(Y) 성분까지 회전으로 오인돼 과회전한다(클래스 상단 "12차 개편" 주석 참고).
-        Vector3 v = rootBody.velocity;
+        Vector3 v = rootBody.linearVelocity;
         float speed = new Vector2(v.x, v.z).magnitude;
         float degPerSec = (speed / wheelRadius) * Mathf.Rad2Deg;
         // PR #54 코드검토(2026-08-06) — 로컬 X에서 로컬 Y로 축 변경(클래스 상단 주석 참고). 이제 이

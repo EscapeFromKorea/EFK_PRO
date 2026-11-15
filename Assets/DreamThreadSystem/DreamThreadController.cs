@@ -312,7 +312,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
             float yaw = EffectiveInputYaw();
             if (Mathf.Abs(yaw) > 0.0001f)
                 move = Quaternion.AngleAxis(yaw, Vector3.up) * move;
-            activeBody.velocity = new Vector3(move.x, activeBody.velocity.y, move.z);
+            activeBody.linearVelocity = new Vector3(move.x, activeBody.linearVelocity.y, move.z);
             return;
         }
 
@@ -530,9 +530,9 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
             Vector3 p = body.position;
             p.x = near.transform.position.x;
             body.position = p;
-            Vector3 v = body.velocity;
+            Vector3 v = body.linearVelocity;
             v.x = 0f;
-            body.velocity = v;
+            body.linearVelocity = v;
             body.constraints = savedConstraints | RigidbodyConstraints.FreezePositionX;
         }
 

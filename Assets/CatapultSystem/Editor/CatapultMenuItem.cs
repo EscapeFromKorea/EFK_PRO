@@ -279,8 +279,8 @@ public static class CatapultMenuItem
         // 판단이라 부피 그대로 27배로 키우면 지나치게 무거워진다. 선형 배율은 "커진 만큼 조금 더
         // 무겁게"라는 절충이다 — 씬 튜닝 전제 [TBD, 임시값].
         rootBody.mass = 150f;
-        rootBody.drag = 1.2f; // 무력 상태일 때 남은 관성을 엔진 자체가 서서히 죽인다.
-        rootBody.angularDrag = 5f; // 각속도 진동/오버슈트를 억제한다.
+        rootBody.linearDamping = 1.2f; // 무력 상태일 때 남은 관성을 엔진 자체가 서서히 죽인다.
+        rootBody.angularDamping = 5f; // 각속도 진동/오버슈트를 억제한다.
         rootBody.interpolation = RigidbodyInterpolation.Interpolate; // 시각적 떨림 완화.
         // 회전은 요(Y)만 조향에 쓰므로 X/Z는 얼린다.
         rootBody.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;

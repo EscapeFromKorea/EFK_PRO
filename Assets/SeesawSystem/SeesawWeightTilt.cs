@@ -47,7 +47,7 @@ public class SeesawWeightTilt : MonoBehaviour
     {
         if (!enforceResponsivePhysics || body == null || hinge == null) return;
 
-        body.angularDrag = Mathf.Min(body.angularDrag, maximumAngularDrag);
+        body.angularDamping = Mathf.Min(body.angularDamping, maximumAngularDrag);
         body.maxAngularVelocity = Mathf.Max(body.maxAngularVelocity, 12f);
         hinge.useLimits = true;
         JointLimits limits = hinge.limits;

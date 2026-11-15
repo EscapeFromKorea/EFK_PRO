@@ -55,7 +55,7 @@ public class PlayerAccelReceiver : MonoBehaviour
     /// <summary>AccelPad가 호출하는 진입점.</summary>
     public void ApplyBoost(Vector3 velocity, float hold, float decel)
     {
-        Vector3 currentHorizontal = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+        Vector3 currentHorizontal = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
         float currentSpeed = currentHorizontal.magnitude;
         float boostSpeedMag = velocity.magnitude;
 
@@ -84,7 +84,7 @@ public class PlayerAccelReceiver : MonoBehaviour
             return;
         }
 
-        float currentY = rb.velocity.y; // 중력/점프는 건드리지 않음
+        float currentY = rb.linearVelocity.y; // 중력/점프는 건드리지 않음
 
         Vector3 inputVel = Vector3.zero;
         // 패널·UI 등으로 입력이 잠긴 동안(InputLocked)에는 조향도 받지 않는다(2026-10-25 리뷰 G1).
@@ -115,7 +115,7 @@ public class PlayerAccelReceiver : MonoBehaviour
             rampTimer += Time.fixedDeltaTime;
             float t = Mathf.Clamp01(rampTimer / rampDuration);
             Vector3 ramped = Vector3.Lerp(rampStartVelocity, boostVelocity, t) + inputVel;
-            rb.velocity = new Vector3(ramped.x, currentY, ramped.z);
+            rb.linearVelocity = new Vector3(ramped.x, currentY, ramped.z);
 
             if (t >= 1f)
                 state = State.Hold;
@@ -123,7 +123,7 @@ public class PlayerAccelReceiver : MonoBehaviour
         else if (state == State.Hold)
         {
             Vector3 holdResult = boostVelocity + inputVel;
-            rb.velocity = new Vector3(holdResult.x, currentY, holdResult.z);
+            rb.linearVelocity = new Vector3(holdResult.x, currentY, holdResult.z);
 
             holdTimer -= Time.fixedDeltaTime;
             if (holdTimer <= 0f)
@@ -139,7 +139,7 @@ public class PlayerAccelReceiver : MonoBehaviour
             float t = Mathf.Clamp01(decelTimer / decelDuration);
 
             Vector3 decelVelocity = Vector3.Lerp(decelStartVelocity, Vector3.zero, t) + inputVel;
-            rb.velocity = new Vector3(decelVelocity.x, currentY, decelVelocity.z);
+            rb.linearVelocity = new Vector3(decelVelocity.x, currentY, decelVelocity.z);
 
             if (t >= 1f)
             {

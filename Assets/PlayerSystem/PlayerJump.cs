@@ -94,6 +94,6 @@ public class PlayerJump : MonoBehaviour
             ? heightUnits * gravityOverride.JumpHeightMultiplier
             : heightUnits;
         float vy = Mathf.Sqrt(2f * g * h);
-        rb.velocity = new Vector3(rb.velocity.x, vy, rb.velocity.z);
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x, vy, rb.linearVelocity.z);
     }
 }

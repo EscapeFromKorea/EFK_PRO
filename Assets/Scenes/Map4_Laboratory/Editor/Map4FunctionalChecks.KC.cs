@@ -444,7 +444,7 @@ public static partial class Map4FunctionalChecks
                 dq.ToAngleAxis(out float ang, out Vector3 _);
                 if (ang > 180f) ang -= 360f;
                 float actAng = Mathf.Abs(ang) * Mathf.Deg2Rad / dt;
-                Vector3 readV = rb.velocity;
+                Vector3 readV = rb.linearVelocity;
                 Vector3 readAng = rb.angularVelocity;
                 Vector3 readPt = rb.GetPointVelocity(face);
 
