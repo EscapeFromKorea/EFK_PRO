@@ -31,7 +31,7 @@ public static class Map4ProgressionChecks
             if (byId[id] == null) { record("진행/섹터등록", false, $"섹터 {id} 누락"); yield break; }
         record("진행/섹터등록", true, "CH1~8 모두 등록됨");
 
-        RespawnController respawn = UnityEngine.Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = UnityEngine.Object.FindFirstObjectByType<RespawnController>();
         RespawnZone cp1 = byId[1].GetComponentInChildren<RespawnZone>(true);
         if (respawn != null && cp1 != null) RespawnController.SetCheckpoint(cp1); // 시험 초기 조건
         record("진행/CP초기조건", respawn != null && cp1 != null,
@@ -82,7 +82,7 @@ public static class Map4ProgressionChecks
                 float footOffset = PivotToFoot(player);
                 Vector3 start = new Vector3(to.transform.position.x + (i - 1) * 2f,
                     floorY + footOffset + 0.12f, seamZ - 11.5f);
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.position = start;
                 rb.transform.position = start;
@@ -110,11 +110,11 @@ public static class Map4ProgressionChecks
                 bool reached = false;
                 for (int step = 0; step < 450; step++)
                 {
-                    rb.velocity = new Vector3(0f, rb.velocity.y, speed);
+                    rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, speed);
                     yield return new WaitForFixedUpdate();
                     if (rb.position.z >= endZ - 0.25f) { reached = true; break; }
                 }
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 player.ExternallyDriven = priorDriven;
                 rb.useGravity = priorGravity;
                 Vector3 end = rb.position;
@@ -155,7 +155,7 @@ public static class Map4ProgressionChecks
         Vector3 ground = expected.FindGroundPoint();
         Rigidbody rb = victim.GetComponent<Rigidbody>();
         Vector3 away = sector.transform.TransformPoint(new Vector3(0f, 1f, -6f));
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.position = away;
         rb.transform.position = away;
         Physics.SyncTransforms();

@@ -79,7 +79,7 @@ public static class Map4FollowupChecks
         if (change == PlayModeStateChange.EnteredPlayMode && SessionState.GetBool(PendingKey, false))
         {
             SessionState.SetBool(PendingKey, false);
-            if (UnityEngine.Object.FindObjectOfType<Driver>() == null)
+            if (UnityEngine.Object.FindFirstObjectByType<Driver>() == null)
                 new GameObject("Map4Followup_RUNTIME").AddComponent<Driver>();
         }
         else if (change == PlayModeStateChange.EnteredEditMode && SessionState.GetBool(ActiveKey, false))
@@ -237,7 +237,7 @@ public static class Map4FollowupChecks
 
         private IEnumerator Work()
         {
-            Map4Director director = UnityEngine.Object.FindObjectOfType<Map4Director>();
+            Map4Director director = UnityEngine.Object.FindFirstObjectByType<Map4Director>();
             if (director == null) { report.Record("HARNESS.master", false, "Map4Director 없음"); yield break; }
             float loadDeadline = Time.realtimeSinceStartup + LoadSeconds;
             while (Time.realtimeSinceStartup < loadDeadline && director.LoadedSectorCount < 8)
@@ -303,7 +303,7 @@ public static class Map4FollowupChecks
 
         private static PlayerMover[] OrderedPlayers()
         {
-            PlayerMover[] all = UnityEngine.Object.FindObjectsOfType<PlayerMover>();
+            PlayerMover[] all = UnityEngine.Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             if (all.Length != 3) return null;
             PlayerMover[] ordered = new PlayerMover[3];
             foreach (PlayerMover p in all)

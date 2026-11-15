@@ -13,7 +13,7 @@ public static class CubeDockMenuItem
     [MenuItem("Tools/CubeDockSystem/Create Controller")]
     private static void CreateController()
     {
-        CubeDockController existing = Object.FindObjectOfType<CubeDockController>();
+        CubeDockController existing = Object.FindFirstObjectByType<CubeDockController>();
         if (existing != null)
         {
             Debug.LogWarning("[CubeDockSystem] 씬에 이미 CubeDockController가 있습니다.");

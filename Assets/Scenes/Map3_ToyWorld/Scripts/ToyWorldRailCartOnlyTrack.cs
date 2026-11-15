@@ -8,7 +8,7 @@ public sealed class ToyWorldRailCartOnlyTrack : MonoBehaviour
     private void Awake()
     {
         if (trackColliders == null) return;
-        foreach (PlayerMover player in FindObjectsOfType<PlayerMover>(true))
+        foreach (PlayerMover player in FindObjectsByType<PlayerMover>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             foreach (Collider playerCollider in player.GetComponentsInChildren<Collider>(true))
             {

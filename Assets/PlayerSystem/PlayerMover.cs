@@ -32,7 +32,7 @@ using UnityEngine;
 /// [솔직한 한계] 이 조치들은 "다면체가 평평한 면으로 접지한 채 순간 각속도를 강제하면 다중
 /// 접촉점이 서로 충돌한다"는 구조적 문제 자체를 없애지는 못한다(구가 아닌 이상 "완벽하게
 /// 매끄러운 회전"은 물리적으로 보장할 수 없다) — 접촉을 부드럽게 만들고 솔버가 덜 튀도록
-/// 완화할 뿐이다. 실제로 씬에서 확인해가며 rollRadius/PhysicMaterial/solver 값을 조정할 것.
+/// 완화할 뿐이다. 실제로 씬에서 확인해가며 rollRadius/PhysicsMaterial/solver 값을 조정할 것.
 ///
 /// [토크+마찰 구르기 실험 경로: useTorqueRolling]
 /// 위 방식은 물리엔진이 굴리는 게 아니라 스크립트가 결과 각속도를 흉내 내 강제하는 것이라
@@ -98,7 +98,7 @@ public class PlayerMover : MonoBehaviour
     {
         if (!logRollDebug) return;
         LokiTelemetry.Event("sphere_roll_debug",
-            $"velY={rb.velocity.y:F4} velXZ={new Vector2(rb.velocity.x, rb.velocity.z).magnitude:F3} " +
+            $"velY={rb.linearVelocity.y:F4} velXZ={new Vector2(rb.linearVelocity.x, rb.linearVelocity.z).magnitude:F3} " +
             $"angVel={rb.angularVelocity.magnitude:F3} angVelVec=({rb.angularVelocity.x:F2},{rb.angularVelocity.y:F2},{rb.angularVelocity.z:F2}) " +
             $"posY={rb.position.y:F4} grounded={IsGrounded()}");
     }
@@ -357,10 +357,10 @@ public class PlayerMover : MonoBehaviour
             // 얼려 두기만 하고, 착지하면 그 비탈의 floor 클램프가 즉시 다시 잡는다(평지로 돌아가면
             // 접지 분기의 slopeAffected 게이트가 0으로 지운다). 공중 속도 자체는 규격표 고정값 그대로다.
             wasAirborne = true;
-            airVelocity = rb.velocity;
+            airVelocity = rb.linearVelocity;
             lastTravelVelocity = Vector3.zero; // 공중에서는 이동 성분을 비탈에 대입하지 않았다.
             Vector3 airMove = DeflectAirMoveFromWall(move);
-            rb.velocity = new Vector3(airMove.x * airControlMultiplier, rb.velocity.y, airMove.z * airControlMultiplier);
+            rb.linearVelocity = new Vector3(airMove.x * airControlMultiplier, rb.linearVelocity.y, airMove.z * airControlMultiplier);
             // 회전은 건드리지 않는다(구는 자유 물리 회전 보존, 다면체는 PlayerVisualRoll이 시각만 처리).
             return;
         }
@@ -437,7 +437,7 @@ public class PlayerMover : MonoBehaviour
                 // 걸을 때). 마지막으로 내리막 상한으로 잘라 어떤 경우에도 절대 상한을 준다.
                 Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, groundNormal);
                 downhill = new Vector3(downhill.x, 0f, downhill.z).normalized;
-                Vector3 horizontal = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+                Vector3 horizontal = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
                 float drift = Mathf.Clamp(Vector3.Dot(horizontal - lastTravelVelocity, downhill),
                                           0f, moveSpeed * downhillSpeedCap);
                 lastTravelVelocity = target;
@@ -450,7 +450,7 @@ public class PlayerMover : MonoBehaviour
             else lastTravelVelocity = Vector3.zero;
             target += groundVelXZ;
             lastTravelVelocity += groundVelXZ; // 다음 스텝 drift 계산이 이 몫까지 "물리 몫"으로 오인하지 않도록 같이 반영
-            rb.velocity = new Vector3(target.x, rb.velocity.y, target.z);
+            rb.linearVelocity = new Vector3(target.x, rb.linearVelocity.y, target.z);
             if (rollRadius > 0.0001f)
             {
                 Vector3 desiredAngularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
@@ -470,10 +470,10 @@ public class PlayerMover : MonoBehaviour
             // 비탈 방향 성분이 거의 전부 수평 성분이라, 이 대입이 매 스텝 그걸 지워 도형이 비탈에
             // 붙박이가 된다(경사각을 올려도 상수 0을 대입하므로 증상이 똑같다 —
             // 2026-08-10 플레이테스트로 확인).
-            // 경사면에서는 대입을 건너뛰고 물리에 맡긴다. 마찰(PhysicMaterial)이 도형별로
+            // 경사면에서는 대입을 건너뛰고 물리에 맡긴다. 마찰(PhysicsMaterial)이 도형별로
             // 얼마나 미끄러질지를 결정하므로 여기서 따로 도형 분기를 두지 않는다.
             if (groundNormal.y > idleStopMaxNormalY)
-                rb.velocity = new Vector3(groundVelXZ.x, rb.velocity.y, groundVelXZ.z);
+                rb.linearVelocity = new Vector3(groundVelXZ.x, rb.linearVelocity.y, groundVelXZ.z);
         }
     }
 
@@ -493,7 +493,7 @@ public class PlayerMover : MonoBehaviour
         float amount = Mathf.Min((impact - landingImpactMinSpeed) * landingImpactSlideRatio,
                                  moveSpeed * downhillSpeedCap);
         Vector3 kick = downhill * amount;
-        rb.velocity = new Vector3(rb.velocity.x + kick.x, rb.velocity.y, rb.velocity.z + kick.z);
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x + kick.x, rb.linearVelocity.y, rb.linearVelocity.z + kick.z);
     }
 
     // 경사에 따른 가감속. 이번 스텝에 낼 "비탈 방향 속력"을 돌려준다.
@@ -577,11 +577,11 @@ public class PlayerMover : MonoBehaviour
         }
 
         // 수평 속도 상한 (토크로 무한 가속되는 것 방지).
-        Vector3 horiz = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+        Vector3 horiz = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
         if (horiz.magnitude > maxSpeed)
         {
             Vector3 clamped = horiz.normalized * maxSpeed;
-            rb.velocity = new Vector3(clamped.x, rb.velocity.y, clamped.z);
+            rb.linearVelocity = new Vector3(clamped.x, rb.linearVelocity.y, clamped.z);
         }
     }
 
@@ -596,12 +596,12 @@ public class PlayerMover : MonoBehaviour
         airVelocity = Vector3.zero;
         lastTravelVelocity = Vector3.zero;
         float k = Mathf.Clamp01(uncontrolledDamping * Time.fixedDeltaTime);
-        Vector3 vel = rb.velocity;
+        Vector3 vel = rb.linearVelocity;
         // 움직이는 발판 위에서는 월드 0이 아니라 발판 속도로 수렴시킨다 — 발판 속도까지 깎으면 몸이
         // 발판에서 미끄러지고, 시소처럼 반응하는 판에는 그 어긋남이 토크로 되먹임된다(GroundVelocity
         // 설명 참고). GroundVelocity는 공중에서 초기화되지 않으므로 접지 중일 때만 쓴다.
         Vector3 groundVel = groundContact != null && groundContact.IsGrounded ? groundContact.GroundVelocity : Vector3.zero;
-        rb.velocity = new Vector3(
+        rb.linearVelocity = new Vector3(
             groundVel.x + (vel.x - groundVel.x) * (1f - k),
             vel.y,
             groundVel.z + (vel.z - groundVel.z) * (1f - k));
@@ -643,14 +643,14 @@ public class PlayerMover : MonoBehaviour
     {
         if (turnAssist <= 0f) return;
 
-        Vector3 horiz = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+        Vector3 horiz = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
         float speed = horiz.magnitude;
         if (speed < 0.05f) return;
 
         float k = Mathf.Clamp01(turnAssist * Time.fixedDeltaTime * 10f);
         Vector3 newDir = Vector3.Slerp(horiz.normalized, moveDir.normalized, k);
         Vector3 newHoriz = newDir * speed;
-        rb.velocity = new Vector3(newHoriz.x, rb.velocity.y, newHoriz.z);
+        rb.linearVelocity = new Vector3(newHoriz.x, rb.linearVelocity.y, newHoriz.z);
     }
 
     // 공중에서 이동 입력이 벽을 향하면 그 '벽 쪽 성분'을 제거해 벽면을 따라만 미끄러지게 한다.

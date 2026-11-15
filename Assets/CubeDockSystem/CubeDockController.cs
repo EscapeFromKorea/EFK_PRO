@@ -47,7 +47,7 @@ public class CubeDockController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExists()
     {
-        if (Object.FindObjectOfType<CubeDockController>() != null) return;
+        if (Object.FindFirstObjectByType<CubeDockController>() != null) return;
 
         GameObject go = new GameObject("CubeDockController (auto)");
         go.AddComponent<CubeDockController>();
@@ -83,7 +83,7 @@ public class CubeDockController : MonoBehaviour
 
     private void ScanAndAttach()
     {
-        foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             PlayerCubeDock dock = mover.GetComponent<PlayerCubeDock>();
             if (dock == null)

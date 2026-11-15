@@ -312,7 +312,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
             float yaw = EffectiveInputYaw();
             if (Mathf.Abs(yaw) > 0.0001f)
                 move = Quaternion.AngleAxis(yaw, Vector3.up) * move;
-            activeBody.velocity = new Vector3(move.x, activeBody.velocity.y, move.z);
+            activeBody.linearVelocity = new Vector3(move.x, activeBody.linearVelocity.y, move.z);
             return;
         }
 
@@ -530,9 +530,9 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
             Vector3 p = body.position;
             p.x = near.transform.position.x;
             body.position = p;
-            Vector3 v = body.velocity;
+            Vector3 v = body.linearVelocity;
             v.x = 0f;
-            body.velocity = v;
+            body.linearVelocity = v;
             body.constraints = savedConstraints | RigidbodyConstraints.FreezePositionX;
         }
 
@@ -622,7 +622,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
     {
         // 스위처가 있으면 조작 중인 하나만 IsControlled=true. 스위처가 없는 단일 플레이어 테스트 씬에서는
         // 모두 기본값 true라 첫 번째를 집는다(테스트 씬엔 보통 하나뿐).
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (m.IsControlled) return m;
         return null;
     }

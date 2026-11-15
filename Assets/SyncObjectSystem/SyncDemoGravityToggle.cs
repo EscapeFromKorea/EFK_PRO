@@ -32,7 +32,7 @@ public class SyncDemoGravityToggle : MonoBehaviour
         if (!body.useGravity)
         {
             // 꺼지는 순간 그 자리에 딱 멈춘다 — 밀리던 잔여 속도가 남아 있으면 정밀 배치가 안 된다.
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
         }
         Debug.Log($"[SyncDemo] '{name}' 중력 {(body.useGravity ? "켬" : "끔")} ('{toggleKey}' 키로 토글).");

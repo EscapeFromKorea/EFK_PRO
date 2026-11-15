@@ -110,7 +110,7 @@ public class PlayerWindReceiver : MonoBehaviour
         if (damped)
         {
             if (currentPush.sqrMagnitude > 0.0001f)
-                rb.velocity = new Vector3(currentPush.x, rb.velocity.y, currentPush.z);
+                rb.linearVelocity = new Vector3(currentPush.x, rb.linearVelocity.y, currentPush.z);
             lastAppliedPush = currentPush;
             return;
         }
@@ -123,15 +123,15 @@ public class PlayerWindReceiver : MonoBehaviour
         // 반면 Y 성분을 같은 방식으로 계속 더하면 중력으로 되돌릴 기회 없이 무한 가속한다.
         // 바람의 수직 목표 속도를 최소/최대치로 보장하면, 위쪽 바람은 중력보다 빠르게 위로
         // 떠오르게 하고 아래쪽 바람은 아래로 밀되 점프·낙하의 더 강한 관성은 보존한다.
-        float verticalVelocity = rb.velocity.y;
+        float verticalVelocity = rb.linearVelocity.y;
         if (currentPush.y > 0f)
             verticalVelocity = Mathf.Max(verticalVelocity, currentPush.y);
         else if (currentPush.y < 0f)
             verticalVelocity = Mathf.Min(verticalVelocity, currentPush.y);
 
         // 토크 이동에서는 램프가 끝나면 delta가 0이어도 수직 바람은 계속 적용해야 한다.
-        if (delta.sqrMagnitude < 0.0001f && Mathf.Approximately(verticalVelocity, rb.velocity.y)) return;
+        if (delta.sqrMagnitude < 0.0001f && Mathf.Approximately(verticalVelocity, rb.linearVelocity.y)) return;
 
-        rb.velocity = new Vector3(rb.velocity.x + delta.x, verticalVelocity, rb.velocity.z + delta.z);
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x + delta.x, verticalVelocity, rb.linearVelocity.z + delta.z);
     }
 }

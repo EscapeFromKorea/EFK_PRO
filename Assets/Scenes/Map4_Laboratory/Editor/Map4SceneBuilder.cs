@@ -453,10 +453,10 @@ public static class Map4SceneBuilder
         EnsurePlayerInstance(scene, "Cube", new Vector3(0f, 1.5f, 3f));
         EnsurePlayerInstance(scene, "Tetrahedron", new Vector3(2f, 1.5f, 3f));
 
-        if (Object.FindObjectOfType<PlayerControlSwitcher>() == null)
+        if (Object.FindFirstObjectByType<PlayerControlSwitcher>() == null)
             new GameObject("PlayerControlSwitcher").AddComponent<PlayerControlSwitcher>();
 
-        Camera cam = Object.FindObjectOfType<Camera>();
+        Camera cam = Object.FindFirstObjectByType<Camera>();
         if (cam == null)
         {
             GameObject camGo = new GameObject("Main Camera");
@@ -468,13 +468,13 @@ public static class Map4SceneBuilder
             cam.gameObject.AddComponent<PlayerFollowCamera>();
         if (cam.GetComponent<Lab_CameraOcclusion>() == null)
             cam.gameObject.AddComponent<Lab_CameraOcclusion>();
-        if (Object.FindObjectOfType<Lab_MapPresentation>() == null)
+        if (Object.FindFirstObjectByType<Lab_MapPresentation>() == null)
             new GameObject("Map4_ChapterPresentation").AddComponent<Lab_MapPresentation>();
 
-        if (Object.FindObjectOfType<RespawnController>() == null)
+        if (Object.FindFirstObjectByType<RespawnController>() == null)
             new GameObject("RespawnController").AddComponent<RespawnController>();
 
-        if (Object.FindObjectOfType<Light>() == null)
+        if (Object.FindFirstObjectByType<Light>() == null)
         {
             GameObject lightGo = new GameObject("Directional Light");
             Light light = lightGo.AddComponent<Light>();
@@ -485,19 +485,19 @@ public static class Map4SceneBuilder
         // [판정 A1] Master 방향광 그림자를 소프트로 켠다 — 천장 있는 방(S1 복도·S2 격리 공간·S7·S8)을
         // 그림자로 어둡게 한다. 기존 조명이 있어 위 생성 블록을 건너뛰어도 매번 넣는다(재생성 멱등).
         // 대상은 Directional만. 세기·bias·해상도·환경광·QualitySettings는 건드리지 않는다(Light 값 하나만).
-        foreach (Light l in Object.FindObjectsOfType<Light>())
+        foreach (Light l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
         {
             if (l.type == LightType.Directional && l.shadows != LightShadows.Soft)
                 l.shadows = LightShadows.Soft;
         }
 
-        if (Object.FindObjectOfType<Map4Director>() == null)
+        if (Object.FindFirstObjectByType<Map4Director>() == null)
             new GameObject("Map4Director").AddComponent<Map4Director>();
 
         // [F1 재작업 판정 결정6] 실입력 하네스 텔레메트리 — MAP4_TELE_PATH 환경변수가 없으면
         // Awake에서 스스로 꺼진다(일반 실행에 영향 0). 준비만 해 두고 이번 회차에서는 실행하지
         // 않는다(tools/map4_drive.ps1 참고, 사용자 허락 필요).
-        if (Object.FindObjectOfType<Lab_InputHarnessTelemetry>() == null)
+        if (Object.FindFirstObjectByType<Lab_InputHarnessTelemetry>() == null)
             new GameObject("Lab_InputHarness").AddComponent<Lab_InputHarnessTelemetry>();
 
         EditorSceneManager.MarkSceneDirty(scene);

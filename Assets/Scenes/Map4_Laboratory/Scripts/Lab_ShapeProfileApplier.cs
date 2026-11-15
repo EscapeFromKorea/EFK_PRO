@@ -48,7 +48,7 @@ public class Lab_ShapeProfileApplier : MonoBehaviour
         if (rb == null) return;
 
         rb.constraints = profile.constraints;
-        rb.angularDrag = profile.angularDrag;
+        rb.angularDamping = profile.angularDrag;
         rb.maxAngularVelocity = profile.maxAngularVelocity;
         rb.interpolation = profile.interpolation;
         // [F1 재작업 판정 C1] 예전엔 "Discrete가 아닐 때만" 대입하는 단방향 가드가 있었다 —

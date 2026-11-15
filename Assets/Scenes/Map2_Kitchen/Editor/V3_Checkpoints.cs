@@ -9,7 +9,7 @@ public static class V3Checkpoints {
   try {
    var parent=V3.Group("V3_Checkpoints");
    if(parent.transform.childCount>0)throw new Exception("Create a new Empty scene before rebuilding checkpoints.");
-   if(UnityEngine.Object.FindObjectOfType<RespawnController>()==null)V3Gimmicks.Create<RespawnController>("Tools/Respawn/Create Respawn Controller",null);
+   if(UnityEngine.Object.FindFirstObjectByType<RespawnController>()==null)V3Gimmicks.Create<RespawnController>("Tools/Respawn/Create Respawn Controller",null);
    for(int i=0;i<Points.Length;i++){
     var zone=V3Gimmicks.Create<RespawnZone>("Tools/Respawn/Create Checkpoint Pole",parent.transform);
     zone.name="CP_"+(i+1).ToString("00");zone.transform.position=Points[i];

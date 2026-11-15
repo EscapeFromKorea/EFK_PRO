@@ -28,8 +28,8 @@ public class Projectile : MonoBehaviour
     {
         body = GetComponent<Rigidbody>();
         body.useGravity = false;
-        body.drag = 0f;
-        body.angularDrag = 0f;
+        body.linearDamping = 0f;
+        body.angularDamping = 0f;
     }
 
     /// <summary>발사 직후 발사구가 1회 호출해 초기화한다. AddComponent 시점의 Awake는 이미 지나가
@@ -41,7 +41,7 @@ public class Projectile : MonoBehaviour
         playerTag = targetTag;
         lifetime = lifetimeSeconds;
         spawnTime = Time.time;
-        body.velocity = initialVelocity;
+        body.linearVelocity = initialVelocity;
     }
 
     private void FixedUpdate()

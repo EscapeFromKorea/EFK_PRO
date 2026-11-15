@@ -14,7 +14,7 @@ public static class ProjectileTrapRespawnWiring
     [MenuItem("Tools/ProjectileTrapSystem/Wire Hits To Respawn")]
     public static void WireHitsToRespawn()
     {
-        RespawnController controller = Object.FindObjectOfType<RespawnController>();
+        RespawnController controller = Object.FindFirstObjectByType<RespawnController>();
         if (controller == null)
         {
             Debug.LogWarning("[ProjectileTrapSystem] 씬에 RespawnController가 없어 배선할 수 없다. " +
@@ -22,7 +22,7 @@ public static class ProjectileTrapRespawnWiring
             return;
         }
 
-        ProjectileLauncher[] launchers = Object.FindObjectsOfType<ProjectileLauncher>();
+        ProjectileLauncher[] launchers = Object.FindObjectsByType<ProjectileLauncher>(FindObjectsSortMode.None);
         if (launchers.Length == 0)
         {
             Debug.LogWarning("[ProjectileTrapSystem] 씬에 발사구가 없다. 먼저 Create Projectile " +

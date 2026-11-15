@@ -30,7 +30,7 @@ public static class RespawnWiringMenuItem
     [MenuItem("Tools/Respawn/Wire Falling Rock Hits")]
     public static void WireFallingRockHits()
     {
-        RespawnController controller = Object.FindObjectOfType<RespawnController>();
+        RespawnController controller = Object.FindFirstObjectByType<RespawnController>();
         if (controller == null)
         {
             Debug.LogWarning("[Respawn] 씬에 RespawnController가 없어 배선할 수 없다. " +
@@ -38,7 +38,7 @@ public static class RespawnWiringMenuItem
             return;
         }
 
-        FallingRockSpawner[] spawners = Object.FindObjectsOfType<FallingRockSpawner>();
+        FallingRockSpawner[] spawners = Object.FindObjectsByType<FallingRockSpawner>(FindObjectsSortMode.None);
         if (spawners.Length == 0)
         {
             Debug.LogWarning("[Respawn] 씬에 FallingRockSpawner가 없다. 낙석 커튼을 먼저 만들어라 " +
@@ -91,7 +91,7 @@ public static class RespawnWiringMenuItem
     [MenuItem("Tools/Respawn/Wire Section Hits")]
     public static void WireSectionHits()
     {
-        RespawnController controller = Object.FindObjectOfType<RespawnController>();
+        RespawnController controller = Object.FindFirstObjectByType<RespawnController>();
         if (controller == null)
         {
             Debug.LogWarning("[Respawn] 씬에 RespawnController가 없어 배선할 수 없다. " +
@@ -99,7 +99,7 @@ public static class RespawnWiringMenuItem
             return;
         }
 
-        SectionHitCounter[] counters = Object.FindObjectsOfType<SectionHitCounter>();
+        SectionHitCounter[] counters = Object.FindObjectsByType<SectionHitCounter>(FindObjectsSortMode.None);
         if (counters.Length == 0)
         {
             Debug.LogWarning("[Respawn] 씬에 SectionHitCounter가 없다. 구간 위험 장치(낙석·레이저·함정 " +

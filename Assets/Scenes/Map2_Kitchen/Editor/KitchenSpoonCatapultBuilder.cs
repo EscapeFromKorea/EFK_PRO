@@ -36,7 +36,7 @@ public static class KitchenSpoonCatapultBuilder
     {
         if (!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
         Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-        CatapultLoadController[] loads = UnityEngine.Object.FindObjectsOfType<CatapultLoadController>();
+        CatapultLoadController[] loads = UnityEngine.Object.FindObjectsByType<CatapultLoadController>(FindObjectsSortMode.None);
         if (loads.Length != 1) throw new InvalidOperationException("예상한 맵2 투석기 1대와 다릅니다: " + loads.Length);
         PrepareAssets();
         Apply(loads[0]);
@@ -51,7 +51,7 @@ public static class KitchenSpoonCatapultBuilder
     public static void RenderMap2Context()
     {
         Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-        CatapultLoadController load = UnityEngine.Object.FindObjectOfType<CatapultLoadController>();
+        CatapultLoadController load = UnityEngine.Object.FindFirstObjectByType<CatapultLoadController>();
         var cameraObject = new GameObject("Temporary spoon context camera", typeof(Camera));
         Camera camera = cameraObject.GetComponent<Camera>();
         camera.scene = scene;

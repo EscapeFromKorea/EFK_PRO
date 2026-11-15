@@ -33,7 +33,7 @@ public static class ToyWorldPrototypeValidator
         foreach (string areaName in requiredAreas)
             Require(FindChildByName(root.transform, areaName) != null, areaName + " is missing.", ref errors);
 
-        ToyWorldLevelDirector[] directors = UnityEngine.Object.FindObjectsOfType<ToyWorldLevelDirector>(true);
+        ToyWorldLevelDirector[] directors = UnityEngine.Object.FindObjectsByType<ToyWorldLevelDirector>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         Require(directors.Length == 1, "Exactly one ToyWorldLevelDirector is required.", ref errors);
         ToyWorldLevelDirector director = directors.Length == 1 ? directors[0] : null;
         if (director != null)
@@ -44,16 +44,16 @@ public static class ToyWorldPrototypeValidator
             Require(director.hubProgress != null, "Director.hubProgress is not wired.", ref errors);
         }
 
-        PlayerMover[] players = UnityEngine.Object.FindObjectsOfType<PlayerMover>(true);
+        PlayerMover[] players = UnityEngine.Object.FindObjectsByType<PlayerMover>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         Require(players.Length == 3, "The scene must contain all three existing PlayerSystem shapes.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<Portal>(true).Length == 2,
+        Require(UnityEngine.Object.FindObjectsByType<Portal>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length == 2,
             "Existing PortalSystem entry and exit are required.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<RespawnController>(true).Length == 1,
+        Require(UnityEngine.Object.FindObjectsByType<RespawnController>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length == 1,
             "Exactly one existing RespawnController is required.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<RespawnZone>(true).Length >= 7,
+        Require(UnityEngine.Object.FindObjectsByType<RespawnZone>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length >= 7,
             "Start, hub, branch, floor, and final checkpoints are required.", ref errors);
 
-        ToyWorldRepairItem[] items = UnityEngine.Object.FindObjectsOfType<ToyWorldRepairItem>(true);
+        ToyWorldRepairItem[] items = UnityEngine.Object.FindObjectsByType<ToyWorldRepairItem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         Require(items.Length == 3, "Exactly three repair items are required.", ref errors);
         bool[] seenItems = new bool[3];
         foreach (ToyWorldRepairItem item in items)
@@ -64,14 +64,14 @@ public static class ToyWorldPrototypeValidator
             Require(item.director != null, item.name + " has no director reference.", ref errors);
         }
 
-        ToyWorldInstallSocket[] sockets = UnityEngine.Object.FindObjectsOfType<ToyWorldInstallSocket>(true);
+        ToyWorldInstallSocket[] sockets = UnityEngine.Object.FindObjectsByType<ToyWorldInstallSocket>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         Require(sockets.Length == 3, "Exactly three install sockets are required.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<ToyWorldExitTrigger>(true).Length == 1,
+        Require(UnityEngine.Object.FindObjectsByType<ToyWorldExitTrigger>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length == 1,
             "Exactly one final exit trigger is required.", ref errors);
-        foreach (LiftPlatform lift in UnityEngine.Object.FindObjectsOfType<LiftPlatform>(true))
+        foreach (LiftPlatform lift in UnityEngine.Object.FindObjectsByType<LiftPlatform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             Require(lift.riderSensor != null && lift.riderSensor.isTrigger,
                 lift.name + " has no rider trigger.", ref errors);
-        LiftPad[] pads = UnityEngine.Object.FindObjectsOfType<LiftPad>(true);
+        LiftPad[] pads = UnityEngine.Object.FindObjectsByType<LiftPad>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         Require(pads.Length == 2, "Toy Box and final room require existing LiftSystem sets.", ref errors);
         foreach (LiftPad pad in pads)
             Require(pad.targetLift != null, pad.name + " has no target lift.", ref errors);
@@ -116,13 +116,13 @@ public static class ToyWorldPrototypeValidator
         }
         Require(director != null && director.musicBox != null && director.musicBox.activationLever != null &&
                 director.musicBox.activationDoor != null, "Existing final lever/door are not wired.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<RotatingPlate>(true).Length >= 5,
+        Require(UnityEngine.Object.FindObjectsByType<RotatingPlate>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length >= 5,
             "Seesaws and free rotating boards were not all generated.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<SnapBlock>(true).Length >= 16,
+        Require(UnityEngine.Object.FindObjectsByType<SnapBlock>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length >= 16,
             "Reusable SnapBlocks are missing.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<StickerSurface>(true).Length >= 5,
+        Require(UnityEngine.Object.FindObjectsByType<StickerSurface>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length >= 5,
             "StickerSurface coverage is incomplete.", ref errors);
-        Require(UnityEngine.Object.FindObjectsOfType<ThreadAnchor>(true).Length >= 6,
+        Require(UnityEngine.Object.FindObjectsByType<ThreadAnchor>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length >= 6,
             "Wire bypass anchors are incomplete.", ref errors);
 
         ValidateColliderAndVisualSeparation(root.transform, ref errors);

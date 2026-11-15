@@ -24,7 +24,7 @@ public static class RotatingPlateMenuItem
         Rigidbody rb = plate.AddComponent<Rigidbody>();
         rb.mass = 2f;
         rb.useGravity = false;
-        rb.angularDrag = 1.5f;
+        rb.angularDamping = 1.5f;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 

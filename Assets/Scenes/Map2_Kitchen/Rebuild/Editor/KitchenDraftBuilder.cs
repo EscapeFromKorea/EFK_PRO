@@ -664,7 +664,7 @@ namespace Map2KitchenDraft.Editor
 
         private static void SetupCamera()
         {
-            foreach (var c in UnityEngine.Object.FindObjectsOfType<Camera>()) UnityEngine.Object.DestroyImmediate(c.gameObject);
+            foreach (var c in UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsSortMode.None)) UnityEngine.Object.DestroyImmediate(c.gameObject);
             var go = new GameObject("Main Camera");
             go.tag = "MainCamera";
             camera = go.AddComponent<Camera>();
@@ -691,7 +691,7 @@ namespace Map2KitchenDraft.Editor
         {
             Physics.SyncTransforms();
             var issues = new List<string>();
-            var c = UnityEngine.Object.FindObjectOfType<KitchenDraftController>();
+            var c = UnityEngine.Object.FindFirstObjectByType<KitchenDraftController>();
             if (c == null) issues.Add("KitchenDraftController missing");
             int chapters = c != null && c.chapterStarts != null ? c.chapterStarts.Length : 0;
             if (chapters != 7) issues.Add("Expected 7 review sections, found " + chapters);
@@ -710,12 +710,12 @@ namespace Map2KitchenDraft.Editor
             if (!orbitCamera) issues.Add("Native perspective orbit camera missing");
             if (c != null && c.chapterStarts != null)
                 for (int i = 0; i < c.chapterStarts.Length; i++) if (c.chapterStarts[i] == null) issues.Add("Null section start " + i);
-            var jets = UnityEngine.Object.FindObjectsOfType<DraftWaterJet>();
+            var jets = UnityEngine.Object.FindObjectsByType<DraftWaterJet>(FindObjectsSortMode.None);
             if (jets.Length < 3) issues.Add("Expected at least 3 fixed water jets");
             foreach (var j in jets)
                 if (j.TracksPlayer || j.waterMaterial == null || j.localEnd.y >= 0 || Mathf.Abs(j.localEnd.x) > .001f || Mathf.Abs(j.localEnd.z) > .001f)
                     issues.Add("Water jet is not fixed, downward, or material-wired: " + j.name);
-            var creatures = UnityEngine.Object.FindObjectsOfType<DraftCreatureMarker>();
+            var creatures = UnityEngine.Object.FindObjectsByType<DraftCreatureMarker>(FindObjectsSortMode.None);
             bool roachInSink = false;
             foreach (var m in creatures)
             {
@@ -728,7 +728,7 @@ namespace Map2KitchenDraft.Editor
             }
             if (!roachInSink) issues.Add("Sink cockroach marker missing");
             bool gate = c != null && c.key != null && c.doorVisual != null && c.doorBlocker != null && c.finalDropPoint != null && c.previewCamera != null;
-            var exits = UnityEngine.Object.FindObjectsOfType<DraftExitTrigger>();
+            var exits = UnityEngine.Object.FindObjectsByType<DraftExitTrigger>(FindObjectsSortMode.None);
             gate &= exits.Length == 1 && exits[0].controller == c && exits[0].GetComponent<Collider>() != null && exits[0].GetComponent<Collider>().isTrigger;
             bool lowerLanding = gate && exits[0].transform.position.y < 2f && c.finalDropPoint.position.y < 2f;
             if (!lowerLanding) issues.Add("Exit trigger must be on lower Map3 connection landing");
@@ -748,13 +748,13 @@ namespace Map2KitchenDraft.Editor
         public static void CapturePreviews()
         {
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-            var c = UnityEngine.Object.FindObjectOfType<KitchenDraftController>();
+            var c = UnityEngine.Object.FindFirstObjectByType<KitchenDraftController>();
             if (c == null || c.chapterStarts == null || c.chapterStarts.Length != 7) throw new InvalidOperationException("Build scene before previews");
             var cam = c.previewCamera;
             if (cam == null) throw new InvalidOperationException("Preview camera missing");
             var follow = cam.GetComponent<PlayerFollowCamera>();
             if (follow != null) follow.enabled = false;
-            var player = UnityEngine.Object.FindObjectOfType<PlayerMover>();
+            var player = UnityEngine.Object.FindFirstObjectByType<PlayerMover>();
             if (player == null) throw new InvalidOperationException("Review player missing");
             Vector3 originalPlayerPosition = player.transform.position;
             Vector3[] playerSpots = { new Vector3(-3, .8f, -2), new Vector3(0, 3.8f, 23),

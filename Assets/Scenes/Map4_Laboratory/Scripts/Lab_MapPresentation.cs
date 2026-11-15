@@ -37,16 +37,16 @@ public sealed class Lab_MapPresentation : MonoBehaviour
     {
         if (!initialized)
         {
-            if (director == null) director = FindObjectOfType<Map4Director>();
+            if (director == null) director = FindFirstObjectByType<Map4Director>();
             if (director == null || director.LoadedSectorCount < 8) return;
-            isolation = FindObjectsOfType<IsolationRescueHud>(true);
-            gauges = FindObjectsOfType<PowerGauge>(true);
-            rules = FindObjectsOfType<WiringRuleDisplay>(true);
-            roles = FindObjectsOfType<RoleAssignmentManager>(true);
-            slots = FindObjectsOfType<RoleSlot>(true);
-            finalExit = FindObjectOfType<Lab_FinalExitFlow>(true);
-            axeReveals = FindObjectsOfType<Lab_AxeReveal>(true);
-            sectors = FindObjectsOfType<SectorController>();
+            isolation = FindObjectsByType<IsolationRescueHud>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            gauges = FindObjectsByType<PowerGauge>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            rules = FindObjectsByType<WiringRuleDisplay>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            roles = FindObjectsByType<RoleAssignmentManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            slots = FindObjectsByType<RoleSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            finalExit = FindFirstObjectByType<Lab_FinalExitFlow>(FindObjectsInactive.Include);
+            axeReveals = FindObjectsByType<Lab_AxeReveal>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            sectors = FindObjectsByType<SectorController>(FindObjectsSortMode.None);
             originalRoleOverlay = new bool[roles.Length];
             for (int i = 0; i < roles.Length; i++) originalRoleOverlay[i] = roles[i].showStatusOverlay;
             // 생성 사본은 Skybox 환경광 probe가 0인 채 로드될 수 있다. 실내 도형이 완전 검정이

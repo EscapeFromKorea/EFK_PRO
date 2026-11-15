@@ -34,11 +34,11 @@ public class PauseMenuController : MonoBehaviour
         InputGate.Blocked = true;
         _wasLocked = Cursor.lockState == CursorLockMode.Locked;
         // PlayerFollowCamera는 건드리지 않고 공개 필드만 끈다 — 클릭 재잠금과 시점 회전, ESC 커서 해제가 같이 멈춘다.
-        _cam = FindObjectOfType<PlayerFollowCamera>();
+        _cam = FindFirstObjectByType<PlayerFollowCamera>();
         if (_cam != null) { _camOrbitWas = _cam.enableMouseOrbit; _cam.enableMouseOrbit = false; }
         // 이동·점프·가속 입력은 패널용으로 이미 있는 PlayerMover.InputLocked를 그대로 재사용한다(PlayerSystem 수정 없음).
         _prevLocked.Clear();
-        foreach (var m in FindObjectsOfType<PlayerMover>()) { _prevLocked[m] = m.InputLocked; m.InputLocked = true; }
+        foreach (var m in FindObjectsByType<PlayerMover>(FindObjectsSortMode.None)) { _prevLocked[m] = m.InputLocked; m.InputLocked = true; }
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         if (freezeTime)

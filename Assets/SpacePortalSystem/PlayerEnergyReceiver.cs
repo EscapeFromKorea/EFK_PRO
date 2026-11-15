@@ -64,7 +64,7 @@ public class PlayerEnergyReceiver : MonoBehaviour
 
     private void Start()
     {
-        respawn = Object.FindObjectOfType<RespawnController>();
+        respawn = Object.FindFirstObjectByType<RespawnController>();
         if (respawn != null) respawn.PlayerRespawned += HandlePlayerRespawned;
     }
 

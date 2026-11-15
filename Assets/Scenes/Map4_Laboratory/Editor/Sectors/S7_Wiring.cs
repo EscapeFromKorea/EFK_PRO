@@ -650,7 +650,7 @@ public static class S7_Wiring
             Warn($"섹터가 월드 축과 어긋나 있다(회전 {generated.rotation.eulerAngles}) — RespawnZone은 월드 AABB를 쓰므로(RespawnZone.cs:186-195) 구역을 월드 축 정렬로 둔다.");
 
         // 팀 생성 함수 호출 → 선택물 확인(S1 선례) → 없으면 전후 목록 비교(S6 선례)
-        HashSet<RespawnZone> before = new HashSet<RespawnZone>(Object.FindObjectsOfType<RespawnZone>(true));
+        HashSet<RespawnZone> before = new HashSet<RespawnZone>(Object.FindObjectsByType<RespawnZone>(FindObjectsInactive.Include, FindObjectsSortMode.None));
         Selection.activeGameObject = null;
         RespawnMenuItem.CreateCheckpoint();
         GameObject sel = Selection.activeGameObject;
@@ -658,7 +658,7 @@ public static class S7_Wiring
         if (zone != null && before.Contains(zone)) zone = null;
         if (zone == null)
         {
-            foreach (RespawnZone z in Object.FindObjectsOfType<RespawnZone>(true))
+            foreach (RespawnZone z in Object.FindObjectsByType<RespawnZone>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 if (!before.Contains(z)) { zone = z; break; }
             if (zone != null)
                 Warn($"팀 '{CheckpointMenuPath}' 생성물을 선택물로 받지 못해 호출 전후 목록 비교로 찾았다('{zone.name}').");

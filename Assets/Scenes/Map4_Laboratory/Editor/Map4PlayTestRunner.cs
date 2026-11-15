@@ -132,7 +132,7 @@ public static class Map4PlayTestRunner
         if (!SessionState.GetBool(PendingKey, false)) return;
         SessionState.SetBool(PendingKey, false);
 
-        if (Object.FindObjectOfType<Driver>() != null) return;
+        if (Object.FindFirstObjectByType<Driver>() != null) return;
         new GameObject("Map4PlayTest_RUNTIME").AddComponent<Driver>();
         Debug.Log("[Map4PlayTest] 플레이 모드 진입 — 러너 생성, 검사 시작.");
     }
@@ -207,14 +207,14 @@ public static class Map4PlayTestRunner
         {
             log.AppendLine("F1-6 플레이 모드 검사 — " + System.DateTime.Now);
 
-            Map4Director director = Object.FindObjectOfType<Map4Director>();
+            Map4Director director = Object.FindFirstObjectByType<Map4Director>();
             if (director == null)
             {
                 Fail("[치명] Map4Director를 씬에서 찾지 못했다 — 중단.");
                 yield break;
             }
 
-            PlayerMover[] players = Object.FindObjectsOfType<PlayerMover>();
+            PlayerMover[] players = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             log.AppendLine($"플레이어 인스턴스: {players.Length}개(기대 3)");
             if (players.Length != 3) Fail($"[실패] 플레이어 인스턴스가 3개가 아니다({players.Length}).");
 
@@ -356,11 +356,11 @@ public static class Map4PlayTestRunner
         /// 추격자가 없으면(S1이 빈 틀로 지어진 경우 등) 기록만 하고 넘어간다 — 이 검사 대상이 아니다.</summary>
         private void NeutralizeChasersForTest()
         {
-            Lab_ActivateWhenPlayersReady[] activators = Object.FindObjectsOfType<Lab_ActivateWhenPlayersReady>(true);
+            Lab_ActivateWhenPlayersReady[] activators = Object.FindObjectsByType<Lab_ActivateWhenPlayersReady>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             foreach (Lab_ActivateWhenPlayersReady a in activators)
                 if (a != null) a.enabled = false;
 
-            PathChaserController[] chasers = Object.FindObjectsOfType<PathChaserController>(true);
+            PathChaserController[] chasers = Object.FindObjectsByType<PathChaserController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             StringBuilder detail = new StringBuilder();
             foreach (PathChaserController c in chasers)
             {
@@ -584,7 +584,7 @@ public static class Map4PlayTestRunner
             parkPad.transform.localScale = new Vector3(x1 - x0, ParkPadThickness, ParkPadMargin * 2f);
             Physics.SyncTransforms();
 
-            RespawnController respawn = Object.FindObjectOfType<RespawnController>();
+            RespawnController respawn = Object.FindFirstObjectByType<RespawnController>();
             float killY = respawn != null ? respawn.killY : float.NaN; // 팀 public 필드 — 읽기만.
             StringBuilder detail = new StringBuilder();
             bool ok = true;
@@ -615,7 +615,7 @@ public static class Map4PlayTestRunner
                 Rigidbody rb = p.GetComponent<Rigidbody>();
                 if (rb == null) continue;
                 Vector3 park = ParkBase + Vector3.right * (i * ParkSpacing);
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.position = park;
                 rb.transform.position = park;
@@ -653,7 +653,7 @@ public static class Map4PlayTestRunner
         /// [PTC-3] 도형을 옮긴 뒤 파킹 발판을 지운다(런타임 생성물 — 저장 없음).</summary>
         private void RestoreParked(PlayerMover[] players)
         {
-            Map4Director director = Object.FindObjectOfType<Map4Director>();
+            Map4Director director = Object.FindFirstObjectByType<Map4Director>();
             if (director != null)
             {
                 List<Rigidbody> bodies = new List<Rigidbody>();
@@ -739,7 +739,7 @@ public static class Map4PlayTestRunner
         {
             if (rb != null)
             {
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.position = s.position;
                 rb.rotation = s.rotation;
@@ -787,7 +787,7 @@ public static class Map4PlayTestRunner
 
         private static void TeleportBody(Rigidbody rb, Vector3 pos)
         {
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             rb.position = pos;
             rb.transform.position = pos;
@@ -796,7 +796,7 @@ public static class Map4PlayTestRunner
         /// <summary>격리 자리가 killY 위·OOB 볼륨 밖이고, 둘레 AntiStuckSpotClearRadius 안에 (self 말고) 콜라이더가 없는가.</summary>
         private bool AntiStuckSpotUsable(string ctx, Rigidbody self)
         {
-            RespawnController respawn = Object.FindObjectOfType<RespawnController>();
+            RespawnController respawn = Object.FindFirstObjectByType<RespawnController>();
             bool aboveKill = respawn == null || AntiStuckTestSpot.y - 3f > respawn.killY; // killY는 팀 public 필드 — 읽기만.
             bool inOob = OutOfBoundsVolume.AnyContains(AntiStuckTestSpot);
             List<string> others = new List<string>();
@@ -1013,7 +1013,7 @@ public static class Map4PlayTestRunner
             yield return null;
 
             rb.position = trapCenter; rb.transform.position = trapCenter;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
 
             int before = stuck.InterventionCount;
             float deadline = Time.time + 5f;
@@ -1059,7 +1059,7 @@ public static class Map4PlayTestRunner
 
             rb.position = wall.transform.position - Vector3.forward * (0.5f - 0.3f); // 0.3U 관통.
             rb.transform.position = rb.position;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
 
             int before = stuck.InterventionCount;
             float deadline = Time.time + 8f;
@@ -1136,7 +1136,7 @@ public static class Map4PlayTestRunner
 
             Map4Layout layout = LoadLayoutOrFail("항목N1");
             if (layout == null) yield break; // [실패]는 LoadLayoutOrFail이 이미 기록했다.
-            Map4Director rampDirector = Object.FindObjectOfType<Map4Director>();
+            Map4Director rampDirector = Object.FindFirstObjectByType<Map4Director>();
 
             foreach (int noRampId in dedicatedNoRampSectors)
                 CheckNoTempRamp(rampDirector, layout, noRampId);
@@ -1192,13 +1192,13 @@ public static class Map4PlayTestRunner
                     // Tetrahedron의 오프셋이 1.996(낙하 시작 높이 2.0에서 물리 스텝 1~2개치만
                     // 떨어진 값)로 찍혀 명백히 착지 전에 폴링이 끝난 것이었다. 아래 경사로 드롭과
                     // 같은 검증된 고정 대기(2초 — 2U 자유낙하 시간 0.64초보다 훨씬 김)로 통일한다.
-                    rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
+                    rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
                     rb.position = flatTarget; rb.transform.position = flatTarget;
                     yield return new WaitForSeconds(2.0f);
                     float footOffset = rb.position.y - s.floorHeight;
 
                     // 2) 경사로 중간에 떨어뜨려 실측.
-                    rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
+                    rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero;
                     rb.position = rampTarget; rb.transform.position = rampTarget;
                     yield return new WaitForSeconds(2.0f);
 
@@ -1392,7 +1392,7 @@ public static class Map4PlayTestRunner
         /// 도형도 옮겨진다 — 그 경우는 4-c 파킹 확인 줄이 ❌로 드러낸다. 여기서는 챕터 상태를 읽기만 한다(팀 public getter).</summary>
         private void LogManagerChapterStates(string when)
         {
-            ManagerChapterController[] mcs = Object.FindObjectsOfType<ManagerChapterController>(true);
+            ManagerChapterController[] mcs = Object.FindObjectsByType<ManagerChapterController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             if (mcs.Length == 0)
             {
                 log.AppendLine($"항목4-c [참고] ({when}) ManagerChapterController 없음.");
@@ -1445,7 +1445,7 @@ public static class Map4PlayTestRunner
             Map4Layout layout = LoadLayoutOrFail(ctx);
             if (layout == null) yield break; // [실패]는 LoadLayoutOrFail이 이미 기록했다.
             if (!TryGetLayoutOrigin(layout, 4, ctx, out _, out Map4Layout.SectorDef def)) yield break;
-            Map4Director director = Object.FindObjectOfType<Map4Director>();
+            Map4Director director = Object.FindFirstObjectByType<Map4Director>();
             if (director == null || !director.TryGetSector(4, out SectorController sc) || sc == null)
             {
                 Fail($"[실패] {ctx} — 섹터4가 로드되지 않았다.");

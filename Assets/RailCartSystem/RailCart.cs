@@ -141,7 +141,7 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     private float fallRecoveryTimer;
 
     public bool IsOnRail => state == CartState.OnRail;
-    public Vector3 Velocity => rb.velocity;
+    public Vector3 Velocity => rb.linearVelocity;
 
     void Awake()
     {
@@ -313,11 +313,11 @@ public class RailCart : MonoBehaviour, IWindupReceiver
             rb.AddForce(tangent * (drivingForce * drivePower), ForceMode.Force);
 
         // 레일 방향 속도 상한 — 그 방향 성분만 clamp하고 나머지(중력 낙하 등)는 그대로 둔다.
-        float alongSpeed = Vector3.Dot(rb.velocity, tangent);
+        float alongSpeed = Vector3.Dot(rb.linearVelocity, tangent);
         if (Mathf.Abs(alongSpeed) > maxSpeed)
         {
             float excess = alongSpeed - Mathf.Sign(alongSpeed) * maxSpeed;
-            rb.velocity -= tangent * excess;
+            rb.linearVelocity -= tangent * excess;
             alongSpeed = Mathf.Sign(alongSpeed) * maxSpeed;
         }
 
@@ -329,17 +329,17 @@ public class RailCart : MonoBehaviour, IWindupReceiver
         // 레일(곡선 포함)에서 옆으로 벗어난 만큼 되돌리는 복원력 — 탈선(별도 조건)과 무관하게
         // 항상 작동해 "안정적으로 주행한다"는 요구를 만족시킨다. 지연 중에도 유지해 대기하는
         // 동안 레일에서 미끄러지지 않는다.
-        Vector3 lateralVelocity = rb.velocity - tangent * Vector3.Dot(rb.velocity, tangent);
+        Vector3 lateralVelocity = rb.linearVelocity - tangent * Vector3.Dot(rb.linearVelocity, tangent);
         rb.AddForce((point - transform.position) * railRestoreForce - lateralVelocity * restoreDamping, ForceMode.Force);
 
         if (logDiagnostics)
             Debug.Log($"[RailCart] seg={segmentIndex} t={t:F3} pos={transform.position:F3} pathPt={point:F3} " +
-                      $"dist={(point - transform.position).magnitude:F3} tangent={tangent:F3} vel={rb.velocity:F3} " +
-                      $"speed={rb.velocity.magnitude:F2} maxSafe={path.MaxSafeSpeed(segmentIndex):F2} " +
+                      $"dist={(point - transform.position).magnitude:F3} tangent={tangent:F3} vel={rb.linearVelocity:F3} " +
+                      $"speed={rb.linearVelocity.magnitude:F2} maxSafe={path.MaxSafeSpeed(segmentIndex):F2} " +
                       $"angVel={rb.angularVelocity:F3} rot={rb.rotation.eulerAngles:F1} released={released} " +
                       $"power={outputPower:F2} drivePower={drivePower:F2} atStart={atStart} atEnd={atEnd}", this);
 
-        if (rb.velocity.magnitude > path.MaxSafeSpeed(segmentIndex))
+        if (rb.linearVelocity.magnitude > path.MaxSafeSpeed(segmentIndex))
         {
             Derail();
             return;
@@ -352,7 +352,7 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     private void Derail()
     {
         if (logDiagnostics)
-            Debug.Log($"[RailCart] DERAIL pos={transform.position:F3} speed={rb.velocity.magnitude:F2}", this);
+            Debug.Log($"[RailCart] DERAIL pos={transform.position:F3} speed={rb.linearVelocity.magnitude:F2}", this);
         state = CartState.Derailed;
         overturnTimer = 0f;
         overturnConfirmed = false;
@@ -390,7 +390,7 @@ public class RailCart : MonoBehaviour, IWindupReceiver
 
     private void Recover()
     {
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         transform.position = recoverPosition;
         transform.rotation = recoverRotation;
@@ -410,7 +410,7 @@ public class RailCart : MonoBehaviour, IWindupReceiver
     /// 웨이포인트 0은 아니므로 레일 배열 인덱스로 되찾지 않는다.</summary>
     private void RespawnAtRailStart()
     {
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
         transform.position = initialPosition;

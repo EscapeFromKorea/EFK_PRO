@@ -279,7 +279,7 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
         if (controlled == null) return;
         Rigidbody body = controlled.GetComponent<Rigidbody>();
         if (body == null) return;
-        Vector3 v = body.velocity;
+        Vector3 v = body.linearVelocity;
         v.y = 0f;
         if (v.sqrMagnitude >= minMoveSpeed * minMoveSpeed)
             lastMoveDir = v.normalized;
@@ -385,7 +385,7 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
         {
             attachedBody.isKinematic = false;
             if (withLeap)
-                attachedBody.velocity = Vector3.up * climbLeapSpeed; // 위로 도약(키네마틱 해제 후 dynamic velocity)
+                attachedBody.linearVelocity = Vector3.up * climbLeapSpeed; // 위로 도약(키네마틱 해제 후 dynamic velocity)
         }
         if (attachedJump != null) attachedJump.enabled = true;
 
@@ -397,7 +397,7 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
 
     private Vector3 ResolveRayDirection(Rigidbody body)
     {
-        Vector3 v = body.velocity;
+        Vector3 v = body.linearVelocity;
         v.y = 0f;
         if (v.sqrMagnitude >= minMoveSpeed * minMoveSpeed)
             return v.normalized;

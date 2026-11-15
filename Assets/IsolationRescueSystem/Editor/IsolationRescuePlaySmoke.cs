@@ -100,8 +100,8 @@ public class IsolationPlaySmokeRunner : MonoBehaviour
         foreach (Ball b in balls)
         {
             if (b.rb == null) continue;
-            Vector3 v = b.rb.velocity;
-            b.rb.velocity = new Vector3(b.velocity.x, v.y, b.velocity.z);
+            Vector3 v = b.rb.linearVelocity;
+            b.rb.linearVelocity = new Vector3(b.velocity.x, v.y, b.velocity.z);
         }
     }
 
@@ -227,7 +227,7 @@ public class IsolationPlaySmokeRunner : MonoBehaviour
         ball.mover.ExternallyDriven = true;               // 이동·감쇠를 PlayerMover가 건드리지 않게
         ball.rb = ball.go.GetComponent<Rigidbody>();
         ball.rb.constraints = RigidbodyConstraints.FreezeRotation;
-        ball.rb.drag = 0f;
+        ball.rb.linearDamping = 0f;
         balls.Add(ball);
         return ball;
     }
@@ -235,7 +235,7 @@ public class IsolationPlaySmokeRunner : MonoBehaviour
     private static void Teleport(Ball ball, Vector3 position)
     {
         ball.velocity = Vector3.zero;
-        ball.rb.velocity = Vector3.zero;
+        ball.rb.linearVelocity = Vector3.zero;
         ball.rb.position = position;
         ball.go.transform.position = position;
     }

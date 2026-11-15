@@ -55,7 +55,7 @@ public class SnapBlock : MonoBehaviour
     };
 
     // 씬에 존재하는 모든 SnapBlock의 자가 등록 목록. SnapBlockController가 매 프레임
-    // FindObjectsOfType<SnapBlock>()로 전체 씬을 훑던 것(블록이 많아지는 레벨일수록 비용이
+    // FindObjectsByType<SnapBlock>(FindObjectsSortMode.None)로 전체 씬을 훑던 것(블록이 많아지는 레벨일수록 비용이
     // 커짐, 2026-09-15 감사에서 발견)을 대체한다 — OnEnable/OnDisable로 등록만 하면 되므로
     // Update 비용은 리스트 길이에만 비례한다.
     private static readonly List<SnapBlock> allBlocks = new List<SnapBlock>();
@@ -158,9 +158,9 @@ public class SnapBlock : MonoBehaviour
 
         AlignTo(other, myFace, otherFace);
 
-        body.velocity = Vector3.zero;
+        body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
-        other.body.velocity = Vector3.zero;
+        other.body.linearVelocity = Vector3.zero;
         other.body.angularVelocity = Vector3.zero;
 
         ConfigurableJoint j = gameObject.AddComponent<ConfigurableJoint>();

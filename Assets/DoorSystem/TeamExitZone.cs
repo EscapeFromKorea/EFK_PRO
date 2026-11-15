@@ -35,7 +35,7 @@ public class TeamExitZone : MonoBehaviour
     /// false다(아직 아무도 없는데 "전원 도착"은 성립하지 않는다).</summary>
     public bool AllPlayersInside()
     {
-        PlayerMover[] movers = Object.FindObjectsOfType<PlayerMover>();
+        PlayerMover[] movers = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
         if (movers.Length == 0) return false;
 
         foreach (PlayerMover mover in movers)

@@ -239,7 +239,7 @@ public static class DoorSystemMenuItem
     {
         doorPhysics best = null;
         float bestSqr = float.PositiveInfinity;
-        foreach (doorPhysics d in Object.FindObjectsOfType<doorPhysics>())
+        foreach (doorPhysics d in Object.FindObjectsByType<doorPhysics>(FindObjectsSortMode.None))
         {
             float sqr = (d.transform.position - from).sqrMagnitude;
             if (sqr >= bestSqr) continue;

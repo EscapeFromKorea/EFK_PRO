@@ -195,7 +195,7 @@ public class FallingRockFlip : MonoBehaviour
     {
         if (positionLocked) return;
         positionLocked = true;
-        body.velocity = Vector3.zero;
+        body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
         body.constraints = RigidbodyConstraints.FreezeAll;
     }

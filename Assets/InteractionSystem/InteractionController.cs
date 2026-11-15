@@ -59,7 +59,7 @@ public class InteractionController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExists()
     {
-        if (Object.FindObjectOfType<InteractionController>() != null) return;
+        if (Object.FindFirstObjectByType<InteractionController>() != null) return;
         new GameObject("InteractionController (auto)").AddComponent<InteractionController>();
     }
 
@@ -204,7 +204,7 @@ public class InteractionController : MonoBehaviour
 
         if (Time.time >= nextMoverRefresh)
         {
-            movers = Object.FindObjectsOfType<PlayerMover>();
+            movers = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             nextMoverRefresh = Time.time + 0.5f;
             foreach (PlayerMover m in movers)
                 if (m != null && m.IsControlled) return m;

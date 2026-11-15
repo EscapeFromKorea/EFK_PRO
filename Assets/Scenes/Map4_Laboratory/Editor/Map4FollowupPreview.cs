@@ -24,7 +24,7 @@ public static class Map4FollowupPreview
             Directory.CreateDirectory(folder);
             var report = new StringBuilder("Static editor renders; inactive traps intentionally absent. S7/S8 roofs hidden only for review cutaways; production scenes are not saved. Not a gameplay completion test. Runtime-created line materials are audited separately by Map4RuntimeMaterialChecks.\n");
             int runtimePending = 0;
-            foreach (SectorController sector in UnityEngine.Object.FindObjectsOfType<SectorController>())
+            foreach (SectorController sector in UnityEngine.Object.FindObjectsByType<SectorController>(FindObjectsSortMode.None))
             {
                 Renderer[] renderers = sector.GetComponentsInChildren<Renderer>(true);
                 foreach (Renderer renderer in renderers)
@@ -84,7 +84,7 @@ public static class Map4FollowupPreview
         Texture2D image = null;
         RenderTexture previous = RenderTexture.active;
         // 다른 섹터의 벽·천장이 정사영 앞을 가리지 않게 캡처 중에만 렌더러를 숨긴다. 씬은 저장하지 않는다.
-        Renderer[] hidden = UnityEngine.Object.FindObjectsOfType<Renderer>().Where(r => r.enabled &&
+        Renderer[] hidden = UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None).Where(r => r.enabled &&
             (!r.transform.IsChildOf(sector.transform) || (sector.sectorId == 7 || sector.sectorId == 8) &&
              r.GetComponentsInParent<Transform>().Any(t => t.name.StartsWith("GEO_S7_Ceiling", StringComparison.Ordinal) || t.name.StartsWith("GEO_S8_Ceil_", StringComparison.Ordinal)))).ToArray();
         try

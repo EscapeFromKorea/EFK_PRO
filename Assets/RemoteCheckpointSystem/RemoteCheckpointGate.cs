@@ -108,7 +108,7 @@ public class RemoteCheckpointGate : MonoBehaviour
         }
 
         List<RespawnZone> matches = new List<RespawnZone>();
-        foreach (RespawnZone z in FindObjectsOfType<RespawnZone>())
+        foreach (RespawnZone z in FindObjectsByType<RespawnZone>(FindObjectsSortMode.None))
             if (z.checkpointId == targetCheckpointId) matches.Add(z);
 
         if (matches.Count != 1)

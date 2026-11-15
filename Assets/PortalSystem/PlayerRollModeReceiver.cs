@@ -452,7 +452,7 @@ public class PlayerRollModeReceiver : MonoBehaviour
         // 붙잡기 규칙은 그대로 두고, 붙잡지 않은 프레임의 수평 성분만 매 스텝 지운다.
         // Y는 절대 덮어쓰지 않는다 — 중력·낙하의 소유물이다.
         // 조기 return이 여럿이므로 반드시 그 전부보다 앞에 둔다.
-        if (!rb.isKinematic) rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+        if (!rb.isKinematic) rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
 
         if (state != State.Idle)
         {
@@ -948,7 +948,7 @@ public class PlayerRollModeReceiver : MonoBehaviour
         mover.ExternallyDriven = true; // 이동 대입이 텀블을 짓밟는 것을 막는다
         // 속도를 먼저 지우고 나서 kinematic으로 넘긴다 — 순서가 반대면 텀블마다 콘솔에
         // "Setting linear/angular velocity of a kinematic body is not supported" 경고가 쌓인다.
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         rb.isKinematic = true;         // 솔버에게 회전 발언권을 주지 않는다
     }
@@ -958,7 +958,7 @@ public class PlayerRollModeReceiver : MonoBehaviour
         if (!grabbed) return;
         grabbed = false;
         rb.isKinematic = false;
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         mover.ExternallyDriven = false;
         // mover.enabled는 절대 건드리지 않는다 — PlayerControlSwitcher 로스터에서 빠져 Tab

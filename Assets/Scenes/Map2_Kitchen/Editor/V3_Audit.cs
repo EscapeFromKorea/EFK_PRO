@@ -70,7 +70,7 @@ public static class V3Audit
         List<Collider> all = new List<Collider>(root.GetComponentsInChildren<Collider>())
             .Where(c => !(c.gameObject.name.StartsWith("T0RS_") && !c.gameObject.name.EndsWith("_Gate")))
             .ToList();
-        foreach (PlayerMover pm in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover pm in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             foreach (Collider pc in pm.GetComponentsInChildren<Collider>())
                 if (!all.Contains(pc)) all.Add(pc);
         int boxN = 0, sphereN = 0, capsuleN = 0, meshConvexN = 0, unsupportedN = 0;
@@ -298,7 +298,7 @@ public static class V3Audit
     static void RigidbodyAudit(GameObject root, StringBuilder sb)
     {
         Dictionary<string, int> bySector = new Dictionary<string, int>();
-        Rigidbody[] all = Object.FindObjectsOfType<Rigidbody>();
+        Rigidbody[] all = Object.FindObjectsByType<Rigidbody>(FindObjectsSortMode.None);
         foreach (Rigidbody rb in all)
         {
             Transform t = rb.transform;

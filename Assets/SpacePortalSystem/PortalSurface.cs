@@ -45,10 +45,10 @@ public class PortalSurface : MonoBehaviour
         bool occupied = (SpacePortal.Orange != null && SpacePortal.Orange.transform.parent == transform) ||
                          (SpacePortal.Blue != null && SpacePortal.Blue.transform.parent == transform);
 
-        foreach (PlayerShapeIdentity id in FindObjectsOfType<PlayerShapeIdentity>())
+        foreach (PlayerShapeIdentity id in FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None))
             if (id.solidCollider != null) Physics.IgnoreCollision(Box, id.solidCollider, occupied);
 
-        foreach (PortalTraversable t in FindObjectsOfType<PortalTraversable>())
+        foreach (PortalTraversable t in FindObjectsByType<PortalTraversable>(FindObjectsSortMode.None))
             foreach (Collider col in t.GetComponentsInChildren<Collider>())
                 Physics.IgnoreCollision(Box, col, occupied);
 

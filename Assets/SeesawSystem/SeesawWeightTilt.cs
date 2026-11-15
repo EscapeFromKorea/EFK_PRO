@@ -47,7 +47,7 @@ public class SeesawWeightTilt : MonoBehaviour
     {
         if (!enforceResponsivePhysics || body == null || hinge == null) return;
 
-        body.angularDrag = Mathf.Min(body.angularDrag, maximumAngularDrag);
+        body.angularDamping = Mathf.Min(body.angularDamping, maximumAngularDrag);
         body.maxAngularVelocity = Mathf.Max(body.maxAngularVelocity, 12f);
         hinge.useLimits = true;
         JointLimits limits = hinge.limits;
@@ -123,10 +123,10 @@ public class SeesawWeightTilt : MonoBehaviour
 
     private static void UpgradeExistingSeesaws()
     {
-        foreach (SeesawTuningNotes notes in UnityEngine.Object.FindObjectsOfType<SeesawTuningNotes>(true))
+        foreach (SeesawTuningNotes notes in UnityEngine.Object.FindObjectsByType<SeesawTuningNotes>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             TryUpgrade(notes);
 
-        foreach (RotatingPlate plate in UnityEngine.Object.FindObjectsOfType<RotatingPlate>(true))
+        foreach (RotatingPlate plate in UnityEngine.Object.FindObjectsByType<RotatingPlate>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             TryUpgrade(plate);
     }
 

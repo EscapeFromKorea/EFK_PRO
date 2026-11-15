@@ -281,7 +281,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         SnapBlock best = null;
 
         blockBuf.Clear();
-        blockBuf.AddRange(Object.FindObjectsOfType<SnapBlock>());
+        blockBuf.AddRange(Object.FindObjectsByType<SnapBlock>(FindObjectsSortMode.None));
         foreach (SnapBlock b in blockBuf)
         {
             if (b == null) continue;
@@ -405,9 +405,9 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
             transform.position += move;
         }
 
-        body.velocity = Vector3.zero;
+        body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
-        blockBody.velocity = Vector3.zero;
+        blockBody.linearVelocity = Vector3.zero;
         blockBody.angularVelocity = Vector3.zero;
 
         joint = gameObject.AddComponent<ConfigurableJoint>();
@@ -453,7 +453,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
 
         dockedBlock = aimed;
         // SnapBlock 컴포넌트 비활성화 — PlayerBlockCarrier·SnapBlockController·다른 PlayerCubeDock이
-        // 전부 FindObjectsOfType<SnapBlock>()로 후보를 찾는데, 비활성 컴포넌트는 기본 오버로드에서
+        // 전부 FindObjectsByType<SnapBlock>(FindObjectsSortMode.None)로 후보를 찾는데, 비활성 컴포넌트는 기본 오버로드에서
         // 제외된다. 안 숨기면 도킹 중인 블록을 다른 플레이어가 그대로 들어올릴 수 있어, 든 순간
         // kinematic+강제 위치추종이 걸려 이 도킹 조인트가 블록을 지형 관통까지 끌고 다닌다
         // (PR #92 리뷰에서 지적).

@@ -106,7 +106,7 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
 
     private void Start()
     {
-        if (respawnController == null) respawnController = FindObjectOfType<RespawnController>();
+        if (respawnController == null) respawnController = FindFirstObjectByType<RespawnController>();
         if (managerAgent == null || managerAgent.agent == null)
         {
             Debug.LogError("[Manager] managerAgent(또는 그 PathChaserAgent)가 비어 있어 CH8을 시작할 수 없다.", this);
@@ -268,7 +268,7 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
 
     private void ReturnAllToStart()
     {
-        if (respawnController == null) respawnController = FindObjectOfType<RespawnController>();
+        if (respawnController == null) respawnController = FindFirstObjectByType<RespawnController>();
         if (respawnController == null)
         {
             Debug.LogWarning("[Manager] RespawnController가 없어 전원 복귀를 건너뛴다.", this);

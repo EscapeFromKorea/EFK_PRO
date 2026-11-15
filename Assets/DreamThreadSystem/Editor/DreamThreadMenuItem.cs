@@ -50,7 +50,7 @@ public static class DreamThreadMenuItem
     [MenuItem("Tools/DreamThread/Create Pin Placer")]
     private static void CreatePinPlacer()
     {
-        if (Object.FindObjectOfType<ThreadPinPlacer>() != null)
+        if (Object.FindFirstObjectByType<ThreadPinPlacer>() != null)
         {
             Debug.Log("[DreamThread] 씬에 이미 ThreadPinPlacer가 있습니다.");
             return;
@@ -107,7 +107,7 @@ public static class DreamThreadMenuItem
         EnsureMaterialFolder();
         EnsureController();
 
-        if (Object.FindObjectOfType<ThreadPinPlacer>() == null)
+        if (Object.FindFirstObjectByType<ThreadPinPlacer>() == null)
             CreatePinPlacer(); // 핀이 있어야 이어지는 다리라 placer가 없으면 같이 만들어 준다.
 
         Vector3 origin = Vector3.zero;
@@ -149,7 +149,7 @@ public static class DreamThreadMenuItem
     [MenuItem("Tools/DreamThread/Create Cube Anchor")]
     private static void CreateCubeAnchor()
     {
-        if (Object.FindObjectOfType<ThreadCubeAnchor>() != null)
+        if (Object.FindFirstObjectByType<ThreadCubeAnchor>() != null)
         {
             Debug.Log("[DreamThread] 씬에 이미 ThreadCubeAnchor가 있습니다.");
             return;
@@ -180,7 +180,7 @@ public static class DreamThreadMenuItem
     // 씬에 컨트롤러가 없으면 LineRenderer를 포함해 하나 만든다. 이미 있으면 아무 것도 하지 않는다.
     private static void EnsureController()
     {
-        if (Object.FindObjectOfType<DreamThreadController>() != null) return;
+        if (Object.FindFirstObjectByType<DreamThreadController>() != null) return;
 
         GameObject ctrlObj = new GameObject("DreamThreadController");
         DreamThreadController ctrl = ctrlObj.AddComponent<DreamThreadController>();

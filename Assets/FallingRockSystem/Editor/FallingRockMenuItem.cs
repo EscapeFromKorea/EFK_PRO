@@ -39,7 +39,7 @@ public static class FallingRockMenuItem
         float spacing = spawner.rockSize + spawner.gapWidth; // 기본 3 U.
                                                              // 통로 길이 = (줄-1)x간격 + 진입/이탈 2 U.
 
-        SlowZone zone = Object.FindObjectOfType<SlowZone>();
+        SlowZone zone = Object.FindFirstObjectByType<SlowZone>();
         Collider zoneCol = zone != null ? zone.GetComponent<Collider>() : null;
 
         if (zoneCol != null)
@@ -103,7 +103,7 @@ public static class FallingRockMenuItem
     [MenuItem("Tools/FallingRock/Validate Scene Setup")]
     private static void Validate()
     {
-        FallingRockSpawner[] spawners = Object.FindObjectsOfType<FallingRockSpawner>();
+        FallingRockSpawner[] spawners = Object.FindObjectsByType<FallingRockSpawner>(FindObjectsSortMode.None);
         if (spawners.Length == 0)
         {
             Debug.LogWarning("[FallingRock] 씬에 FallingRockSpawner가 없다.");

@@ -68,7 +68,7 @@ public class ThreadCubeAnchor : MonoBehaviour
         // ponytail: 주기 재탐색 — 플레이어 수가 크게 늘면 등록식(정적 목록)으로 바꾼다.
         if (Time.unscaledTime >= nextScanTime)
         {
-            players = Object.FindObjectsOfType<PlayerShapeIdentity>();
+            players = Object.FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
             nextScanTime = Time.unscaledTime + RescanInterval;
         }
 
@@ -134,7 +134,7 @@ public class ThreadCubeAnchor : MonoBehaviour
         // [2026-08-21] 굴리기 중(rolling) 여부는 이제 호출부(Update)가 더 넓은 기준으로 먼저
         // 걸러서 rolling일 때는 이 함수 자체를 안 부른다 — 여기서 다시 IsTumbling만 좁게 보던
         // 중복 검사는 삭제했다(남겨두면 두 곳의 판정 기준이 다시 갈라질 여지가 생긴다).
-        if (rb.velocity.magnitude > maxAnchorSpeed) return false;
+        if (rb.linearVelocity.magnitude > maxAnchorSpeed) return false;
 
         if (!requireGrounded) return true;
         // 접지 판정은 컨트롤러가 착지 감지에 쓰는 것과 같은 창구를 쓴다. 없는 플레이어는 속도 조건만 본다.

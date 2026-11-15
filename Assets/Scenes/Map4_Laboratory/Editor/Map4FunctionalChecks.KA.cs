@@ -75,7 +75,7 @@ public static partial class Map4FunctionalChecks
             st.Taken = false;
             st.Error = "";
             if (target == null) { st.Error = "대상 도형 없음"; yield break; }
-            if (Object.FindObjectOfType<InteractionController>() == null)
+            if (Object.FindFirstObjectByType<InteractionController>() == null)
             {
                 st.Error = "씬에 InteractionController 인스턴스가 없음 — 중앙 입력(E/V) 흉내 불가";
                 yield break;
@@ -113,7 +113,7 @@ public static partial class Map4FunctionalChecks
             List<KeyValuePair<MonoBehaviour, InteractionAction>> cands = new List<KeyValuePair<MonoBehaviour, InteractionAction>>();
             List<InteractionAction> buf = new List<InteractionAction>();
             int providers = 0;
-            foreach (MonoBehaviour mb in Object.FindObjectsOfType<MonoBehaviour>())
+            foreach (MonoBehaviour mb in Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
             {
                 if (mb == null || !mb.isActiveAndEnabled) continue;      // 제공자는 OnEnable에서 Register — 활성+enabled인 것만 컨트롤러에 올라 있다
                 IInteractionProvider ip = mb as IInteractionProvider;
@@ -687,7 +687,7 @@ public static partial class Map4FunctionalChecks
                 Vector3 apNow = lc.anchor.transform.position;
                 Vector3 radial = new Vector3(trb.position.x - apNow.x, 0f, trb.position.z - apNow.z);
                 Vector3 pushDir = radial.sqrMagnitude > 0.01f ? radial.normalized : dir;
-                Vector3 v = trb.velocity;
+                Vector3 v = trb.linearVelocity;
                 trb.AddForce(pushDir * speed - PredictMoverHoriz(tetra, new Vector3(v.x, 0f, v.z)), ForceMode.VelocityChange);
                 yield return new WaitForFixedUpdate();
                 if (tetra == null || trb == null) { stopWhy = "몸이 사라짐"; break; }
@@ -938,7 +938,7 @@ public static partial class Map4FunctionalChecks
                     rel.y = 0f;
                     float lat = Vector3.Dot(rel, rt);
                     Vector3 want = f * speed - rt * Mathf.Clamp(lat * 2f, -1.5f, 1.5f);
-                    Vector3 v = srb.velocity;
+                    Vector3 v = srb.linearVelocity;
                     srb.AddForce(want - PredictMoverHoriz(pusher, new Vector3(v.x, 0f, v.z)), ForceMode.VelocityChange);
                     yield return new WaitForFixedUpdate();
                     if (pusher == null || srb == null) { why = "도형 사라짐"; break; }
@@ -1046,8 +1046,8 @@ public static partial class Map4FunctionalChecks
         {
             const string id = "S3-5";
             if (s3 == null) { NA(id, s3Problem ?? "S3 해석 실패"); yield break; }
-            DreamThreadController[] ctrls = Object.FindObjectsOfType<DreamThreadController>();
-            ThreadPinPlacer[] pins = Object.FindObjectsOfType<ThreadPinPlacer>();
+            DreamThreadController[] ctrls = Object.FindObjectsByType<DreamThreadController>(FindObjectsSortMode.None);
+            ThreadPinPlacer[] pins = Object.FindObjectsByType<ThreadPinPlacer>(FindObjectsSortMode.None);
             List<ThreadAnchor> anchors = InScene<ThreadAnchor>(s3.Scene);
             List<ThreadAnchor> hangable = anchors.Where(a => a.connectRange > 0f).ToList();
             float minR = anchors.Count > 0 ? anchors.Min(a => a.connectRange) : 0f, maxR = anchors.Count > 0 ? anchors.Max(a => a.connectRange) : 0f;
@@ -1167,7 +1167,7 @@ public static partial class Map4FunctionalChecks
         {
             const string id = "G-1";
             yield return null;
-            InteractionController[] active = Object.FindObjectsOfType<InteractionController>();
+            InteractionController[] active = Object.FindObjectsByType<InteractionController>(FindObjectsSortMode.None);
             List<InteractionController> every = Resources.FindObjectsOfTypeAll<InteractionController>().Where(c => c != null && c.gameObject.scene.IsValid()).ToList();
             string where = string.Join(" / ", every.Select(c => $"'{c.gameObject.name}' 씬 '{c.gameObject.scene.name}' 활성={c.gameObject.activeInHierarchy}"));
             int autoGo = Resources.FindObjectsOfTypeAll<GameObject>().Count(g => g != null && g.scene.IsValid() && g.name.StartsWith("InteractionController", StringComparison.Ordinal));

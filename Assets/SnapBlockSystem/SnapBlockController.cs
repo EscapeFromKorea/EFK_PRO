@@ -73,7 +73,7 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExists()
     {
-        if (Object.FindObjectOfType<SnapBlockController>() != null) return;
+        if (Object.FindFirstObjectByType<SnapBlockController>() != null) return;
         new GameObject("SnapBlockController (auto)").AddComponent<SnapBlockController>();
     }
 
@@ -126,7 +126,7 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
         // 않는다(2026-10-10 코드 리뷰 중-4). 컨트롤러가 없는 씬에서만 예전 스캔으로 폴백한다.
         PlayerMover cached = InteractionController.Controlled;
         if (cached != null) return cached.ExternallyDriven ? null : cached;
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (m.IsControlled && !m.ExternallyDriven) return m;
         return null;
     }

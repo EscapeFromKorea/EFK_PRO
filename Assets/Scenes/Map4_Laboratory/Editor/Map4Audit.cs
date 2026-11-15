@@ -247,7 +247,7 @@ public static class Map4Audit
     public static Result RunStaticAudit()
     {
         List<Collider> statics = new List<Collider>();
-        foreach (Collider c in Object.FindObjectsOfType<Collider>())
+        foreach (Collider c in Object.FindObjectsByType<Collider>(FindObjectsSortMode.None))
         {
             if (c.isTrigger) continue;
             if (c.attachedRigidbody != null) continue; // 정적만(F1-3 범위 — 가동체는 Play 검사 몫).

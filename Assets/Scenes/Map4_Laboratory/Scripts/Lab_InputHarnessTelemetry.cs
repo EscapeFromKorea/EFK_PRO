@@ -69,7 +69,7 @@ public class Lab_InputHarnessTelemetry : MonoBehaviour
         Rigidbody rb = p.GetComponent<Rigidbody>();
         PlayerShapeController shape = p.GetComponent<PlayerShapeController>();
         Vector3 pos = p.position;
-        Vector3 vel = rb != null ? rb.velocity : Vector3.zero;
+        Vector3 vel = rb != null ? rb.linearVelocity : Vector3.zero;
         bool grounded = shape != null && shape.IsGrounded();
 
         string line = string.Format(CultureInfo.InvariantCulture,
@@ -107,7 +107,7 @@ public class Lab_InputHarnessTelemetry : MonoBehaviour
                 {
                     Rigidbody rb = p.GetComponent<Rigidbody>();
                     Vector3 pos = new Vector3(x, y, z);
-                    if (rb != null) { rb.velocity = Vector3.zero; rb.position = pos; }
+                    if (rb != null) { rb.linearVelocity = Vector3.zero; rb.position = pos; }
                     p.position = pos;
                 }
             }

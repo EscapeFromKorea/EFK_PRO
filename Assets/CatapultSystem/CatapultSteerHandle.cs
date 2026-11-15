@@ -428,7 +428,7 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
     // InstanceID가 더 작은 것)이 있으면 false를 반환해 도킹을 양보한다.
     private bool IsNearestSteerHandle(Vector3 playerPosition, float myDistance)
     {
-        foreach (CatapultSteerHandle other in FindObjectsOfType<CatapultSteerHandle>())
+        foreach (CatapultSteerHandle other in FindObjectsByType<CatapultSteerHandle>(FindObjectsSortMode.None))
         {
             if (other == this || other.dockAnchor == null) continue;
 
@@ -443,7 +443,7 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
 
     private static PlayerMover FindControlledPlayer()
     {
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (m.IsControlled) return m;
         return null;
     }

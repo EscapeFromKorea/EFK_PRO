@@ -17,7 +17,7 @@ public class Lab_SectionRespawnBridge : MonoBehaviour
 
     void Start()
     {
-        RespawnController respawn = Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = Object.FindFirstObjectByType<RespawnController>();
         if (respawn == null)
         {
             Debug.LogError($"[Lab_SectionRespawnBridge] RespawnController를 찾지 못했다 — '{gameObject.scene.name}'의 " +

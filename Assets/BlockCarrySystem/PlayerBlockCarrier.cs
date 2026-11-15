@@ -249,7 +249,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         SnapBlock best = null;
 
         blockBuf.Clear();
-        blockBuf.AddRange(Object.FindObjectsOfType<SnapBlock>());
+        blockBuf.AddRange(Object.FindObjectsByType<SnapBlock>(FindObjectsSortMode.None));
         foreach (SnapBlock b in blockBuf)
         {
             if (b == null) continue;
@@ -315,7 +315,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         carriedRotation = SnapToAxes(rb.rotation);
 
         // SnapBlock 컴포넌트를 비활성화 — SnapBlockController(용접 대상 탐색)와 PlayerCubeDock
-        // (도킹 대상 탐색)는 전부 FindObjectsOfType<SnapBlock>()로 후보를 찾는데, 비활성 컴포넌트는
+        // (도킹 대상 탐색)는 전부 FindObjectsByType<SnapBlock>(FindObjectsSortMode.None)로 후보를 찾는데, 비활성 컴포넌트는
         // 기본 오버로드에서 제외된다. 든 블록을 숨기지 않으면: 든 채로 다른 플레이어가 용접하면
         // 다음 프레임 이 컴포넌트의 강제 위치 갱신이 그 결합을 덮어쓰고, 내려놓는 순간 물리가 밀린
         // 조인트 오차를 한 번에 해소하며 블록이 먼 파트너 쪽으로 튕겨나간다(PR #92 리뷰에서 지적).
@@ -331,7 +331,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         // 엔진이 "그 값을 다시 지난 프레임과 보간"하려다 매 FixedUpdate마다 위치가 살짝 튀었다
         // 복구되는 것처럼 보여 꿀렁거림/미세 회전 아티팩트로 나타난다(구가 구를 때 눈에 띔).
         rb.interpolation = RigidbodyInterpolation.None;
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
         IgnoreCollisionWithPlayer(carried, true);
@@ -393,7 +393,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
             rb.transform.SetPositionAndRotation(pos, rot);
             rb.isKinematic = carriedKinematicWas;
             rb.interpolation = carriedInterpWas;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
 
@@ -484,7 +484,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
-            Vector3 v = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
+            Vector3 v = Vector3.ProjectOnPlane(rb.linearVelocity, Vector3.up);
             if (v.sqrMagnitude > 0.04f) return v.normalized;
         }
 

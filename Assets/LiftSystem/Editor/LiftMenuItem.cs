@@ -137,7 +137,7 @@ public static class LiftMenuItem
     {
         LiftPlatform best = null;
         float bestSqr = float.PositiveInfinity;
-        foreach (LiftPlatform l in Object.FindObjectsOfType<LiftPlatform>())
+        foreach (LiftPlatform l in Object.FindObjectsByType<LiftPlatform>(FindObjectsSortMode.None))
         {
             float sqr = (l.transform.position - from).sqrMagnitude;
             if (sqr >= bestSqr) continue;

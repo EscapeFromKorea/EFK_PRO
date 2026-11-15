@@ -413,7 +413,7 @@ public static class S2_Builder
     /// 메시 경계가 초안 표의 x·z 범위·아랫면 0·윗면 최고 y와 ±0.001로 맞지 않으면 throw.</summary>
     private static void BuildNoFriction(S2_Refs refs)
     {
-        PhysicMaterial pm = LoadOrCreateNoFriction();
+        PhysicsMaterial pm = LoadOrCreateNoFriction();
         Material mat = Map4Build.GetMaterial(NoFrictionPalette);
         foreach (Piece p in NoFrictionPieces)
         {
@@ -446,24 +446,24 @@ public static class S2_Builder
     /// <summary>[마찰 0 헬퍼 — S2-B 소유, 2차판정 10] PM_Map4_NoFriction(dynamic 0·static 0·frictionCombine Minimum·bounce 0 — 초안 §1-5·§2-9)을
     /// 우리 폴더에 만들거나 재사용.
     /// 값이 다를 때만 고치고 SetDirty(같으면 파일을 건드리지 않는다). 팀 파일 무수정.</summary>
-    private static PhysicMaterial LoadOrCreateNoFriction()
+    private static PhysicsMaterial LoadOrCreateNoFriction()
     {
         EnsureFolder(NoFrictionDir);
         string path = $"{NoFrictionDir}/{NoFrictionName}.physicMaterial";
-        PhysicMaterial pm = AssetDatabase.LoadAssetAtPath<PhysicMaterial>(path);
+        PhysicsMaterial pm = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(path);
         if (pm == null)
         {
-            pm = new PhysicMaterial(NoFrictionName);
+            pm = new PhysicsMaterial(NoFrictionName);
             AssetDatabase.CreateAsset(pm, path);
         }
         bool changed = pm.dynamicFriction != 0f || pm.staticFriction != 0f || pm.bounciness != 0f
-                       || pm.frictionCombine != PhysicMaterialCombine.Minimum;
+                       || pm.frictionCombine != PhysicsMaterialCombine.Minimum;
         if (changed)
         {
             pm.dynamicFriction = 0f;                              // [제안 초안 §1-5]
             pm.staticFriction = 0f;                               // [제안 초안 §1-5]
             pm.bounciness = 0f;                                   // [제안 초안 §1-5]
-            pm.frictionCombine = PhysicMaterialCombine.Minimum;   // [제안 초안 §1-5] 블록(기본 0.6)·도형(Average)과 결합해도 0
+            pm.frictionCombine = PhysicsMaterialCombine.Minimum;   // [제안 초안 §1-5] 블록(기본 0.6)·도형(Average)과 결합해도 0
             EditorUtility.SetDirty(pm);
         }
         if (pm.name != NoFrictionName) throw new System.Exception($"[S2_Builder] 물리 재질 이름 '{pm.name}' ≠ {NoFrictionName}(PTF-2가 이름으로 찾는다).");
@@ -1011,7 +1011,7 @@ public static class S2_Builder
     private static Dictionary<doorPhysics, LeverHead> SnapshotDoorLevers()
     {
         Dictionary<doorPhysics, LeverHead> map = new Dictionary<doorPhysics, LeverHead>();
-        foreach (doorPhysics d in Object.FindObjectsOfType<doorPhysics>()) map[d] = d.leverHead;
+        foreach (doorPhysics d in Object.FindObjectsByType<doorPhysics>(FindObjectsSortMode.None)) map[d] = d.leverHead;
         return map;
     }
 
@@ -1060,7 +1060,7 @@ public sealed class S2_Refs
     public doorPhysics exitS3Door;                 // DOOR_S2_ExitS3 — 실패 시 개방
     public doorPhysics exitS4Door;                // DOOR_S2_ExitS4 (Map4Build.Door)
     public doorPhysics entryDoor;                 // DOOR_S2_IsolationEntry (Map4Build.Door)
-    public PhysicMaterial noFriction;             // PM_Map4_NoFriction
+    public PhysicsMaterial noFriction;             // PM_Map4_NoFriction
     public List<Transform> noFrictionSolids = new List<Transform>(); // GEO_S2_Hump_* + GEO_S2_Wedge_*
     public List<Transform> obstacles = new List<Transform>();        // GEO_S2_Obst_* 11
     public List<Transform> walls = new List<Transform>();            // GEO_S2_Wall_* 전부

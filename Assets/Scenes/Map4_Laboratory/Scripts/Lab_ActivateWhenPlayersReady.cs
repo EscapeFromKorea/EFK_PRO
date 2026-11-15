@@ -33,7 +33,7 @@ public class Lab_ActivateWhenPlayersReady : MonoBehaviour
         nextScan = Time.time + scanInterval;
         if (zone == null) return;
 
-        foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             Rigidbody rb = mover.GetComponent<Rigidbody>();
             if (rb != null && !rb.useGravity) continue; // 아직 Director가 배치 중(C4).

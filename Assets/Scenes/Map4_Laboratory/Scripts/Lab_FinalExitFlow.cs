@@ -78,7 +78,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
     {
         reason = null;
         if (exitFloor == null || exitFloor.isTrigger || finalCheckpoint == null ||
-            FindObjectOfType<RespawnController>() == null ||
+            FindFirstObjectByType<RespawnController>() == null ||
             finalSlots == null || finalSlots.Length != 3)
         { reason = "최종 바닥·공용 복귀 컨트롤러·체크포인트·세 안전 위치 참조 누락"; return false; }
 
@@ -89,7 +89,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
             entrantSolid.isTrigger || !trigger.bounds.Intersects(entrantSolid.bounds))
         { reason = "출구 통과 트리거와 실제 도형 몸통 교차 판정 실패"; return false; }
 
-        PlayerShapeIdentity[] identities = FindObjectsOfType<PlayerShapeIdentity>();
+        PlayerShapeIdentity[] identities = FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
         List<PlayerMover> movers = new List<PlayerMover>(3);
         foreach (PlayerShapeIdentity id in identities)
         {
@@ -125,7 +125,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
             { reason = $"안전 위치·몸체 준비 실패({i})"; return false; }
             oldPosition[i] = mover.transform.position;
             oldRotation[i] = mover.transform.rotation;
-            oldVelocity[i] = bodies[i].velocity;
+            oldVelocity[i] = bodies[i].linearVelocity;
             oldAngular[i] = bodies[i].angularVelocity;
             Bounds current = solids[i].bounds;
             float footBelowPivot = mover.transform.position.y - current.min.y;
@@ -156,7 +156,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
         {
             for (int i = 0; i < 3; i++)
             {
-                bodies[i].velocity = Vector3.zero;
+                bodies[i].linearVelocity = Vector3.zero;
                 bodies[i].angularVelocity = Vector3.zero;
                 bodies[i].position = destination[i];
                 movers[i].transform.position = destination[i];
@@ -179,7 +179,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
             {
                 bodies[i].position = oldPosition[i];
                 movers[i].transform.SetPositionAndRotation(oldPosition[i], oldRotation[i]);
-                bodies[i].velocity = oldVelocity[i];
+                bodies[i].linearVelocity = oldVelocity[i];
                 bodies[i].angularVelocity = oldAngular[i];
             }
             Physics.SyncTransforms();

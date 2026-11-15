@@ -25,7 +25,7 @@ public static class PeriodicTrapRespawnWiring
     [MenuItem("Tools/PeriodicTrapSystem/Wire Hits To Respawn")]
     public static void WireHitsToRespawn()
     {
-        RespawnController controller = Object.FindObjectOfType<RespawnController>();
+        RespawnController controller = Object.FindFirstObjectByType<RespawnController>();
         if (controller == null)
         {
             Debug.LogWarning("[PeriodicTrapSystem] 씬에 RespawnController가 없어 배선할 수 없다. " +
@@ -33,7 +33,7 @@ public static class PeriodicTrapRespawnWiring
             return;
         }
 
-        PeriodicTrapBase[] traps = Object.FindObjectsOfType<PeriodicTrapBase>();
+        PeriodicTrapBase[] traps = Object.FindObjectsByType<PeriodicTrapBase>(FindObjectsSortMode.None);
         if (traps.Length == 0)
         {
             Debug.LogWarning("[PeriodicTrapSystem] 씬에 주기형 함정이 없다. 먼저 Create Axe/Hammer/" +

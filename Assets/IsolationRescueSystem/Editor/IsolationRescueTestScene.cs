@@ -179,21 +179,21 @@ public class IsolationSceneVerifier : MonoBehaviour
     private static void Drive(Rigidbody rb, Vector3 v)
     {
         if (rb == null) return;
-        Vector3 cur = rb.velocity;
-        rb.velocity = new Vector3(v.x, cur.y, v.z);
+        Vector3 cur = rb.linearVelocity;
+        rb.linearVelocity = new Vector3(v.x, cur.y, v.z);
     }
 
     private IEnumerator Main()
     {
         // ── 씬 구성 점검 ────────────────────────────────────────────────
-        c = FindObjectOfType<IsolationRescueController>();
-        var entry = FindObjectOfType<IsolationEntryDoor>();
-        var levers = FindObjectsOfType<SequenceLever>();
-        var ready = FindObjectsOfType<IsolationReadyButton>();
-        var release = FindObjectOfType<ReleaseButton>();
-        var power = FindObjectOfType<PowerHoldSwitch>();
-        var roleReturn = FindObjectOfType<IsolationRoleReturn>();
-        PlayerMover[] movers = FindObjectsOfType<PlayerMover>();
+        c = FindFirstObjectByType<IsolationRescueController>();
+        var entry = FindFirstObjectByType<IsolationEntryDoor>();
+        var levers = FindObjectsByType<SequenceLever>(FindObjectsSortMode.None);
+        var ready = FindObjectsByType<IsolationReadyButton>(FindObjectsSortMode.None);
+        var release = FindFirstObjectByType<ReleaseButton>();
+        var power = FindFirstObjectByType<PowerHoldSwitch>();
+        var roleReturn = FindFirstObjectByType<IsolationRoleReturn>();
+        PlayerMover[] movers = FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
         foreach (PlayerMover m in movers)
         {
             if (m.name == "Player_Cube") cube = m;
@@ -204,8 +204,8 @@ public class IsolationSceneVerifier : MonoBehaviour
             c != null && entry != null && levers.Length == 3 && ready.Length == 2 && release != null && power != null);
         Check("씬: 플레이어 2명(Cube·Sphere)", cube != null && sphere != null);
         Check("씬: 카메라 추적·조작 전환·리스폰 컨트롤러·추락 복귀 연결",
-            FindObjectOfType<PlayerFollowCamera>() != null && FindObjectOfType<PlayerControlSwitcher>() != null &&
-            FindObjectOfType<RespawnController>() != null && roleReturn != null && roleReturn.respawn != null);
+            FindFirstObjectByType<PlayerFollowCamera>() != null && FindFirstObjectByType<PlayerControlSwitcher>() != null &&
+            FindFirstObjectByType<RespawnController>() != null && roleReturn != null && roleReturn.respawn != null);
         if (c == null || cube == null || sphere == null) { Finish(); yield break; }
 
         cubeRb = cube.GetComponent<Rigidbody>();
@@ -283,7 +283,7 @@ public class IsolationSceneVerifier : MonoBehaviour
         release.Press();
         Check("해제: 전원 ON에서 해제 성공", c.Current == IsolationRescueController.State.Success);
         yield return new WaitForSeconds(3f);
-        Check("해제: 해제문 개방", FindObjectOfType<doorPhysics>() != null && DoorYByName("C2_RELEASE_DOOR") > OpenY);
+        Check("해제: 해제문 개방", FindFirstObjectByType<doorPhysics>() != null && DoorYByName("C2_RELEASE_DOOR") > OpenY);
 
         Finish();
     }
@@ -327,7 +327,7 @@ public class IsolationSceneVerifier : MonoBehaviour
         while (t < 3f && lever.Armed)
         {
             if (Mathf.Approximately(t % 0.5f, 0f) || t < 0.03f)
-                Debug.Log($"[Verify]   t={t:0.00} pos {pusher.transform.position} vel {pusher.velocity} 각도 {head.GetCurrentAngle():0.0}");
+                Debug.Log($"[Verify]   t={t:0.00} pos {pusher.transform.position} vel {pusher.linearVelocity} 각도 {head.GetCurrentAngle():0.0}");
             setVel(push * 3f);
             best = Mathf.Max(best, head.GetCurrentAngle());
             t += Time.fixedDeltaTime;
@@ -351,7 +351,7 @@ public class IsolationSceneVerifier : MonoBehaviour
 
     private static void Teleport(Rigidbody rb, Vector3 p)
     {
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.position = p;
         rb.transform.position = p;
     }

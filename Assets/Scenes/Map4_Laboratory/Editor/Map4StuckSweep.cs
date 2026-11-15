@@ -161,7 +161,7 @@ public static class Map4StuckSweep
         if (!SessionState.GetBool(PendingKey, false)) return;
         SessionState.SetBool(PendingKey, false);
 
-        if (Object.FindObjectOfType<Driver>() != null) return;
+        if (Object.FindFirstObjectByType<Driver>() != null) return;
         new GameObject("Map4StuckSweep_RUNTIME").AddComponent<Driver>();
         Debug.Log($"{LogTag} 플레이 모드 진입 — 스윕 러너 생성.");
     }
@@ -502,7 +502,7 @@ public static class Map4StuckSweep
             layout = AssetDatabase.LoadAssetAtPath<Map4Layout>(LayoutPath);
             if (layout == null) { fatal.Add($"[치명] {LayoutPath} 없음 — 섹터 경계를 알 수 없다."); yield break; }
 
-            director = Object.FindObjectOfType<Map4Director>();
+            director = Object.FindFirstObjectByType<Map4Director>();
             if (director == null) { fatal.Add("[치명] Map4Director를 찾지 못했다."); yield break; }
 
             float loadDeadline = Time.realtimeSinceStartup + 30f;
@@ -510,7 +510,7 @@ public static class Map4StuckSweep
             log.AppendLine($"섹터 로드: {director.LoadedSectorCount}/8");
             // Director.RunStartup이 스폰을 끝내면 플레이어 useGravity를 되돌린다(Map4Director.cs RunStartup) —
             // 그 뒤에 파킹해야 Director가 나중에 섹터1 슬롯으로 다시 순간이동시키지 않는다.
-            PlayerMover[] players = Object.FindObjectsOfType<PlayerMover>();
+            PlayerMover[] players = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             float spawnDeadline = Time.realtimeSinceStartup + 15f;
             while (Time.realtimeSinceStartup < spawnDeadline)
             {
@@ -574,7 +574,7 @@ public static class Map4StuckSweep
                     sourceName = src.name,
                     describe = $"원천='{src.name}'(런타임 인스턴스 — Variant 프리팹 + Lab_ShapeProfileApplier·PlayerShapeIdentity 적용 후) " +
                                $"collider={DescribeCollider(solid)} mat={(solid.sharedMaterial != null ? solid.sharedMaterial.name : "(없음)")} " +
-                               $"mass={F(rb.mass)} drag={F(rb.drag)} angularDrag={F(rb.angularDrag)} cdm={rb.collisionDetectionMode} " +
+                               $"mass={F(rb.mass)} drag={F(rb.linearDamping)} angularDrag={F(rb.angularDamping)} cdm={rb.collisionDetectionMode} " +
                                $"interp={rb.interpolation} constraints={rb.constraints} maxAngVel={F(rb.maxAngularVelocity)} " +
                                $"solverIt={rb.solverIterations}/{rb.solverVelocityIterations} layer={LayerMask.LayerToName(solid.gameObject.layer)}({solid.gameObject.layer})"
                 };
@@ -615,7 +615,7 @@ public static class Map4StuckSweep
                 Rigidbody rb = p.GetComponent<Rigidbody>();
                 if (rb == null) continue;
                 Vector3 park = new Vector3(6000f + i * 20f, 300f, 6000f);
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
                 rb.isKinematic = true;
@@ -629,7 +629,7 @@ public static class Map4StuckSweep
         private void BuildPool()
         {
             GameObject holder = new GameObject("SWEEP_Probes");
-            PlayerMover[] players = Object.FindObjectsOfType<PlayerMover>();
+            PlayerMover[] players = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             for (int s = 0; s < 3; s++)
             {
                 PlayerMover src = null;
@@ -663,8 +663,8 @@ public static class Map4StuckSweep
 
                     Rigidbody rb = go.AddComponent<Rigidbody>();
                     rb.mass = srcRb.mass;
-                    rb.drag = srcRb.drag;
-                    rb.angularDrag = srcRb.angularDrag;
+                    rb.linearDamping = srcRb.linearDamping;
+                    rb.angularDamping = srcRb.angularDamping;
                     rb.useGravity = true; // Director가 로드 중 잠시 끄는 값이라 원천 대신 기본값 [계산]
                     rb.interpolation = srcRb.interpolation;
                     rb.constraints = srcRb.constraints;
@@ -1449,7 +1449,7 @@ public static class Map4StuckSweep
         private static void TakeSnapshot(SweepCtx ctx)
         {
             ctx.snapshot.Clear();
-            foreach (Collider c in Object.FindObjectsOfType<Collider>())
+            foreach (Collider c in Object.FindObjectsByType<Collider>(FindObjectsSortMode.None))
                 ctx.snapshot[c] = new Pose(c.transform.position, c.transform.rotation);
         }
 
@@ -1486,7 +1486,7 @@ public static class Map4StuckSweep
             p.recording = false;
             if (!p.rb.isKinematic)
             {
-                p.rb.velocity = Vector3.zero;
+                p.rb.linearVelocity = Vector3.zero;
                 p.rb.angularVelocity = Vector3.zero;
                 p.rb.collisionDetectionMode = CollisionDetectionMode.Discrete; // kinematic+CCD 경고 방지
                 p.rb.isKinematic = true;
@@ -1506,7 +1506,7 @@ public static class Map4StuckSweep
             p.rb.position = pos;
             p.rb.rotation = rot;
             p.transform.SetPositionAndRotation(pos, rot);
-            p.rb.velocity = Vector3.zero;
+            p.rb.linearVelocity = Vector3.zero;
             p.rb.angularVelocity = Vector3.zero;
             p.rb.WakeUp();
         }
@@ -1580,7 +1580,7 @@ public static class Map4StuckSweep
                 for (int k = 0; k < total; k++)
                 {
                     Place(probes[k], restPos[k], restRot[k]);
-                    probes[k].rb.velocity = d * PushSpeed;
+                    probes[k].rb.linearVelocity = d * PushSpeed;
                 }
                 Physics.SyncTransforms();
                 for (int step = 0; step < pushSteps; step++)
@@ -1590,7 +1590,7 @@ public static class Map4StuckSweep
                     for (int k = 0; k < total; k++)
                     {
                         Rigidbody rb = probes[k].rb;
-                        rb.velocity = new Vector3(d.x * PushSpeed, rb.velocity.y, d.z * PushSpeed);
+                        rb.linearVelocity = new Vector3(d.x * PushSpeed, rb.linearVelocity.y, d.z * PushSpeed);
                     }
                 }
                 for (int k = 0; k < total; k++)

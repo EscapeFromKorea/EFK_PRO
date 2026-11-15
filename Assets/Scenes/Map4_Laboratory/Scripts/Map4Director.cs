@@ -27,7 +27,7 @@ public class Map4Director : MonoBehaviour
         // 과거로 재생되지 않는다). 그래서 구독 직후 씬에 이미 존재하는 SectorController를
         // 직접 찾아 등록한다 — LoadAllSectors가 나중에 등록하는 것과 같은 코드 경로
         // (OnSectorRegistered)를 그대로 타므로 중복 걱정이 없다(Dictionary 키 덮어쓰기).
-        foreach (SectorController s in Object.FindObjectsOfType<SectorController>())
+        foreach (SectorController s in Object.FindObjectsByType<SectorController>(FindObjectsSortMode.None))
             OnSectorRegistered(s);
     }
 
@@ -75,12 +75,12 @@ public class Map4Director : MonoBehaviour
 
     void Awake()
     {
-        foreach (PlayerMover mover in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             Rigidbody rb = mover.GetComponent<Rigidbody>();
             if (rb == null) continue;
             rb.useGravity = false;
-            rb.velocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             masterPlayerBodies.Add(rb);
         }
@@ -161,7 +161,7 @@ public class Map4Director : MonoBehaviour
             target = sector.transform.position + Vector3.up * 1f;
         }
 
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         rb.position = target;
         rb.transform.position = target;

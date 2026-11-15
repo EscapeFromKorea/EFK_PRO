@@ -79,12 +79,12 @@ namespace Map2KitchenDraft
             // Real Rigidbody movement, with gameplay input suppressed. These
             // checks intentionally do not claim manual keyboard traversal.
             Teleport(new Vector3(-118, 9.1f, -36));
-            body.velocity = new Vector3(3, 0, 0);
+            body.linearVelocity = new Vector3(3, 0, 0);
             float x0 = body.position.x;
             yield return new WaitForSecondsRealtime(.35f);
             float dx = body.position.x - x0;
             Teleport(new Vector3(-118, 9.1f, -36));
-            body.velocity = new Vector3(0, 0, 3);
+            body.linearVelocity = new Vector3(0, 0, 3);
             float z0 = body.position.z;
             yield return new WaitForSecondsRealtime(.35f);
             float dz = body.position.z - z0;
@@ -141,7 +141,7 @@ namespace Map2KitchenDraft
             {
                 for (int i = 0; i < 360; i++)
                 {
-                    body.velocity = new Vector3(0, body.velocity.y, -5.4f);
+                    body.linearVelocity = new Vector3(0, body.linearVelocity.y, -5.4f);
                     yield return new WaitForFixedUpdate();
                     if (controller.HasVisitedSink) break;
                 }
@@ -204,7 +204,7 @@ namespace Map2KitchenDraft
 
         private void Teleport(Vector3 destination)
         {
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
             body.position = destination;
             actor.transform.position = destination;

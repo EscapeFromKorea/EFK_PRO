@@ -246,7 +246,7 @@ public class MovablePortalPanel : MonoBehaviour
         // 반지름으로 자동 계산해 별도 계산 불필요).
         if (dt > 0f)
         {
-            rb.velocity = (newPos - rb.position) / dt;
+            rb.linearVelocity = (newPos - rb.position) / dt;
             Quaternion rotDelta = newRot * Quaternion.Inverse(rb.rotation);
             rotDelta.ToAngleAxis(out float angleDeg, out Vector3 axis);
             if (angleDeg > 180f) angleDeg -= 360f;

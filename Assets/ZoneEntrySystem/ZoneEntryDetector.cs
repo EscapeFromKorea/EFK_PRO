@@ -119,7 +119,7 @@ public class ZoneEntryDetector : MonoBehaviour
     private void SubscribeRespawn()
     {
         if (subscribedRespawn != null) return;
-        subscribedRespawn = FindObjectOfType<RespawnController>();
+        subscribedRespawn = FindFirstObjectByType<RespawnController>();
         if (subscribedRespawn != null) subscribedRespawn.PlayerRespawned += OnPlayerRespawned;
     }
 

@@ -28,13 +28,13 @@ public static class PathChaserMenuItem
 
     private static void BuildPathChaser()
     {
-        if (Object.FindObjectOfType<PathChaserController>() != null)
+        if (Object.FindFirstObjectByType<PathChaserController>() != null)
         {
             Debug.LogWarning("[PathChaser] 씬에 이미 PathChaserController가 있다 — 하나만 둔다.");
             return;
         }
 
-        RespawnController respawn = Object.FindObjectOfType<RespawnController>();
+        RespawnController respawn = Object.FindFirstObjectByType<RespawnController>();
         if (respawn == null)
         {
             Debug.LogWarning("[PathChaser] 씬에 RespawnController가 없어 구간 안전점을 배선할 수 없다 " +
@@ -48,9 +48,9 @@ public static class PathChaserMenuItem
         // 씬에 이미 있는 것만 있는 만큼 참조로 건다 — 없거나 부족해도 새로 만들지 않는다(레벨 배치
         // 전까지 억지로 끼워 맞추지 않는다는 원칙). arrivalPoint/teamExitZone은 카트가 실제로
         // 건너야 할 종점이 레벨에 없어 비워둔다 — Start()가 그 사실을 로그로 알리고 시작을 거부한다.
-        BreakableObject wall = Object.FindObjectOfType<BreakableObject>();
+        BreakableObject wall = Object.FindFirstObjectByType<BreakableObject>();
         controller.wall = wall;
-        controller.carts = Object.FindObjectsOfType<RailCart>();
+        controller.carts = Object.FindObjectsByType<RailCart>(FindObjectsSortMode.None);
 
         Selection.activeGameObject = controllerGo;
 

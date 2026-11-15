@@ -257,7 +257,7 @@ public class PlayerFollowCamera : MonoBehaviour
 
     private bool AnyBlockerCollider()
     {
-        foreach (Collider c in FindObjectsOfType<Collider>())
+        foreach (Collider c in FindObjectsByType<Collider>(FindObjectsSortMode.None))
             if (!c.isTrigger && ((1 << c.gameObject.layer) & blockerMask) != 0) return true;
         return false;
     }

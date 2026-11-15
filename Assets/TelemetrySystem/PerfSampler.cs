@@ -63,7 +63,7 @@ public class PerfSampler : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F9))
         {
             _vtOff = !_vtOff;
-            foreach (var sp in FindObjectsOfType<SpacePortal>()) sp.enableViewThrough = !_vtOff;
+            foreach (var sp in FindObjectsByType<SpacePortal>(FindObjectsSortMode.None)) sp.enableViewThrough = !_vtOff;
             LokiTelemetry.Event("perf_toggle", "viewthrough=" + (_vtOff ? "off" : "on"));
         }
         if (Input.GetKeyDown(KeyCode.F10))
@@ -148,7 +148,7 @@ public class PerfSampler : MonoBehaviour
           .Append(" setpass=").Append(Val(_setPass))
           .Append(" batches=").Append(Val(_batches))
           .Append(" shadow_casters=").Append(Val(_casters))
-          .Append(" portals=").Append(FindObjectsOfType<SpacePortal>().Length)
+          .Append(" portals=").Append(FindObjectsByType<SpacePortal>(FindObjectsSortMode.None).Length)
           .Append(" vt=").Append(_vtOff ? "off" : "on")
           .Append(" x=").Append(p.x.ToString("F0", ci))
           .Append(" y=").Append(p.y.ToString("F0", ci))

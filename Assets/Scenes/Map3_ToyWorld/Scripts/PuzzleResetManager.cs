@@ -38,7 +38,7 @@ public sealed class PuzzleResetManager : MonoBehaviour
     public void RebuildCache()
     {
         resettables.Clear();
-        resettables.AddRange(FindObjectsOfType<PuzzleResettable>());
+        resettables.AddRange(FindObjectsByType<PuzzleResettable>(FindObjectsSortMode.None));
     }
 
     public void ResetAllPuzzleObjects()

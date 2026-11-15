@@ -292,7 +292,7 @@ namespace Map2KitchenDraft
             if (found)
             {
                 Teleport(actor, floor.point + Vector3.up * .6f);
-                body.velocity = Vector3.right * 2.5f;
+                body.linearVelocity = Vector3.right * 2.5f;
                 yield return null; // Let the real LateUpdate aim the beam, including in batch mode.
             }
             bool tracks = found && laser.IsTracking && laser.CurrentTarget == actor.transform &&
@@ -302,7 +302,7 @@ namespace Map2KitchenDraft
                 ", beam end=" + laser.BeamEnd.ToString("F2"), mark);
 
             mark = Now();
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             yield return null;
             bool stopped = !laser.TryGetMovingVisibleTarget(actor.transform, out _) && !laser.IsTracking;
             Record("CH4 beam ignores a stationary shape", stopped,
@@ -355,12 +355,12 @@ namespace Map2KitchenDraft
             bool startedBeforeUpperExit = !handoff.HasCrossedUpperExit;
             for (int i = 0; i < 130 && body.position.x > -54f; i++)
             {
-                Vector3 velocity = body.velocity;
+                Vector3 velocity = body.linearVelocity;
                 velocity.x = -5f;
-                body.velocity = velocity;
+                body.linearVelocity = velocity;
                 yield return new WaitForFixedUpdate();
             }
-            body.velocity = Vector3.zero;
+            body.linearVelocity = Vector3.zero;
             bool armed = startedBeforeUpperExit && handoff.HasCrossedUpperExit && body.position.x < -53f;
             Record("Active shape crosses open upper exit", armed,
                 "upper crossed=" + armed + ", position=" + body.position.ToString("F2"), mark);
@@ -390,15 +390,15 @@ namespace Map2KitchenDraft
             {
                 if (body != null && body.position.x > -61.3f)
                 {
-                    Vector3 velocity = body.velocity;
+                    Vector3 velocity = body.linearVelocity;
                     velocity.x = -5f;
-                    body.velocity = velocity;
+                    body.linearVelocity = velocity;
                 }
                 else if (body != null)
                 {
-                    Vector3 velocity = body.velocity;
+                    Vector3 velocity = body.linearVelocity;
                     velocity.x = 0f;
-                    body.velocity = velocity;
+                    body.linearVelocity = velocity;
                 }
                 yield return new WaitForFixedUpdate();
             }
@@ -433,7 +433,7 @@ namespace Map2KitchenDraft
         private void Teleport(PlayerMover mover, Vector3 destination)
         {
             Rigidbody rigidbody = mover.GetComponent<Rigidbody>();
-            rigidbody.velocity = Vector3.zero;
+            rigidbody.linearVelocity = Vector3.zero;
             rigidbody.angularVelocity = Vector3.zero;
             rigidbody.position = destination;
             mover.transform.position = destination;

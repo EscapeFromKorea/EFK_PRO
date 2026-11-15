@@ -437,7 +437,7 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
 
     private bool IsNearestBucket(Vector3 playerPosition, float myDistance)
     {
-        foreach (CatapultBucket other in FindObjectsOfType<CatapultBucket>())
+        foreach (CatapultBucket other in FindObjectsByType<CatapultBucket>(FindObjectsSortMode.None))
         {
             if (other == this) continue;
 
@@ -452,7 +452,7 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
 
     private static PlayerMover FindControlledPlayer()
     {
-        foreach (PlayerMover m in Object.FindObjectsOfType<PlayerMover>())
+        foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
             if (m.IsControlled) return m;
         return null;
     }

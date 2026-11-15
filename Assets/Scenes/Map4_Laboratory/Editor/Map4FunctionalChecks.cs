@@ -368,7 +368,7 @@ public static partial class Map4FunctionalChecks
         if (!SessionState.GetBool(PendingKey, false)) return;
         SessionState.SetBool(PendingKey, false);
 
-        if (Object.FindObjectOfType<Driver>() != null) return;
+        if (Object.FindFirstObjectByType<Driver>() != null) return;
         Driver d = new GameObject("Map4FunctionalChecks_RUNTIME").AddComponent<Driver>();
         d.Configure(SessionState.GetString(SectorsKey, DefaultSectors), SessionState.GetString(SectorsNoteKey, ""));
         Debug.Log($"{LogTag} 플레이 모드 진입 — 러너 생성.");
@@ -1232,14 +1232,14 @@ public static partial class Map4FunctionalChecks
         private IEnumerator Setup()
         {
             report.Notes.Add($"시작 {DateTime.Now:HH:mm:ss} · Time.timeScale={Time.timeScale} · fixedDeltaTime={Time.fixedDeltaTime}(변경 안 함)");
-            director = Object.FindObjectOfType<Map4Director>();
+            director = Object.FindFirstObjectByType<Map4Director>();
             if (director == null) { report.SetupError = "Map4Director를 찾지 못함(Master 씬 확인)"; yield break; }
 
             float t = Time.time;
             while (director.LoadedSectorCount < 8 && Time.time - t < 30f) yield return null;
             report.Notes.Add($"섹터 로드 {director.LoadedSectorCount}/8 ({Time.time - t:F1}s 대기)");
 
-            players.AddRange(Object.FindObjectsOfType<PlayerMover>());
+            players.AddRange(Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None));
             if (players.Count == 0) { report.SetupError = "PlayerMover 0개"; yield break; }
             if (players.Count != 3) report.Notes.Add($"주의: 플레이어 {players.Count}개(기대 3)");
 
@@ -1274,7 +1274,7 @@ public static partial class Map4FunctionalChecks
                 yield break;
             }
 
-            respawn = Object.FindObjectOfType<RespawnController>();
+            respawn = Object.FindFirstObjectByType<RespawnController>();
             if (respawn == null) report.Notes.Add("주의: RespawnController 없음 — 복귀 관련 항목은 실패/검사불가가 된다.");
             else
             {
@@ -1695,8 +1695,8 @@ public static partial class Map4FunctionalChecks
                 cube.ExternallyDriven = true;
                 drivenByUs.Add(cube);
                 Teleport(cube, startW);
-                rb.velocity = d * speed;
-                float prevFwd = Vector3.Dot(rb.velocity, d); // 첫 스텝에 들어갈 때의 속도
+                rb.linearVelocity = d * speed;
+                float prevFwd = Vector3.Dot(rb.linearVelocity, d); // 첫 스텝에 들어갈 때의 속도
                 info.MaxFwd = prevFwd;
                 info.EndFwd = prevFwd;
                 float t = Time.time;
@@ -1705,7 +1705,7 @@ public static partial class Map4FunctionalChecks
                     yield return new WaitForFixedUpdate();
                     info.Steps++;
                     bool gone = !wall.gameObject.activeInHierarchy;
-                    float cur = Vector3.Dot(rb.velocity, d);
+                    float cur = Vector3.Dot(rb.linearVelocity, d);
                     if (!info.Contact)
                     {
                         bool near = !gone && Touching(cubeCol, wallCol, d * 0.05f);
@@ -1831,7 +1831,7 @@ public static partial class Map4FunctionalChecks
             s.Fired = true;
 
             Vector3 prevL = L1(cube.transform.position);
-            float prevSpeed = crb.velocity.magnitude;
+            float prevSpeed = crb.linearVelocity.magnitude;
             s.LaunchSpeed = prevSpeed;
             s.MaxSpeed = prevSpeed;
             float frontZ = wl.min.z;
@@ -1843,7 +1843,7 @@ public static partial class Map4FunctionalChecks
                 yield return new WaitForFixedUpdate();
                 bool gone = !wall.gameObject.activeInHierarchy;
                 Vector3 curL = L1(cube.transform.position);
-                float sp = crb.velocity.magnitude;
+                float sp = crb.linearVelocity.magnitude;
                 s.MaxSpeed = Mathf.Max(s.MaxSpeed, sp);
                 if (!s.Crossed && prevL.z < frontZ && curL.z >= frontZ)
                 {
@@ -1855,7 +1855,7 @@ public static partial class Map4FunctionalChecks
                 }
                 if (!s.Contact)
                 {
-                    Vector3 v = crb.velocity;
+                    Vector3 v = crb.linearVelocity;
                     Vector3 nudge = v.sqrMagnitude > 1e-6f ? v.normalized * 0.05f : Vector3.zero;
                     bool near = !gone && Touching(cubeCol, wallCol, nudge);
                     if (gone || near)
@@ -2470,7 +2470,7 @@ public static partial class Map4FunctionalChecks
 
             List<CycleTracker> trackers = all.Select(h => new CycleTracker(h)).ToList();
             List<ProjectileLauncher> launchers = s5.Launchers;
-            HashSet<int> seen = new HashSet<int>(Object.FindObjectsOfType<Projectile>().Select(p => p.GetInstanceID()));
+            HashSet<int> seen = new HashSet<int>(Object.FindObjectsByType<Projectile>(FindObjectsSortMode.None).Select(p => p.GetInstanceID()));
             float t0 = Time.time;
             // [구현 결정] 9.5초 — 가장 긴 주기(레이저 1+0.4+2 = 3.4s [팀])의 2회 반 이상.
             // [S5 10-04] 망치가 낙하 11.8U·낙하 25·상승 8U/s로 바뀌어 한 주기가 약 4.35초(대기 2 + 낙하 0.47 + 저점 0.4 + 상승 1.48)다 —
@@ -2480,7 +2480,7 @@ public static partial class Map4FunctionalChecks
             {
                 yield return new WaitForFixedUpdate();
                 foreach (CycleTracker tr in trackers) tr.Sample();
-                foreach (Projectile pr in Object.FindObjectsOfType<Projectile>())
+                foreach (Projectile pr in Object.FindObjectsByType<Projectile>(FindObjectsSortMode.None))
                 {
                     if (!seen.Add(pr.GetInstanceID())) continue;
                     ProjectileLauncher near = launchers.OrderBy(l => Vector3.Distance(l.transform.position, pr.transform.position)).FirstOrDefault();
@@ -3066,7 +3066,7 @@ public static partial class Map4FunctionalChecks
                     Detail(id, $"(b) 둔덕 표면 local y — x{S2IsoLineX + S2HumpTestOffset - 0.5f:F1}: {sHigh:F3}(설계 {expH:F3}) / x{S2IsoLineX + S2HumpTestOffset + 0.5f:F1}: {sLow:F3}(설계 {expL:F3}) [초안 §2-2 높이 0.3·반폭 2.0]");
                     Vector3 placeL = new Vector3(S2IsoLineX + S2HumpTestOffset, Mathf.Max(sHigh, sLow) + 0.5f + 0.03f, S2HumpTestZ);
                     Vector3 placeW = gen.TransformPoint(placeL);
-                    rb.velocity = Vector3.zero;
+                    rb.linearVelocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
                     rb.position = placeW;
                     rb.rotation = gen.rotation;
@@ -3097,7 +3097,7 @@ public static partial class Map4FunctionalChecks
                         bPass = delta >= 0.5f && !overlap;
                         if (!bPass) bad.Add(delta < 0.5f ? $"둔덕 위 블록이 미끄러지지 않음(Δd {delta:F2} < 0.5{(slept ? ", 잠듦" : "")})" : "블록 최종 AABB가 벽 발자국과 겹침");
                         // 원래 자리로 되돌림(실행 중 한정 — 씬 저장 없음)
-                        rb.velocity = Vector3.zero;
+                        rb.linearVelocity = Vector3.zero;
                         rb.angularVelocity = Vector3.zero;
                         rb.position = origPos;
                         rb.rotation = origRot;
@@ -3377,12 +3377,12 @@ public static partial class Map4FunctionalChecks
             Dictionary<ProjectileLauncher, List<float>> shots = s3.Launchers.ToDictionary(l => l, l => new List<float>());
             Dictionary<string, ProjectileLauncher> byName = new Dictionary<string, ProjectileLauncher>();
             foreach (ProjectileLauncher l in s3.Launchers) byName["Projectile_" + l.name] = l;
-            HashSet<int> seen = new HashSet<int>(Object.FindObjectsOfType<Projectile>().Select(p => p.GetInstanceID()));
+            HashSet<int> seen = new HashSet<int>(Object.FindObjectsByType<Projectile>(FindObjectsSortMode.None).Select(p => p.GetInstanceID()));
             float t0 = Time.time;
             while (Time.time - t0 < S3LauncherObserve)
             {
                 yield return new WaitForFixedUpdate();
-                foreach (Projectile pr in Object.FindObjectsOfType<Projectile>())
+                foreach (Projectile pr in Object.FindObjectsByType<Projectile>(FindObjectsSortMode.None))
                 {
                     if (!seen.Add(pr.GetInstanceID())) continue;
                     ProjectileLauncher owner;
@@ -3464,10 +3464,10 @@ public static partial class Map4FunctionalChecks
             {
                 for (int attempt = 1; attempt <= 2 && !hit; attempt++)
                 {
-                    HashSet<int> known = new HashSet<int>(Object.FindObjectsOfType<Projectile>().Select(p => p.GetInstanceID()));
+                    HashSet<int> known = new HashSet<int>(Object.FindObjectsByType<Projectile>(FindObjectsSortMode.None).Select(p => p.GetInstanceID()));
                     Func<bool> releaseNow = () =>
                     {
-                        foreach (Projectile p in Object.FindObjectsOfType<Projectile>())
+                        foreach (Projectile p in Object.FindObjectsByType<Projectile>(FindObjectsSortMode.None))
                         {
                             if (known.Contains(p.GetInstanceID()) || p.name != "Projectile_" + pl.name) continue;
                             float along = Vector3.Dot(v.transform.position - p.transform.position, fwd) - (pl.projectileRadius + 0.55f);
@@ -4375,7 +4375,7 @@ public static partial class Map4FunctionalChecks
             Func<bool> releaseNow = () =>
             {
                 Bounds vb = SolidBounds(v);
-                foreach (FallingRock rock in Object.FindObjectsOfType<FallingRock>())
+                foreach (FallingRock rock in Object.FindObjectsByType<FallingRock>(FindObjectsSortMode.None))
                 {
                     if (rock == null || rock.owner != sp) continue;
                     if (HorizDist(rock.transform.position, spot) > 0.8f) continue;
@@ -4384,7 +4384,7 @@ public static partial class Map4FunctionalChecks
                     float h = bottom - vb.max.y;
                     if (h < -0.3f) continue;
                     Rigidbody rrb = rock.GetComponent<Rigidbody>();
-                    float vy = rrb != null ? Mathf.Max(0f, -rrb.velocity.y) : 0f;
+                    float vy = rrb != null ? Mathf.Max(0f, -rrb.linearVelocity.y) : 0f;
                     float t = (-vy + Mathf.Sqrt(vy * vy + 2f * gAcc * Mathf.Max(0f, h))) / gAcc;
                     if (t <= 0.12f) return true;
                 }
@@ -4451,7 +4451,7 @@ public static partial class Map4FunctionalChecks
                     while (Time.time - tl < 4f)
                     {
                         yield return new WaitForFixedUpdate();
-                        if (rb != null && Mathf.Abs(rb.velocity.y) < 0.05f && Lc(gen, SolidBounds(v).center).y < 1.5f) break;
+                        if (rb != null && Mathf.Abs(rb.linearVelocity.y) < 0.05f && Lc(gen, SolidBounds(v).center).y < 1.5f) break;
                     }
                     yield return new WaitForSeconds(0.3f);
                     Vector3 landL = Lc(gen, v.transform.position);
@@ -4673,7 +4673,7 @@ public static partial class Map4FunctionalChecks
             const string id = "S6-3";
             if (!Ready6(id)) yield break;
             Transform gen = s6.Gen;
-            SpacePortal[] existing = Object.FindObjectsOfType<SpacePortal>();
+            SpacePortal[] existing = Object.FindObjectsByType<SpacePortal>(FindObjectsSortMode.None);
             if (SpacePortal.Orange != null || SpacePortal.Blue != null || existing.Length > 0)
             {
                 NA(id, $"검사불가(기존 포탈 있음): SpacePortal {existing.Length}개(Orange={Nm(SpacePortal.Orange)}, Blue={Nm(SpacePortal.Blue)}) — 러너는 남이 놓은 포탈을 옮기지 않는다");
@@ -4895,7 +4895,7 @@ public static partial class Map4FunctionalChecks
             {
                 if (pushing && !rb.isKinematic && !m.ExternallyDriven)
                 {
-                    Vector3 v = rb.velocity;
+                    Vector3 v = rb.linearVelocity;
                     rb.AddForce(dir * speed - PredictMoverHoriz(m, new Vector3(v.x, 0f, v.z)), ForceMode.VelocityChange);
                 }
                 yield return new WaitForFixedUpdate();
@@ -5782,7 +5782,7 @@ public static partial class Map4FunctionalChecks
                 drivenByUs.Add(m);
                 while (Time.time - t0 < timeout)
                 {
-                    if (rb != null && !rb.isKinematic) rb.velocity = d * speed + Vector3.up * rb.velocity.y;
+                    if (rb != null && !rb.isKinematic) rb.linearVelocity = d * speed + Vector3.up * rb.linearVelocity.y;
                     yield return new WaitForFixedUpdate();
                     res.Progress = Vector3.Dot(m.transform.position - start, d);
                     sampleT.Add(Time.time); sampleP.Add(res.Progress);
@@ -5809,7 +5809,7 @@ public static partial class Map4FunctionalChecks
                 {
                     m.ExternallyDriven = prev;
                     drivenByUs.Remove(m);
-                    if (rb != null && !rb.isKinematic) rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+                    if (rb != null && !rb.isKinematic) rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
                     res.EndLocal = Lc(gen, m.transform.position);
                 }
             }
@@ -5835,7 +5835,7 @@ public static partial class Map4FunctionalChecks
                     if (release()) { ok = true; break; }
                     if (rb != null)
                     {
-                        if (!rb.isKinematic) { rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+                        if (!rb.isKinematic) { rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
                         rb.position = pos;
                     }
                     m.transform.position = pos;
@@ -6053,13 +6053,13 @@ public static partial class Map4FunctionalChecks
             sb.Append($"'{m.name}' local{V(L1(pos))}, 레이어 {LayerMask.LayerToName(m.gameObject.layer)}, 부모 {PathOf(m.transform)}");
             sb.Append($" | ExternallyDriven={m.ExternallyDriven} InputLocked={m.InputLocked} IsControlled={m.IsControlled} IsGripped={InteractionController.IsGripped(m)} IsBusy={IsBusy(m)} 검사가 모는 중={drivenByUs.Contains(m)}");
             if (rb != null)
-                sb.Append($" | rb: isKinematic={rb.isKinematic} useGravity={rb.useGravity} constraints={rb.constraints} velocity{V(rb.velocity)} 각속도{V(rb.angularVelocity)} 잠듦={rb.IsSleeping()} detectCollisions={rb.detectCollisions} 충돌검출={rb.collisionDetectionMode} 보간={rb.interpolation} 질량={rb.mass:F2} (rb.position−transform {Vector3.Distance(rb.position, pos):F3})");
+                sb.Append($" | rb: isKinematic={rb.isKinematic} useGravity={rb.useGravity} constraints={rb.constraints} velocity{V(rb.linearVelocity)} 각속도{V(rb.angularVelocity)} 잠듦={rb.IsSleeping()} detectCollisions={rb.detectCollisions} 충돌검출={rb.collisionDetectionMode} 보간={rb.interpolation} 질량={rb.mass:F2} (rb.position−transform {Vector3.Distance(rb.position, pos):F3})");
             else sb.Append(" | Rigidbody 없음");
 
             List<string> joints = new List<string>();
             foreach (Joint j in m.GetComponentsInChildren<Joint>(true))
                 joints.Add($"{j.GetType().Name}@{j.gameObject.name}→{(j.connectedBody != null ? j.connectedBody.name : "(월드)")}");
-            foreach (Joint j in Object.FindObjectsOfType<Joint>())
+            foreach (Joint j in Object.FindObjectsByType<Joint>(FindObjectsSortMode.None))
                 if (rb != null && j.connectedBody == rb && !j.transform.IsChildOf(m.transform))
                     joints.Add($"{j.GetType().Name}@{j.gameObject.name}→(이 몸에 연결됨)");
             sb.Append($" | Joint {(joints.Count == 0 ? "없음" : string.Join(", ", joints))}");
@@ -6111,7 +6111,7 @@ public static partial class Map4FunctionalChecks
         {
             if (zone == null) return "TeamExitZone 없음";
             Collider zc = zone.GetComponent<Collider>();
-            PlayerMover[] movers = Object.FindObjectsOfType<PlayerMover>(); // 팀 AllPlayersInside와 같은 집합(TeamExitZone.cs:38, 비활성 오브젝트 제외)
+            PlayerMover[] movers = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None); // 팀 AllPlayersInside와 같은 집합(TeamExitZone.cs:38, 비활성 오브젝트 제외)
             StringBuilder sb = new StringBuilder();
             sb.Append($"AllPlayersInside()={zone.AllPlayersInside()} · 구역 오브젝트 활성={zone.gameObject.activeInHierarchy}, collider {(zc == null ? "없음" : $"enabled={zc.enabled} isTrigger={zc.isTrigger}")}, 씬의 PlayerMover {movers.Length}개 " +
                       "· 팀 조건: 0개면 false(TeamExitZone.cs:39), 하나라도 구역 밖이면 false(:41-42), 안 = ClosestPoint(transform.position)==position(:46-50)");
@@ -6178,7 +6178,7 @@ public static partial class Map4FunctionalChecks
             {
                 if (!rb.isKinematic)
                 {
-                    rb.velocity = Vector3.zero;
+                    rb.linearVelocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
                 }
                 rb.position = pos;

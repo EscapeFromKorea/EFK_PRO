@@ -346,7 +346,7 @@ public class RespawnController : MonoBehaviour
         nextRosterRefresh = Time.unscaledTime + 1f;
 
         players.Clear();
-        players.AddRange(Object.FindObjectsOfType<PlayerMover>());
+        players.AddRange(Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None));
 
         // 파괴된 플레이어가 남긴 항목 정리.
         pruneBuffer.Clear();
@@ -529,7 +529,7 @@ public class RespawnController : MonoBehaviour
         // 낙하 리스폰은 떨어지던 속도를 이어받는다 — 순간이동 후 0에서 다시 가속하면 "떨어지던 흐름이
         // 끊기고 다시 떨어뜨려진" 것으로 보인다. 페이드는 그 자리에서 사라지는 연출이라 이어받지 않는다
         // (반투명한 채 아래로 쏘아지면 연출이 깨진다).
-        float carriedFall = useFade ? 0f : Mathf.Min(Mathf.Max(0f, -rb.velocity.y), maxCarriedFallSpeed);
+        float carriedFall = useFade ? 0f : Mathf.Min(Mathf.Max(0f, -rb.linearVelocity.y), maxCarriedFallSpeed);
 
         yield return TeleportRoutine(mover, rb,
             useFade ? FadeSpawnPosition(mover, sectionFadePoint ?? groundPoint) : DropPosition, carriedFall);
@@ -549,7 +549,7 @@ public class RespawnController : MonoBehaviour
             {
                 rb.isKinematic = prevKinematic;
                 // 키네마틱 동안 대입한 속도는 반영되지 않는다 — 다이내믹으로 돌아온 직후 다시 지운다.
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
             }
         }
@@ -584,7 +584,7 @@ public class RespawnController : MonoBehaviour
         savedInterpolation[rb] = prevInterpolation;
         rb.interpolation = RigidbodyInterpolation.None;
 
-        rb.velocity = Vector3.zero;
+        rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         rb.position = position;                  // 물리 쪽 위치
         mover.transform.position = position;     // 렌더/즉시 조회 쪽 위치
@@ -602,7 +602,7 @@ public class RespawnController : MonoBehaviour
 
         // 낙하 속도 이어받기는 위 CancelBoost/RestoreDefault **뒤에** 대입한다 — 부스트가 살아 있으면
         // 다음 FixedUpdate에 velocity가 통째로 덮어써져 여기서 넣은 값이 사라진다.
-        if (carriedFallSpeed > 0f) rb.velocity = Vector3.down * carriedFallSpeed;
+        if (carriedFallSpeed > 0f) rb.linearVelocity = Vector3.down * carriedFallSpeed;
 
         // 카메라를 같은 프레임에 새 위치로 스냅한다. 안 하면 SmoothDamp가 옛 위치에서 복귀 지점까지
         // 화면을 가로질러 날아가, "어디로 돌아갔는지"가 아니라 "이동하는 과정"이 보인다 — 특히 낙하

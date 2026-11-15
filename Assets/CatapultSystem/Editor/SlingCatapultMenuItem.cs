@@ -68,7 +68,7 @@ public static class SlingCatapultMenuItem
         // 복제하지 않고 같은 메서드를 호출한다. mass가 scale과 무관하게 고정이라는 점(미니 투석기
         // 에서는 상대적으로 더 무거워진다는 뜻)은 `MiniCatapultMenuItem.cs` 상단 TBD 주석 참고.
         Rigidbody rootBody = CatapultMenuItem.ConfigureRootRigidbody(root);
-        PhysicMaterial lowFriction = CatapultMenuItem.CreateLowFrictionMaterial();
+        PhysicsMaterial lowFriction = CatapultMenuItem.CreateLowFrictionMaterial();
 
         float baseTopY = CatapultMenuItem.BaseTopYFor(scale);
         float apexY = CatapultMenuItem.ApexYFor(scale);
@@ -125,7 +125,7 @@ public static class SlingCatapultMenuItem
     // 전체가 (baseRadius − baseTopY*0.5)만큼 공중에 떠 보였다. `CreateWheel`과 똑같이 이 콜라이더를
     // 지우고 원통 메시의 로컬 바운딩 박스와 정확히 같은 `size=(1,2,1)`의 `BoxCollider`로 교체해
     // 해결한다(원형이 사각형으로 근사되는 것은 걸어 다니는 상판 가장자리 정도의 오차라 무해하다).
-    private static void CreateBasePlatform(Transform parent, PhysicMaterial groundMaterial, float baseTopY, float baseRadius)
+    private static void CreateBasePlatform(Transform parent, PhysicsMaterial groundMaterial, float baseTopY, float baseRadius)
     {
         GameObject baseObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         baseObj.name = "SlingCatapult_Base";

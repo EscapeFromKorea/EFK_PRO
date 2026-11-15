@@ -483,7 +483,7 @@ public static class S6_Wiring
     /// 호출 전후 목록 비교로도 찾는다(S5_Wiring.CreateByTeamMenu 선례).</summary>
     private static T CreateByMenuPath<T>(string path) where T : Component
     {
-        HashSet<T> before = new HashSet<T>(Object.FindObjectsOfType<T>(true));
+        HashSet<T> before = new HashSet<T>(Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None));
         Selection.activeGameObject = null;
         bool ok = EditorApplication.ExecuteMenuItem(path);
         T made = PickNew(before);
@@ -494,7 +494,7 @@ public static class S6_Wiring
     /// <summary>팀 public static 생성 함수(반환값 없음, 끝에 Selection 설정)를 부르고 생성물을 받는다.</summary>
     private static T CreateByTeamCall<T>(System.Action create, string menuLabel) where T : Component
     {
-        HashSet<T> before = new HashSet<T>(Object.FindObjectsOfType<T>(true));
+        HashSet<T> before = new HashSet<T>(Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None));
         Selection.activeGameObject = null;
         create();
         T made = PickNew(before);
@@ -510,7 +510,7 @@ public static class S6_Wiring
             T c = sel.GetComponent<T>();
             if (c != null && !before.Contains(c)) return c;
         }
-        foreach (T c in Object.FindObjectsOfType<T>(true))
+        foreach (T c in Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             if (!before.Contains(c)) return c;
         return null;
     }
