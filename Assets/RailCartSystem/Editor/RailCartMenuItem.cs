@@ -70,12 +70,12 @@ public static class RailCartMenuItem
         Material wheelMat = new Material(Shader.Find("Standard")) { color = new Color(0.15f, 0.15f, 0.17f) };
         // 지면과 실제로 닿는 콜라이더(바닥판·아래 ContactPad) 전용 저마찰 재질 — CatapultSystem의
         // 손수레(`CatapultMenuItem.CreateLowFrictionMaterial`)와 같은 이유(2026-09-06 추가):
-        // 레일카는 railRestoreForce로 레일 옆 이탈을 되돌리는데, 기본 PhysicMaterial 마찰이 이
+        // 레일카는 railRestoreForce로 레일 옆 이탈을 되돌리는데, 기본 PhysicsMaterial 마찰이 이
         // 복원력보다 커서 살짝 어긋난 채로 지면 마찰에 붙들려 버티는 문제가 실측됐다("애매하게
         // 어긋난 채 멈춰 있다"). 실제 기차 바퀴가 마찰이 아니라 플랜지(홈)로 선로에 붙들리는 것과
         // 같은 이치 — 이 카트는 restoreForce가 그 플랜지 역할을 대신하므로, 마찰이 그 역할을
         // 방해하지 않도록 최대한 낮춘다.
-        PhysicMaterial lowFriction = CreateLowFrictionMaterial();
+        PhysicsMaterial lowFriction = CreateLowFrictionMaterial();
 
         // U자형(열린 위) 몸체 — 바닥판 + 좌우/앞뒤 벽. 각자 자기 크기만큼의 솔리드 콜라이더를
         // 그대로 갖는다(CreatePlate가 지우지 않는다) — 다섯 조각이 합쳐 "속이 빈 상자" 물리를
@@ -178,7 +178,7 @@ public static class RailCartMenuItem
     }
 
     private static void CreatePlate(Transform parent, string plateName, Vector3 localPos, Vector3 localScale,
-        Material mat, PhysicMaterial groundMaterial = null)
+        Material mat, PhysicsMaterial groundMaterial = null)
     {
         GameObject plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
         plate.name = plateName;
@@ -198,13 +198,13 @@ public static class RailCartMenuItem
     // 한다.
     private const float LowFrictionCoefficient = 0.05f;
 
-    private static PhysicMaterial CreateLowFrictionMaterial()
+    private static PhysicsMaterial CreateLowFrictionMaterial()
     {
-        return new PhysicMaterial("RailCart_LowFriction")
+        return new PhysicsMaterial("RailCart_LowFriction")
         {
             staticFriction = LowFrictionCoefficient,
             dynamicFriction = LowFrictionCoefficient,
-            frictionCombine = PhysicMaterialCombine.Minimum,
+            frictionCombine = PhysicsMaterialCombine.Minimum,
         };
     }
 

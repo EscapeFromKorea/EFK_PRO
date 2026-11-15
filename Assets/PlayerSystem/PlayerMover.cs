@@ -32,7 +32,7 @@ using UnityEngine;
 /// [솔직한 한계] 이 조치들은 "다면체가 평평한 면으로 접지한 채 순간 각속도를 강제하면 다중
 /// 접촉점이 서로 충돌한다"는 구조적 문제 자체를 없애지는 못한다(구가 아닌 이상 "완벽하게
 /// 매끄러운 회전"은 물리적으로 보장할 수 없다) — 접촉을 부드럽게 만들고 솔버가 덜 튀도록
-/// 완화할 뿐이다. 실제로 씬에서 확인해가며 rollRadius/PhysicMaterial/solver 값을 조정할 것.
+/// 완화할 뿐이다. 실제로 씬에서 확인해가며 rollRadius/PhysicsMaterial/solver 값을 조정할 것.
 ///
 /// [토크+마찰 구르기 실험 경로: useTorqueRolling]
 /// 위 방식은 물리엔진이 굴리는 게 아니라 스크립트가 결과 각속도를 흉내 내 강제하는 것이라
@@ -470,7 +470,7 @@ public class PlayerMover : MonoBehaviour
             // 비탈 방향 성분이 거의 전부 수평 성분이라, 이 대입이 매 스텝 그걸 지워 도형이 비탈에
             // 붙박이가 된다(경사각을 올려도 상수 0을 대입하므로 증상이 똑같다 —
             // 2026-08-10 플레이테스트로 확인).
-            // 경사면에서는 대입을 건너뛰고 물리에 맡긴다. 마찰(PhysicMaterial)이 도형별로
+            // 경사면에서는 대입을 건너뛰고 물리에 맡긴다. 마찰(PhysicsMaterial)이 도형별로
             // 얼마나 미끄러질지를 결정하므로 여기서 따로 도형 분기를 두지 않는다.
             if (groundNormal.y > idleStopMaxNormalY)
                 rb.velocity = new Vector3(groundVelXZ.x, rb.velocity.y, groundVelXZ.z);

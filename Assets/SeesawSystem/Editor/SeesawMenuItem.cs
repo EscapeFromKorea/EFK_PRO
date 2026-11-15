@@ -61,11 +61,11 @@ public static class SeesawMenuItem
 
         // 탑승자가 기운 판 위에서 미끄러지지 않을 만큼 마찰을 높게 잡는다(RailCartSystem의
         // CreateLowFrictionMaterial과 반대 방향 — 여기는 오히려 안 미끄러져야 한다).
-        plank.GetComponent<Collider>().sharedMaterial = new PhysicMaterial("Seesaw_Grip")
+        plank.GetComponent<Collider>().sharedMaterial = new PhysicsMaterial("Seesaw_Grip")
         {
             staticFriction = 0.8f,
             dynamicFriction = 0.8f,
-            frictionCombine = PhysicMaterialCombine.Maximum,
+            frictionCombine = PhysicsMaterialCombine.Maximum,
         };
         plank.GetComponent<Renderer>().sharedMaterial = MakeMaterial("Seesaw_Plank_Mat", new Color(0.55f, 0.35f, 0.18f));
 

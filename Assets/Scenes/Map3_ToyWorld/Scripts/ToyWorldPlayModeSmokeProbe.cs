@@ -308,7 +308,7 @@ public sealed class ToyWorldPlayModeSmokeProbe : MonoBehaviour
         Debug.Log("[ToyWorldPlaySmoke] PASS all " + jumpPads.Length + " bypass JumpPads with all three shapes.");
 
         StickerSurface surface = GameObject.Find("GEO_BlockFort_SlipRamp_Bypass").GetComponent<StickerSurface>();
-        PhysicMaterial originalMaterial = surface.ResolvedCollider.sharedMaterial;
+        PhysicsMaterial originalMaterial = surface.ResolvedCollider.sharedMaterial;
         FrictionSticker sticker = FrictionSticker.Attach(surface, StickerKind.Slip,
             new FrictionStickerSettings(), surface.transform.position, surface.transform.up);
         Require(sticker != null && surface.ResolvedCollider.sharedMaterial.dynamicFriction <= 0.1f,

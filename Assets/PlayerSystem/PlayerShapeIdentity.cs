@@ -40,13 +40,13 @@ public class PlayerShapeIdentity : MonoBehaviour
         if (solidCollider != null)
         {
             // 이 오브젝트 전용 인스턴스 재질(공유 에셋/다른 콜라이더 오염 방지).
-            solidCollider.material = new PhysicMaterial($"{name}_Physic")
+            solidCollider.material = new PhysicsMaterial($"{name}_Physic")
             {
                 staticFriction = stats.friction,
                 dynamicFriction = stats.friction,
-                frictionCombine = PhysicMaterialCombine.Average,
+                frictionCombine = PhysicsMaterialCombine.Average,
                 bounciness = stats.bounciness,
-                bounceCombine = PhysicMaterialCombine.Minimum
+                bounceCombine = PhysicsMaterialCombine.Minimum
             };
         }
     }

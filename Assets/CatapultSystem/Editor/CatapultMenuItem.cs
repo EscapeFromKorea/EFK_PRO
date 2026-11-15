@@ -227,7 +227,7 @@ public static class CatapultMenuItem
         Rigidbody rootBody = ConfigureRootRigidbody(root);
 
         // 바닥과 닿는 콜라이더(받침대 상판·바퀴)에 적용할 저마찰 재질.
-        PhysicMaterial lowFriction = CreateLowFrictionMaterial();
+        PhysicsMaterial lowFriction = CreateLowFrictionMaterial();
 
         CreateBase(root.transform, lowFriction);
         CreateWheels(root.transform, lowFriction);
@@ -291,7 +291,7 @@ public static class CatapultMenuItem
         return rootBody;
     }
 
-    private static GameObject CreateBase(Transform parent, PhysicMaterial groundMaterial)
+    private static GameObject CreateBase(Transform parent, PhysicsMaterial groundMaterial)
     {
         GameObject baseObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
         baseObj.name = "Catapult_Base";
@@ -307,7 +307,7 @@ public static class CatapultMenuItem
     // 장식용 바퀴 — "손수레" 인상을 강화한다(조향 메커니즘이 이미 손수레 비유를 쓰고 있어 시각적
     // 으로도 뒷받침). 실제 회전은 CatapultWheelVisual이 순수 시각으로 담당한다(아래 CreateWheel
     // 참고).
-    private static void CreateWheels(Transform parent, PhysicMaterial groundMaterial)
+    private static void CreateWheels(Transform parent, PhysicsMaterial groundMaterial)
     {
         Material mat = LoadOrCreateMaterial("Wheel", new Color(0.3f, 0.22f, 0.12f));
         Material strutMat = LoadOrCreateMaterial("Base", new Color(0.55f, 0.4f, 0.22f));
@@ -344,7 +344,7 @@ public static class CatapultMenuItem
     // identity에서 시작하므로, 자식 자신의 로컬 Y축(메시의 원래 높이/축 방향)을 돌리면 축 방향이
     // 고정된 채(World = R0 * Ry(θ)) 올바르게 굴러간다(로컬 X를 돌리면 사원수 합성상 축 자체가 매
     // 프레임 방향을 바꾸는 팽이 회전이 나온다 — `CatapultWheelVisual`도 이 축을 로컬 Y로 맞췄다).
-    private static void CreateWheel(Transform parent, Vector3 localPos, float radius, float thickness, Material mat, PhysicMaterial groundMaterial)
+    private static void CreateWheel(Transform parent, Vector3 localPos, float radius, float thickness, Material mat, PhysicsMaterial groundMaterial)
     {
         GameObject wheel = new GameObject("Catapult_Wheel");
         wheel.transform.SetParent(parent, false);
@@ -664,20 +664,20 @@ public static class CatapultMenuItem
         return ring;
     }
 
-    // `PlayerShapeIdentity.Start()`가 이미 쓰는 패턴(런타임에 `new PhysicMaterial(...)` 인스턴스
+    // `PlayerShapeIdentity.Start()`가 이미 쓰는 패턴(런타임에 `new PhysicsMaterial(...)` 인스턴스
     // 생성, 별도 에셋으로 저장하지 않음)을 그대로 따른다. 이 기믹은 정육면체/정사면체와 달리
     // 도형별 스탯 에셋이 없어 인스턴스를 도형 이름별로 나눌 필요가 없으므로, 투석기 한 대당 하나만
     // 만들어 바닥과 닿는 콜라이더(상판·바퀴)끼리 공유한다. `frictionCombine = Minimum`으로 둬,
     // 지형 쪽 PhysicMaterial이 무엇이든(또는 없든) 접촉 마찰이 항상 이 낮은 값 이하로 정해지게
     // 한다.
     // internal — `SlingCatapultMenuItem`도 같은 저마찰 재질을 재사용한다(계수를 따로 복제하지 않는다).
-    internal static PhysicMaterial CreateLowFrictionMaterial()
+    internal static PhysicsMaterial CreateLowFrictionMaterial()
     {
-        return new PhysicMaterial("Catapult_LowFriction")
+        return new PhysicsMaterial("Catapult_LowFriction")
         {
             staticFriction = LowFrictionCoefficient,
             dynamicFriction = LowFrictionCoefficient,
-            frictionCombine = PhysicMaterialCombine.Minimum,
+            frictionCombine = PhysicsMaterialCombine.Minimum,
         };
     }
 

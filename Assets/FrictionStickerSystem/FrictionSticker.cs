@@ -22,8 +22,8 @@ public class FrictionSticker : MonoBehaviour
     public StickerSurface Surface { get; private set; }
 
     private Collider affectedCollider;
-    private PhysicMaterial originalSharedMaterial;   // 부착 전 콜라이더가 쓰던 재질(원복 기준). null일 수 있음.
-    private PhysicMaterial instanceMaterial;         // 이 스티커가 만든 전용 마찰 재질.
+    private PhysicsMaterial originalSharedMaterial;   // 부착 전 콜라이더가 쓰던 재질(원복 기준). null일 수 있음.
+    private PhysicsMaterial instanceMaterial;         // 이 스티커가 만든 전용 마찰 재질.
     private Material decalMaterial;                  // 데칼 전용 시각 재질(파괴 시 함께 정리).
     private bool restored;
 
@@ -66,7 +66,7 @@ public class FrictionSticker : MonoBehaviour
 
         // 이 콜라이더 전용 인스턴스 재질. PhysicMaterial에는 복사 생성자가 없어 새로 만들고,
         // 반발 관련 값만 원본에서 물려받은 뒤 마찰·조합을 이 종류로 덮어쓴다(PlayerShapeIdentity와 같은 방식).
-        instanceMaterial = new PhysicMaterial($"{surface.name}_{kind}_Sticker");
+        instanceMaterial = new PhysicsMaterial($"{surface.name}_{kind}_Sticker");
         if (originalSharedMaterial != null)
         {
             instanceMaterial.bounciness = originalSharedMaterial.bounciness;
