@@ -33,18 +33,22 @@ public class NetProtoPlayer : NetworkBehaviour
             if (IsOwner)
             {
                 mover.UseRemoteInput = true; // 축은 아래 FixedUpdate에서 로컬로 직접 대입(RPC 없음)
-                rb.position = new Vector3(OwnerClientId * 3f, 1.5f, 0f);
+                rb.position = SpawnPos();
             }
             else DisableBody();
         }
         else if (IsServer)
         {
             mover.UseRemoteInput = true; // 호스트 자신의 도형도 같은 경로(RPC→서버)로 굴려 비교 조건을 맞춘다
-            rb.position = new Vector3(OwnerClientId * 3f, 1.5f, 0f);
+            rb.position = SpawnPos();
         }
         else DisableBody();
         if (IsOwner) NetProtoRunner.LocalPlayer = transform;
     }
+
+    Vector3 SpawnPos() => NetProtoRunner.MapMode
+        ? NetProtoRunner.SpawnBase + new Vector3(OwnerClientId * 2f, 0f, 0f)
+        : new Vector3(OwnerClientId * 3f, NetProtoRunner.Platform ? 4f : 1.5f, 0f);
 
     // 클라이언트의 몸은 서버(또는 오너) 결과를 받아 그리기만 한다
     void DisableBody()
@@ -97,10 +101,57 @@ public class NetProtoPlayer : NetworkBehaviour
     float rideLogAt, offZSum, offZMax, offXSum, offXMax; int offN;
 
     bool boardRequested;
+    bool IsLocalBody() => NetworkManager != null && OwnerClientId == NetworkManager.LocalClientId || boardRequested;
+
+    // 발판 측정: 발판 대비 내 몸의 z 오프셋(미끄러지면 커진다). 1초마다 평균/최대 로그
+    Transform platT; float platLogAt, platSum, platMax; int platN;
+    void PlatformStats()
+    {
+        if (!IsOwner || Time.realtimeSinceStartup - spawnAt < 3f) return;
+        if (platT == null) { var pl = FindFirstObjectByType<NetProtoPlatform>(); if (pl == null) return; platT = pl.transform; }
+        float rel = transform.position.z - platT.position.z;
+        platSum += rel; platN++; platMax = Mathf.Max(platMax, Mathf.Abs(rel));
+        if (Time.realtimeSinceStartup > platLogAt)
+        {
+            platLogAt = Time.realtimeSinceStartup + 1f;
+            var gc = GetComponent<PlayerGroundContact>();
+            var prb = platT.GetComponent<Rigidbody>();
+            Debug.Log($"[NetProto] 발판진단 owner={OwnerClientId} platY={platT.position.y:F2} platRbVel={prb.linearVelocity:F2} platPtVel={prb.GetPointVelocity(transform.position):F2} grounded={(gc != null ? gc.IsGrounded : false)} groundVel={(gc != null ? gc.GroundVelocity : Vector3.zero):F2} bodyVel={rb.linearVelocity:F2} kin={prb.isKinematic}");
+            Debug.Log($"[NetProto] 발판오프셋 owner={OwnerClientId} relNow={rel:F2} relMean={platSum / platN:F2} relMaxAbs={platMax:F2} y={transform.position.y:F2} platZ={platT.position.z:F2}");
+        }
+    }
 
     // 원격 클라이언트는 직접 타지 않고 서버에 요청 → 서버가 몸의 소유권을 가져가(=위치 권한이 서버로) 좌석을 정확히 따라간다(R12 해법)
     [Rpc(SendTo.Server)]
     void BoardRpc() => NetworkObject.ChangeOwnership(NetworkManager.ServerClientId);
+
+    // 하차: 요청 → 서버가 몸을 내려놓고 소유권을 요청자에게 되돌려준다
+    bool unboarded, unboardRequested;
+    float prevOwnPosT; Vector3 prevOwnPos; bool prevOwnInit;
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    void UnboardRpc(RpcParams p = default)
+    {
+        if (!boarded || rideSeat == null) return;
+        boarded = false; unboarded = true;
+        rb.isKinematic = false;
+        mover.ExternallyDriven = false;
+        Vector3 exit = rideSeat.TransformPoint(new Vector3(2f, 0f, 0f));
+        rb.position = exit; transform.position = exit;
+        NetworkObject.ChangeOwnership(p.Receive.SenderClientId);
+        Debug.Log($"[NetProto] 하차 처리(서버) → 소유권 반환 client={p.Receive.SenderClientId}");
+    }
+
+    public override void OnGainedOwnership()
+    {
+        if (!NetProtoRunner.Ride || IsServer || !boardRequested) return;
+        mover.enabled = true; jump.enabled = true;
+        var accel = GetComponent<PlayerAccelReceiver>(); if (accel != null) accel.enabled = true;
+        var wind = GetComponent<PlayerWindReceiver>(); if (wind != null) wind.enabled = true;
+        mover.UseRemoteInput = true; mover.ExternallyDriven = false;
+        rb.isKinematic = false;
+        Debug.Log($"[NetProto] 하차 소유권 회복 pos={transform.position:F2}");
+    }
 
     public override void OnLostOwnership()
     {
@@ -109,7 +160,7 @@ public class NetProtoPlayer : NetworkBehaviour
 
     void TryBoard()
     {
-        if (boarded || !NetProtoRunner.Ride || Time.realtimeSinceStartup - spawnAt < 2f) return;
+        if (boarded || unboarded || !NetProtoRunner.Ride || Time.realtimeSinceStartup - spawnAt < 2f) return;
         if (!IsServer)
         {
             if (!boardRequested && FindFirstObjectByType<NetProtoCart>() != null) { boardRequested = true; BoardRpc(); Debug.Log("[NetProto] 탑승 요청(서버 권위 전환)"); }
@@ -169,6 +220,18 @@ public class NetProtoPlayer : NetworkBehaviour
     void Update()
     {
         if (NetProtoTransform.OwnerAuth && !IsOwner) { Observe(); ObserveRide(); }
+        if (NetProtoRunner.Ride && !IsServer && boardRequested && !unboardRequested && !IsOwner && Time.realtimeSinceStartup - spawnAt > 12f)
+        {
+            unboardRequested = true; UnboardRpc(); Debug.Log("[NetProto] 하차 요청");
+        }
+        if (NetProtoRunner.Ride && !IsServer && IsLocalBody())
+        {
+            // 내 몸의 프레임 간 위치 튐(하차 전환 순간 등)
+            if (prevOwnInit && (transform.position - prevOwnPos).magnitude > 0.6f)
+                Debug.Log($"[NetProto] 위치튐 d={(transform.position - prevOwnPos).magnitude:F2} owner={IsOwner} pos={transform.position:F2}");
+            prevOwnPos = transform.position; prevOwnInit = true;
+        }
+        if (NetProtoRunner.Platform) PlatformStats();
         if (IsOwner) TryBoard();
         if (!IsOwner) return;
         bool jumpNow = NetProtoRunner.Bot ? NetProtoRunner.BotJumpNow(spawnAt) : Input.GetButtonDown("Jump");

@@ -102,10 +102,23 @@ public class PlayerGroundContact : MonoBehaviour
                 lastGroundedTime = Time.time;
                 GroundNormal = hitBuffer[i].normal;
                 Rigidbody groundRb = hitBuffer[i].collider.attachedRigidbody;
-                GroundVelocity = groundRb != null ? groundRb.GetPointVelocity(hitBuffer[i].point) : Vector3.zero;
+                GroundVelocity = groundRb != null ? PointVel(groundRb, hitBuffer[i].point) : Vector3.zero;
                 return;
             }
         }
+    }
+
+    /// <summary>[멀티 프로토타입] 네트워크로 보간만 되는 발판(키네마틱 복사본)은 Rigidbody 속도가 0이라 몸이 안 실려 간다 — 속도를 따로 공급하는 훅. null이면 기존 동작 그대로.</summary>
+    public static System.Func<Rigidbody, Vector3, Vector3?> PointVelocityOverride;
+
+    private static Vector3 PointVel(Rigidbody rb, Vector3 point)
+    {
+        if (PointVelocityOverride != null)
+        {
+            Vector3? v = PointVelocityOverride(rb, point);
+            if (v.HasValue) return v.Value;
+        }
+        return rb.GetPointVelocity(point);
     }
 
     // (1) 실제 충돌 접촉 기반 판정(정육면체/구는 이쪽이 주력, 정사면체는 보조).
@@ -125,7 +138,7 @@ public class PlayerGroundContact : MonoBehaviour
                 lastGroundedTime = Time.time;
                 GroundNormal = contact.normal;
                 GroundVelocity = collision.rigidbody != null
-                    ? collision.rigidbody.GetPointVelocity(contact.point)
+                    ? PointVel(collision.rigidbody, contact.point)
                     : Vector3.zero;
                 return;
             }
