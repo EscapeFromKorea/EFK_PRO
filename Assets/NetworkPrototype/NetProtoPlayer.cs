@@ -25,6 +25,8 @@ public class NetProtoPlayer : NetworkBehaviour
         jump = GetComponent<PlayerJump>();
         rb = GetComponent<Rigidbody>();
         spawnAt = Time.realtimeSinceStartup;
+        // 맵 3: 레일 전용 트랙은 Awake 때 씬에 있던 도형에만 충돌을 껐으므로, 나중에 스폰된 도형에도 다시 적용한다(모든 피어)
+        foreach (var track in FindObjectsByType<ToyWorldRailCartOnlyTrack>(FindObjectsSortMode.None)) track.IgnorePlayer(mover);
         Debug.Log($"[NetProto] 플레이어 스폰 owner={OwnerClientId} IsOwner={IsOwner} IsServer={IsServer}");
 
         if (NetProtoTransform.OwnerAuth)
@@ -46,7 +48,8 @@ public class NetProtoPlayer : NetworkBehaviour
         if (IsOwner) NetProtoRunner.LocalPlayer = transform;
     }
 
-    Vector3 SpawnPos() => NetProtoRunner.MapMode
+    Vector3 SpawnPos() => MpGame.TrySpawnPoint(OwnerClientId, out var scenePos) ? scenePos
+        : NetProtoRunner.MapMode
         ? NetProtoRunner.SpawnBase + new Vector3(OwnerClientId * 2f, 0f, 0f)
         : new Vector3(OwnerClientId * 3f, NetProtoRunner.Platform ? 4f : 1.5f, 0f);
 
@@ -54,6 +57,9 @@ public class NetProtoPlayer : NetworkBehaviour
     void DisableBody()
     {
         mover.enabled = false;
+        // 남의 몸(복사본)은 "조작 중이 아님"으로 표시한다. E 상호작용(InteractionController)·R 리스폰(RespawnController)은
+        // 스위처 없이 IsControlled인 첫 PlayerMover를 "내 도형"으로 고르므로, 복사본이 true면 남의 몸이 선택돼 아무 일도 안 일어난다.
+        mover.SetControlled(false);
         jump.enabled = false;
         var accel = GetComponent<PlayerAccelReceiver>();
         if (accel != null) accel.enabled = false;
@@ -277,7 +283,7 @@ public class NetProtoPlayer : NetworkBehaviour
         if (NetProtoTransform.OwnerAuth)
         {
             mover.RemoteAxes = axes;
-            mover.RemoteYaw = NetProtoRunner.CamYaw;
+            mover.RemoteYaw = PlayerFollowCamera.ViewYaw ?? NetProtoRunner.CamYaw; // 정식 카메라가 있으면 그 시점 기준(마우스 궤도), 없으면 프로토 Q/E
             if (jumpPressed) { jumpPressed = false; jump.QueueJump(); }
             return;
         }

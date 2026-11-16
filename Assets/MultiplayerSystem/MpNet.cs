@@ -133,6 +133,7 @@ public class MpNet : MonoBehaviour
         if (leaving) return;
         leaving = true;
         Message = msg;
+        PauseMenuController.OnLeaveToMain = null; // 홈에서는 "메인화면으로 나가기"를 다시 끈다
         try
         {
             if (Session != null)
