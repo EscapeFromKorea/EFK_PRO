@@ -301,6 +301,21 @@ public class PlayerMover : MonoBehaviour
         PlayerControlSwitcher.UnregisterPlayer(this);
     }
 
+    // ─── [멀티 프로토타입] 입력 주입 이음매 ───
+    // 서버 권한 방식에서 서버가 원격 클라이언트의 입력(축·카메라 yaw)을 대신 먹이는 자리.
+    // UseRemoteInput이 false(기본)면 동작이 전혀 변하지 않는다.
+    public bool UseRemoteInput { get; set; }
+    public Vector2 RemoteAxes { get; set; }
+    public float RemoteYaw { get; set; }
+
+    private void ReadAxes(out float h, out float v)
+    {
+        if (UseRemoteInput) { h = RemoteAxes.x; v = RemoteAxes.y; return; }
+        h = Input.GetAxis("Horizontal");
+        v = Input.GetAxis("Vertical");
+    }
+    // ─── [멀티 프로토타입 끝] ───
+
     void FixedUpdate()
     {
         // [진단 전용] 이번 스텝에서 아무것도 건드리기 전, 지난 스텝 물리 결과를 그대로 찍는다.
@@ -334,8 +349,7 @@ public class PlayerMover : MonoBehaviour
             return;
         }
 
-        float h = Input.GetAxis("Horizontal");
-        float v = Input.GetAxis("Vertical");
+        ReadAxes(out float h, out float v);
         Vector3 move = new Vector3(h, 0f, v) * moveSpeed;
         // 입력 방향 보정을 토크 모드와 공유해 세 도형(구/정육면체/정사면체)의 방향감을 일치시킨다.
         // velocity/각속도 대입 로직 자체는 그대로 두고, 입력 방향 벡터에 회전만 추가한다.
@@ -542,8 +556,7 @@ public class PlayerMover : MonoBehaviour
             return;
         }
 
-        float h = Input.GetAxis("Horizontal");
-        float v = Input.GetAxis("Vertical");
+        ReadAxes(out float h, out float v);
         Vector3 moveDir = new Vector3(h, 0f, v);
         // 입력 방향을 월드 up 축 기준으로 회전 보정(카메라/월드 축과의 어긋남을 씬에서 맞춤).
         // [mnppi 수정] 기존: inputYawOffset 고정. cameraRelativeInput이면 카메라 현재 yaw로 회전(EffectiveInputYaw).
@@ -699,6 +712,7 @@ public class PlayerMover : MonoBehaviour
     // 기본 90)에서 시작하므로 inputYawOffset도 90인 기본값에선 전환 시 방향 불연속이 없다.
     private float EffectiveInputYaw()
     {
+        if (UseRemoteInput) return RemoteYaw; // [멀티 프로토타입] 원격 클라이언트가 보낸 카메라 yaw
         float? viewYaw = PlayerFollowCamera.ViewYaw;
         if (viewYaw.HasValue && (PlayerFollowCamera.MouseOrbitActive || cameraRelativeInput))
             return viewYaw.Value;
