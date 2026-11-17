@@ -75,6 +75,33 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
     private BoxCollider selfBox;                 // 정육면체의 솔리드 박스 콜라이더(면 계산용).
 
     private ConfigurableJoint joint;             // 살아 있으면 도킹 중.
+
+    // [멀티 M4] 참가자 PC에서는 블록이 서버 자세를 따라가는 키네마틱이라 물리 조인트로 못 묶는다 → 조인트 없이 도킹 상태만 갖고,
+    // 서버가 결합 구조물 전체를 내 몸 복사본에 고정 간격으로 붙여 끌고 다닌다. 이 PC에서는 몸이 블록에 막히지 않게 충돌을 끈다.
+    private bool mpDocked;
+    private readonly System.Collections.Generic.List<(Collider, Collider)> mpIgnored = new System.Collections.Generic.List<(Collider, Collider)>();
+    private bool Docked => joint != null || mpDocked;
+
+    private void MpIgnoreBlocks(bool ignore)
+    {
+        if (!ignore)
+        {
+            foreach (var (a, b) in mpIgnored) if (a != null && b != null) Physics.IgnoreCollision(a, b, false);
+            mpIgnored.Clear();
+            return;
+        }
+        var mine = GetComponentsInChildren<Collider>();
+        foreach (SnapBlock sb in Object.FindObjectsByType<SnapBlock>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            Collider bc = sb.GetComponent<Collider>();
+            if (bc == null) continue;
+            foreach (Collider c in mine)
+            {
+                Physics.IgnoreCollision(bc, c, true);
+                mpIgnored.Add((bc, c));
+            }
+        }
+    }
     private SnapBlock dockedBlock;
 
     private Vector3 lastPos;
@@ -165,13 +192,13 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         SpacePortal.PlayerTeleporting -= OnPortalTeleporting;
         InteractionController.Unregister(this);
         interactable = false;
-        if (joint != null) Undock("컴포넌트 비활성화");
+        if (Docked) Undock("컴포넌트 비활성화");
         HideReticle();
     }
 
     private void OnDestroy()
     {
-        if (joint != null) Undock("컴포넌트 파괴");
+        if (Docked) Undock("컴포넌트 파괴");
         if (reticleRenderer != null) Destroy(reticleRenderer.material);
         if (reticle != null) Destroy(reticle.gameObject);
     }
@@ -179,9 +206,9 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
     private void Update()
     {
         // 자동 해제는 조작권과 무관하게 감시한다(앵커로 남은 정육면체가 리스폰될 수 있다).
-        if (joint != null || dockedBlock != null)
+        if (Docked || dockedBlock != null)
         {
-            if (joint == null || dockedBlock == null)
+            if ((!mpDocked && joint == null) || dockedBlock == null)
             {
                 // 조인트가 breakForce로 끊겼거나 블록이 사라짐 — 상태만 정리.
                 CleanupDockState();
@@ -202,13 +229,13 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
             aimed = null;
             hasCandidate = false;
             // 도킹 중이면(조작권을 넘긴 앵커 상태) 마커는 유지, 아니면 숨김.
-            if (joint == null) HideReticle();
+            if (!Docked) HideReticle();
             else ShowReticle(dockedBlock != null ? dockedBlock.transform.position : transform.position, colorDocked);
             return;
         }
 
         // FindObjectsOfType로 씬을 훑는 건 매 프레임이 아니라 retargetInterval마다만(BlockCarrySystem과 동일 사유).
-        if (joint == null && Time.time >= nextRetargetTime)
+        if (!Docked && Time.time >= nextRetargetTime)
         {
             UpdateTarget();
             nextRetargetTime = Time.time + Mathf.Max(0.02f, retargetInterval);
@@ -222,7 +249,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
 
     private void OnInteractTap()
     {
-        if (joint != null) Undock("수동 해제");
+        if (Docked) Undock("수동 해제");
         else TryDock();
     }
 
@@ -230,7 +257,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
     {
         if (!interactable) return;
 
-        if (joint != null)
+        if (Docked)
         {
             // 도킹 중에는 해제가 최우선이다(상태를 쥔 쪽) — 근처 블록 들기가 가로채지 못한다.
             into.Add(new InteractionAction
@@ -405,6 +432,20 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
             transform.position += move;
         }
 
+        if (MpSync.IsClient)
+        {
+            var myNo = GetComponent<Unity.Netcode.NetworkObject>();
+            if (myNo == null) return;
+            mpDocked = true;
+            dockedBlock = aimed;
+            dockedBlock.enabled = false;
+            dockedBlock.MpRequestDock(myNo.NetworkObjectId, transform.position);
+            aimed = null;
+            hasCandidate = false;
+            Debug.Log($"[CubeDock] '{dockedBlock.name}' 구조물에 도킹했습니다(참가자: 서버가 구조물을 몸에 붙여 끌고 다닙니다).");
+            return;
+        }
+
         body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
         blockBody.linearVelocity = Vector3.zero;
@@ -501,6 +542,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
     {
         string blockName = dockedBlock != null ? dockedBlock.name : "블록";
         if (joint != null) Destroy(joint);
+        if (mpDocked && dockedBlock != null) dockedBlock.MpRequestUndock();
         CleanupDockState();
         Debug.Log($"[CubeDock] '{blockName}' 도킹을 해제했습니다 ({reason}).");
     }
@@ -510,6 +552,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         if (dockedBlock != null) dockedBlock.enabled = true; // 다시 용접·픽업·도킹 대상 탐색에 보이게.
         joint = null;
         dockedBlock = null;
+        if (mpDocked) { MpIgnoreBlocks(false); mpDocked = false; }
     }
 
     // ── 자동 해제 판정 ────────────────────────────────────────
@@ -566,7 +609,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
 
     private void UpdateReticle()
     {
-        if (joint != null)
+        if (Docked)
         {
             ShowReticle(dockedBlock != null ? dockedBlock.transform.position : transform.position, colorDocked);
             return;

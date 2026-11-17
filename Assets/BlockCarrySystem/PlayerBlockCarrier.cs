@@ -321,6 +321,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         // 조인트 오차를 한 번에 해소하며 블록이 먼 파트너 쪽으로 튕겨나간다(PR #92 리뷰에서 지적).
         // 다른 플레이어가 동시에 같은 블록을 들려는 이중 픽업도 같은 이유로 막힌다.
         carried.enabled = false;
+        { var myNo = GetComponent<Unity.Netcode.NetworkObject>(); if (myNo != null && MpSync.Active) carried.MpRequestPickup(myNo.NetworkObjectId, EffectiveCarryHeight()); } // [멀티 M4] 서버에 들었음을 알린다
 
         carriedKinematicWas = rb.isKinematic;
         carriedInterpWas = rb.interpolation;
@@ -391,6 +392,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         if (rb != null)
         {
             rb.transform.SetPositionAndRotation(pos, rot);
+            if (block != null && MpSync.Active) block.MpRequestDrop(pos, rot); // [멀티 M4] 서버가 이 자리에 놓는다
             rb.isKinematic = carriedKinematicWas;
             rb.interpolation = carriedInterpWas;
             rb.linearVelocity = Vector3.zero;
@@ -509,7 +511,7 @@ public class PlayerBlockCarrier : MonoBehaviour, IInteractionProvider
         return true;
     }
 
-    private static Quaternion SnapToAxes(Quaternion q)
+    internal static Quaternion SnapToAxes(Quaternion q)
     {
         Vector3 up = NearestAxis(q * Vector3.up);
         Vector3 fwd = Vector3.ProjectOnPlane(q * Vector3.forward, up);

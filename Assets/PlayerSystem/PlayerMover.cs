@@ -546,6 +546,15 @@ public class PlayerMover : MonoBehaviour
         return baseSpeed + slopeSpeedBonus;
     }
 
+    // 지금 입력이 가리키는 월드 수평 방향(크기 0~1). 장애물에 막혀 속도가 0이어도 "가려는 방향"을 알려준다.
+    public Vector3 GetInputWorldDir()
+    {
+        if (!IsControlled || InputLocked) return Vector3.zero;
+        ReadAxes(out float h, out float v);
+        Vector3 d = Quaternion.AngleAxis(EffectiveInputYaw(), Vector3.up) * new Vector3(h, 0f, v);
+        return d.sqrMagnitude > 1f ? d.normalized : d;
+    }
+
     // 실험 경로: 접지 중 velocity/각속도를 대입하지 않고 토크만 걸어, 지면 마찰이 그 토크를
     // 실제 구르기(모서리 피벗)로 변환하게 둔다. 선형 전진은 회전의 결과로 자연 발생한다.
     private void TorqueRollingFixedUpdate()

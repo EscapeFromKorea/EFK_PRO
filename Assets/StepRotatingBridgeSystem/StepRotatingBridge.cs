@@ -168,6 +168,7 @@ public class StepRotatingBridge : MonoBehaviour
         body = GetComponent<Rigidbody>();
         body.isKinematic = true; // Reset을 거치지 않고 수동 부착됐어도 강제한다
         body.useGravity = false;
+        MpBodySync.Ensure(this); // [멀티 M4 B1] 서버가 상태 기계를 돌리고 자세를 올린다. 참가자 PC는 키네마틱으로 따라간다
 
         if (riderSensor == null)
             foreach (Collider c in GetComponents<Collider>())
@@ -210,6 +211,7 @@ public class StepRotatingBridge : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
         CleanupDeadRiders();
         UpdateFallWatch();
         UpdateTelegraphShake();
@@ -308,6 +310,7 @@ public class StepRotatingBridge : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
@@ -322,6 +325,7 @@ public class StepRotatingBridge : MonoBehaviour
     // Exit 하나로는 절대 0에 도달하지 못해 재무장이 영구히 막힌다.
     private void OnTriggerStay(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || riderOverlap.ContainsKey(rb)) return;
@@ -331,6 +335,7 @@ public class StepRotatingBridge : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || !riderOverlap.TryGetValue(rb, out int n)) return;

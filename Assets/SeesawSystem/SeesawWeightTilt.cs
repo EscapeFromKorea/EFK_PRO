@@ -33,6 +33,7 @@ public class SeesawWeightTilt : MonoBehaviour
         body = GetComponent<Rigidbody>();
         hinge = GetComponent<HingeJoint>();
         ApplyResponsivePhysics();
+        MpBodySync.Ensure(this); // [멀티 M4 B1] 하중 토크는 서버만 계산한다
     }
 
     private void OnValidate()
@@ -77,6 +78,7 @@ public class SeesawWeightTilt : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
         if (body == null || hinge == null) return;
 
         Vector3 pivot = transform.TransformPoint(hinge.anchor);

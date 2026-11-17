@@ -28,6 +28,58 @@ public class MpLobby : NetworkBehaviour
     // M3(b): Round가 오를 때마다 전원이 Map.Value 맵을 (다시) 로드한다. Cleared는 호스트가 판정한 클리어 상태(S-01)
     public NetworkVariable<int> Round = new NetworkVariable<int>(0);
     public NetworkVariable<bool> Cleared = new NetworkVariable<bool>(false);
+    // M4: 맵 씬 기믹의 서버 상태 저장소(MpSync). 키 = 기믹ID<<4 | 채널. 늦게 합류한 PC도 NetworkList로 현재값을 받는다
+    public NetworkList<MpVal> SyncVals = new NetworkList<MpVal>();
+    readonly System.Collections.Generic.Dictionary<uint, int> syncIdx = new System.Collections.Generic.Dictionary<uint, int>();
+
+    public void ServerSet(uint key, float v)
+    {
+        if (!IsServer) return;
+        if (syncIdx.TryGetValue(key, out int i))
+        {
+            if (Mathf.Abs(SyncVals[i].V - v) < 1e-4f) return;
+            SyncVals[i] = new MpVal { Key = key, V = v };
+        }
+        else { syncIdx[key] = SyncVals.Count; SyncVals.Add(new MpVal { Key = key, V = v }); }
+    }
+
+    // 움직이는 바디의 자세(MpBodySync). 0.2cm·0.2도 미만의 변화는 보내지 않는다
+    public NetworkList<MpPose> PoseVals = new NetworkList<MpPose>();
+    readonly System.Collections.Generic.Dictionary<uint, int> poseIdx = new System.Collections.Generic.Dictionary<uint, int>();
+
+    public void ServerSetPose(uint id, Vector3 p, Quaternion r)
+    {
+        if (!IsServer) return;
+        if (poseIdx.TryGetValue(id, out int i))
+        {
+            var cur = PoseVals[i];
+            if ((cur.P - p).sqrMagnitude < 4e-6f && Quaternion.Angle(cur.R, r) < 0.2f) return;
+            PoseVals[i] = new MpPose { Key = id, P = p, R = r };
+        }
+        else { poseIdx[id] = PoseVals.Count; PoseVals.Add(new MpPose { Key = id, P = p, R = r }); }
+    }
+
+    public void ServerSyncClear() { if (!IsServer) return; SyncVals.Clear(); syncIdx.Clear(); PoseVals.Clear(); poseIdx.Clear(); }
+
+    // 서버 → 몸 주인 PC: 이 몸을 체크포인트로 복귀시켜라(낙하 판정 등을 서버가 했을 때)
+    [Rpc(SendTo.SpecifiedInParams)]
+    public void RespawnBodyRpc(ulong networkObjectId, RpcParams rpcParams = default)
+    {
+        if (!NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out var no) || !no.IsOwner) return;
+        var rc = FindFirstObjectByType<RespawnController>();
+        if (rc != null) rc.RespawnPlayer(no.gameObject);
+    }
+
+    // 서버 → 정육면체 주인 PC: 도킹된 블록의 몸 기준 상대 자세. 주인 PC가 도킹 블록을 로컬에서 직접 따라오게 한다(지연 없이)
+    [Rpc(SendTo.SpecifiedInParams)]
+    public void DockInfoRpc(uint blockId, bool begin, ulong cubeNetId, Vector3 relPos, Quaternion relRot, RpcParams rpcParams = default)
+    {
+        if (MpSync.Find(blockId) is SnapBlock sb) sb.MpLocalDock(begin, cubeNetId, relPos, relRot);
+    }
+
+    /// <summary>몸 주인 PC → 서버 이벤트(레버를 민 방향 등). 호출자가 몸 주인인지는 호출 쪽이 확인한다.</summary>
+    [Rpc(SendTo.Server)]
+    public void SyncEventRpc(uint id, int kind, Vector3 data, uint arg) => MpSync.Dispatch(id, kind, data, arg);
     readonly System.Collections.Generic.HashSet<ulong> loaded = new System.Collections.Generic.HashSet<ulong>();
     // E-07 재접속: 입장 때 낸 토큰을 서버가 기억해 두었다가, 시작 후 끊긴 슬롯은 같은 토큰으로 돌아온 사람에게만 돌려준다
     readonly System.Collections.Generic.Dictionary<ulong, string> tokenOf = new System.Collections.Generic.Dictionary<ulong, string>();
@@ -40,6 +92,8 @@ public class MpLobby : NetworkBehaviour
         DontDestroyOnLoad(gameObject); // 맵 씬을 로드하면 홈 씬이 언로드되는데, 로비가 같이 파괴되면 시작 알림(LoadedRpc)이 호스트에 못 간다
         if (IsServer) for (int i = 0; i < 3; i++) { Owners.Add(Empty); Ready.Add(false); }
         Round.OnValueChanged += (_, now) => { if (now > 0) MpGame.Begin(this); };
+        PoseVals.OnListChanged += e => { if (!IsServer && (e.Type == NetworkListEvent<MpPose>.EventType.Add || e.Type == NetworkListEvent<MpPose>.EventType.Value || e.Type == NetworkListEvent<MpPose>.EventType.Insert)) { MpSync.ApplyPose(e.Value); } };
+        SyncVals.OnListChanged += e => { if (!IsServer && (e.Type == NetworkListEvent<MpVal>.EventType.Add || e.Type == NetworkListEvent<MpVal>.EventType.Value || e.Type == NetworkListEvent<MpVal>.EventType.Insert)) { MpSync.Apply(e.Value); } };
         if (!IsServer && Round.Value > 0) MpGame.Begin(this); // 이미 시작된 뒤 스폰이 도착한 경우(안전망)
     }
 
@@ -131,6 +185,7 @@ public class MpLobby : NetworkBehaviour
         foreach (var s in shapes) if (s != null && s.IsSpawned) s.Despawn(true); // 씬 동기화를 껐으니 맵이 바뀌기 전에 직접 내린다
         shapes.Clear();
         loaded.Clear();
+        ServerSyncClear(); // 새 맵의 기믹은 처음 상태부터
         Cleared.Value = false;
         Map.Value++;
         Round.Value++;

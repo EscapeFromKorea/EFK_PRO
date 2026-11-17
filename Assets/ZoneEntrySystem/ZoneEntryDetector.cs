@@ -160,6 +160,8 @@ public class ZoneEntryDetector : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
+        // [멀티 M4] 진입 판정은 서버만 한다. 이벤트가 연결된 하류 기믹(함정·레이저·체크포인트)이 각자 서버 권한으로 동기화된다
+        if (MpSync.IsClient) return;
         PlayerMover mover = other.GetComponentInParent<PlayerMover>();
         if (mover == null) return;
 

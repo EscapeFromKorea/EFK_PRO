@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class LeverHead : MonoBehaviour
+public class LeverHead : MonoBehaviour, IMpSynced, IMpEventSink
 {
     [Header("레버 설정")]
     public Transform leverPivot;
@@ -25,6 +25,30 @@ public class LeverHead : MonoBehaviour
     private bool pendingExit = false;
 
     public bool IsActivated { get; private set; }
+
+    // [멀티 M4 분류 A] 레버는 서버만 상태 기계를 돌리고 각도(채널 0)를 올린다. 서버는 참가자 몸의 "복사본"과는 충돌 이벤트가 안 나므로
+    // (키네마틱 vs 정적 콜라이더) 몸 주인 PC가 부딪힘을 감지해 SendEvent로 알린다(2026-11-17 결정). 이벤트 종류: 0=닿음 1=미는 중 2=떨어짐
+    private uint mpId;
+    private float mpAngle;
+    private Vector3 ownerSmoothed;
+    private float nextStaySend;
+
+    void Awake()
+    {
+        mpAngle = GetCurrentAngle(); // 참가자 PC: 서버 값이 오기 전에 0도로 휙 돌지 않게 현재 각도로 시작(Register가 받은 값을 덮어쓰지 않게 그 앞에서)
+        mpId = MpSync.Register(this);
+    }
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) mpAngle = value; }
+
+    public void OnMpEvent(int kind, Vector3 n, uint arg)
+    {
+        if (kind == 0) HandleEnter(n);
+        else if (kind == 1) HandleStay(n, true);
+        else HandleExit();
+    }
     private bool UsesP04TimedBehavior => gameObject.name == "P04_LeverHead";
 
     void Start()
@@ -53,6 +77,16 @@ public class LeverHead : MonoBehaviour
     void FixedUpdate()
     {
         if (leverPivot == null) return;
+
+        if (MpSync.IsClient)
+        {
+            // 참가자 PC: 서버가 정한 각도로 따라간다
+            float cur = GetCurrentAngle();
+            float to = Mathf.MoveTowardsAngle(cur, mpAngle, 400f * Time.fixedDeltaTime);
+            leverPivot.localRotation = Quaternion.Euler(leverPivot.localEulerAngles.x, to, leverPivot.localEulerAngles.z);
+            IsActivated = Mathf.Abs(Mathf.DeltaAngle(restAngle, GetCurrentAngle())) >= maxAngle * 0.75f;
+            return;
+        }
 
         if (pendingExit)
         {
@@ -112,25 +146,61 @@ public class LeverHead : MonoBehaviour
         }
 
         IsActivated = Mathf.Abs(Mathf.DeltaAngle(restAngle, GetCurrentAngle())) >= maxAngle * 0.75f;
+        MpSync.Publish(mpId, 0, GetCurrentAngle());
     }
 
     void OnCollisionEnter(Collision collision)
     {
         if (!collision.gameObject.CompareTag("Player")) return;
 
+        Vector3 n = AverageContactNormal(collision);
+        if (MpSync.IsClient) { if (IsOwnBody(collision)) { ownerSmoothed = n; MpSync.SendEvent(mpId, 0, n); } return; }
+        HandleEnter(n);
+    }
+
+    // 서버(또는 오프라인)의 상태 기계 입력 — 호스트 자신의 몸은 충돌 이벤트로, 참가자의 몸은 OnMpEvent로 들어온다
+    private void HandleEnter(Vector3 n)
+    {
         pendingExit = false;
         isBeingPushed = true;
         isReturning = false;
         returnTimer = 0f;
 
-        smoothedNormal = AverageContactNormal(collision);
+        smoothedNormal = n;
         UpdatePushDirection(smoothedNormal);
+    }
+
+    private void HandleExit()
+    {
+        pendingExit = true;
+        exitGraceTimer = pushExitGrace;
+    }
+
+    // 몸 주인 PC에서만 의미가 있다 — 남의 몸 복사본은 키네마틱이라 이벤트가 안 오지만 만약을 위해 확인한다
+    private static bool IsOwnBody(Collision c)
+    {
+        var no = c.gameObject.GetComponentInParent<Unity.Netcode.NetworkObject>();
+        return no != null && no.IsOwner;
     }
 
     void OnCollisionStay(Collision collision)
     {
         if (!collision.gameObject.CompareTag("Player")) return;
 
+        if (MpSync.IsClient)
+        {
+            // 법선 보간은 보내는 쪽에서 하고, 서버로는 초당 10번만 올린다
+            if (!IsOwnBody(collision)) return;
+            ownerSmoothed = Vector3.Lerp(ownerSmoothed, AverageContactNormal(collision), normalSmoothSpeed * Time.fixedDeltaTime);
+            if (Time.time >= nextStaySend) { nextStaySend = Time.time + 0.1f; MpSync.SendEvent(mpId, 1, ownerSmoothed); }
+            return;
+        }
+
+        HandleStay(AverageContactNormal(collision), false);
+    }
+
+    private void HandleStay(Vector3 n, bool alreadySmoothed)
+    {
         if (UsesP04TimedBehavior)
         {
             pendingExit = false;
@@ -139,11 +209,7 @@ public class LeverHead : MonoBehaviour
             returnTimer = 0f;
         }
 
-        smoothedNormal = Vector3.Lerp(
-            smoothedNormal,
-            AverageContactNormal(collision),
-            normalSmoothSpeed * Time.fixedDeltaTime
-        );
+        smoothedNormal = alreadySmoothed ? n : Vector3.Lerp(smoothedNormal, n, normalSmoothSpeed * Time.fixedDeltaTime);
         UpdatePushDirection(smoothedNormal);
     }
 
@@ -167,8 +233,8 @@ public class LeverHead : MonoBehaviour
     {
         if (!collision.gameObject.CompareTag("Player")) return;
 
-        pendingExit = true;
-        exitGraceTimer = pushExitGrace;
+        if (MpSync.IsClient) { if (IsOwnBody(collision)) MpSync.SendEvent(mpId, 2, Vector3.zero); return; }
+        HandleExit();
     }
 
     private void UpdatePushDirection(Vector3 worldNormal)

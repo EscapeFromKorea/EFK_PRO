@@ -1,7 +1,7 @@
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
-public class PadTrigger : MonoBehaviour
+public class PadTrigger : MonoBehaviour, IMpSynced
 {
     [Header("pad 설정")]
     public float padPressDepth = 0.1f;
@@ -16,6 +16,15 @@ public class PadTrigger : MonoBehaviour
     private int overlapCount = 0;
 
     public doorPhysics doorPhysicsScript;
+
+    // [멀티 M4 분류 A] 밟힘 판정은 서버만(복사본 몸·운반 물체의 트리거가 서버에서 발생). 눌림 여부를 올리고 전원이 발판 애니메이션에 쓴다
+    private uint mpId;
+
+    void Awake() => mpId = MpSync.Register(this);
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) isPressed = value > 0.5f; }
 
     void Start()
     {
@@ -51,8 +60,9 @@ public class PadTrigger : MonoBehaviour
     void FixedUpdate()
     {
         // pad 눌림 상태를 doorPhysics에 전달
-        if (doorPhysicsScript != null)
+        if (!MpSync.IsClient && doorPhysicsScript != null)
             doorPhysicsScript.SetPadPressed(isPressed);
+        MpSync.Publish(mpId, 0, isPressed ? 1f : 0f);
 
         // pad 자체 눌림 애니메이션
         Vector3 padTarget = isPressed ? padPressedPosition : padStartPosition;
@@ -61,7 +71,7 @@ public class PadTrigger : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!IsValidPresser(other)) return;
+        if (MpSync.IsClient || !IsValidPresser(other)) return;
 
         overlapCount++;
         isPressed = true;
@@ -69,7 +79,7 @@ public class PadTrigger : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!IsValidPresser(other)) return;
+        if (MpSync.IsClient || !IsValidPresser(other)) return;
 
         overlapCount = Mathf.Max(0, overlapCount - 1);
         if (overlapCount == 0)

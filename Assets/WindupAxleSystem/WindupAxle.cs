@@ -8,7 +8,7 @@ using UnityEngine.Events;
 /// 브로드캐스트로) 신호만 낸다. 입력 방식(패들/드래그/그랩 등)은 이 컴포넌트의 관심사가 아니다 —
 /// <see cref="ApplyRotation"/> 하나가 유일한 입력 경계다. 상세: docs/PRD/WindupAxle.md
 /// </summary>
-public class WindupAxle : MonoBehaviour
+public class WindupAxle : MonoBehaviour, IMpSynced, IMpEventSink
 {
     [Header("확정값 (PRD §4, 씬 튜닝 대상)")]
     [Tooltip("저장량 최대치. 이 이상 감아도 더 안 쌓인다.")]
@@ -90,8 +90,34 @@ public class WindupAxle : MonoBehaviour
 
     public void Unsubscribe(IWindupReceiver receiver) => receivers.Remove(receiver);
 
+    // [멀티 M4 B1] 충전·방전·수신기 출력은 서버만 돌린다. 감기 입력(휠·패들)은 몸 주인 PC가 감지해 ApplyRotation으로 넣으면
+    // 참가자 PC에서는 서버로 이벤트가 간다(감기 쿨다운은 서버가 다시 판정). 서버는 충전량(0)·손잡이 목표각(1)·감은 횟수/방향(2)을 올려
+    // 전원이 발광·손잡이·카운트다운 표시(WindupReleaseTimer)를 같이 보게 한다. 이 축에 물린 RotatingPlatform은 MpBodySync가 자세를 전한다.
+    private uint mpId;
+    private int swingSeq;
+    private int lastSeenSwing;
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) CurrentCharge = value;
+        else if (channel == 1) crankTargetAngle = value;
+        else if (channel == 2)
+        {
+            int v = (int)value;
+            int seq = v >> 1;
+            if (seq == lastSeenSwing) return;
+            lastSeenSwing = seq;
+            for (int i = 0; i < receivers.Count; i++) receivers[i].OnCrankSwing((v & 1) == 1 ? 1f : -1f);
+        }
+    }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg) { if (kind == 0) ApplyRotation(data.x); }
+
     void Awake()
     {
+        mpId = MpSync.Register(this);
         if (bodyRenderer != null)
         {
             bodyMat = bodyRenderer.material; // 인스턴스화 — 원본 공유 머티리얼은 안 건드린다
@@ -109,6 +135,13 @@ public class WindupAxle : MonoBehaviour
         if (Mathf.Abs(signedDelta) < directionDeadzone) return false;
         if (Time.time < nextCrankSwingTime) return false;
 
+        if (MpSync.IsClient)
+        {
+            nextCrankSwingTime = Time.time + crankSwingCooldown;
+            MpSync.SendEvent(mpId, 0, new Vector3(signedDelta, 0f, 0f));
+            return true;
+        }
+
         CurrentCharge = ApplyChargeRotation(CurrentCharge, signedDelta, chargeRate, maxCharge, directionDeadzone);
         IsWinding = true;
         crankTargetAngle += signedDelta * crankSwingDegrees;
@@ -117,6 +150,8 @@ public class WindupAxle : MonoBehaviour
         float swingSign = Mathf.Sign(signedDelta);
         for (int i = 0; i < receivers.Count; i++)
             receivers[i].OnCrankSwing(swingSign);
+        swingSeq++;
+        MpSync.Publish(mpId, 2, swingSeq * 2 + (swingSign > 0f ? 1 : 0));
         return true;
     }
 
@@ -150,6 +185,17 @@ public class WindupAxle : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (MpSync.IsClient)
+        {
+            // 참가자 PC: 충전량·손잡이 목표각은 서버 값. 발광·손잡이 연출만 로컬로 돌린다
+            if (bodyMat != null) bodyMat.SetColor("_EmissionColor", emissionColor * (ChargeRatio * emissionIntensity));
+            if (crank != null)
+            {
+                crankCurrentAngle = Mathf.MoveTowards(crankCurrentAngle, crankTargetAngle, crankDegreesPerSecond * Time.fixedDeltaTime);
+                crank.localRotation = Quaternion.AngleAxis(crankCurrentAngle, Vector3.up);
+            }
+            return;
+        }
         CurrentCharge = Drain(CurrentCharge, dischargeRate, decayRate, Time.fixedDeltaTime);
         OutputPower = dischargeCurve.Evaluate(ChargeRatio) * (CurrentCharge >= 0f ? 1f : -1f);
 
@@ -175,6 +221,8 @@ public class WindupAxle : MonoBehaviour
         }
 
         IsWinding = false;
+        MpSync.Publish(mpId, 0, CurrentCharge);
+        MpSync.Publish(mpId, 1, crankTargetAngle);
     }
 
     // ── 순수 함수 (저장소 관례 — PortalSystem의 Self-Check처럼 인스턴스 상태 없이 에디터에서

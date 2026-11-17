@@ -98,6 +98,7 @@ public class LiftPlatform : MonoBehaviour
 
     private void Awake()
     {
+        MpBodySync.Ensure(this); // [멀티 M4 B1] 서버가 구동·자세를 올리고 참가자 PC는 키네마틱으로 따라간다
         body = GetComponent<Rigidbody>();
         body.isKinematic = true; // Reset을 거치지 않고 수동 부착됐어도 강제한다 — 키네마틱 스윕 전제가 깨지면 라이더가 파고든다
         body.useGravity = false;
@@ -123,6 +124,7 @@ public class LiftPlatform : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return; // 참가자 PC: 자세는 MpBodySync가 맞춘다
         CleanupDeadRiders();
 
         Vector3 target = restPosition + (isHeld ? Vector3.up * riseHeight : Vector3.zero);
@@ -135,11 +137,12 @@ public class LiftPlatform : MonoBehaviour
         // 움직이므로 delta는 항상 수직이고, 라이더의 텀블 좌우 이동(X/Z)과 절대 경합하지 않는다.
         if (delta.sqrMagnitude > 0f)
             foreach (Rigidbody r in riderOverlap.Keys)
-                if (r != null) r.position += delta;
+                if (r != null && MpSync.IsOwnBody(r)) r.position += delta; // 남의 몸 복사본은 주인 PC가 처리
     }
 
     private void OnTriggerEnter(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
@@ -153,6 +156,7 @@ public class LiftPlatform : MonoBehaviour
     // 프레임 카운트를 올리면 Exit 하나로는 절대 0에 도달하지 못해 라이더가 영구히 안 내려간다.
     private void OnTriggerStay(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || riderOverlap.ContainsKey(rb)) return;
@@ -161,6 +165,7 @@ public class LiftPlatform : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || !riderOverlap.TryGetValue(rb, out int n)) return;

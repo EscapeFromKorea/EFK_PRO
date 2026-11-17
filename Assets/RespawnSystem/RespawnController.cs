@@ -214,6 +214,7 @@ public class RespawnController : MonoBehaviour
             return;
         }
 
+        if (MpSync.IsClient) return;
         if (instance.currentZone != null) instance.currentZone.SetFlagState(RespawnZone.FlagState.Hidden);
         if (clearZones != null)
             foreach (RespawnZone z in clearZones)
@@ -253,6 +254,7 @@ public class RespawnController : MonoBehaviour
 
     private bool StoreCheckpoint(RespawnZone zone)
     {
+        if (MpSync.IsClient) return false; // [멀티 M4] 체크포인트는 서버만 확정한다 — 참가자 PC는 RespawnZone.Active를 따른다(SyncCheckpointFromZone)
         // **한 번 잡은 구역은 다시 활성화되지 않는다.** 뒤로 걸어가 이전 체크포인트를 다시 밟으면
         // 복귀 지점이 뒤로 밀려 진행이 되감기고, 어려운 구간을 통과한 직후에 죽으면 그 구간을 다시
         // 하게 된다("체크포인트는 구간 진입부에 둔다"는 배치 원칙이 무너지는 것과 같은 결과다).
@@ -301,6 +303,7 @@ public class RespawnController : MonoBehaviour
                              "(인자는 플레이어 Root여야 한다).", playerRoot);
             return;
         }
+        if (MpSync.Active && !IsOwnBody(mover)) { MpSync.RequestRespawnAtOwner(mover.gameObject); return; } // 몸은 주인 PC가 옮긴다
         TryRespawn(mover, useFade: true, reason: "외부 호출");
     }
 
@@ -321,6 +324,7 @@ public class RespawnController : MonoBehaviour
                              "(인자는 플레이어 Root여야 한다).", playerRoot);
             return;
         }
+        if (MpSync.Active && !IsOwnBody(mover)) { Debug.LogWarning("[Respawn] 남의 몸의 구간 복귀는 아직 주인 PC로 전달하지 않는다(FallingRock·SectionSafePoint 변환 때 처리)", this); return; }
         TryRespawn(mover, useFade: true, reason: $"구간 복귀({destination.sectionId})", destination: destination);
     }
 
@@ -347,6 +351,8 @@ public class RespawnController : MonoBehaviour
 
         players.Clear();
         players.AddRange(Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None));
+        // [멀티 M4 분류 D] 몸은 주인 PC가 굴리므로 낙하·장외 판정과 복귀도 주인 PC가 자기 몸만 한다(남의 몸 복사본을 건드리면 안 된다)
+        if (MpSync.Active) players.RemoveAll(m => m == null || !IsOwnBody(m));
 
         // 파괴된 플레이어가 남긴 항목 정리.
         pruneBuffer.Clear();
@@ -355,6 +361,25 @@ public class RespawnController : MonoBehaviour
         foreach (PlayerMover dead in pruneBuffer)
             belowSince.Remove(dead);
         busy.RemoveWhere(m => m == null);
+    }
+
+    private static bool IsOwnBody(PlayerMover m)
+    {
+        var no = m.GetComponent<Unity.Netcode.NetworkObject>();
+        return no != null && no.IsOwner;
+    }
+
+    // 참가자 PC: 서버가 확정한 현재 체크포인트(깃발이 Active인 구역)를 복귀 지점으로 삼는다
+    private void SyncCheckpointFromZone()
+    {
+        RespawnZone z = RespawnZone.Active;
+        if (z == currentZone) return;
+        currentZone = z;
+        hasCheckpoint = z != null;
+        if (z == null) return;
+        dropPoint = z.DropSpawnPoint;
+        groundPoint = z.FindGroundPoint();
+        warnedNoCheckpoint = false;
     }
 
     private PlayerMover ControlledPlayer()
@@ -435,6 +460,7 @@ public class RespawnController : MonoBehaviour
     {
         if (mover == null) return false;
         if (busy.Contains(mover)) return false; // 연출 중 재입력 무시
+        if (MpSync.IsClient) SyncCheckpointFromZone();
 
         // 구간 목적지가 있으면 독립 좌표라 공용 체크포인트 유무와 무관하게 진행한다.
         if (destination == null && !hasCheckpoint)
@@ -588,6 +614,11 @@ public class RespawnController : MonoBehaviour
         rb.angularVelocity = Vector3.zero;
         rb.position = position;                  // 물리 쪽 위치
         mover.transform.position = position;     // 렌더/즉시 조회 쪽 위치
+        // [멀티] 다른 PC에서 몸이 이전 위치에서 새 위치까지 미끄러져 보이지 않도록 네트워크 보간을 끊는다
+        if (mover.TryGetComponent(out Unity.Netcode.Components.NetworkTransform nt))
+        {
+            if (nt.IsSpawned && nt.CanCommitToTransform) nt.Teleport(position, mover.transform.rotation, mover.transform.localScale);
+        }
 
         // 속도 0만으로는 부족하다: 부스트 중이면 PlayerAccelReceiver가 매 FixedUpdate에 velocity를
         // 통째 대입해 다음 물리 스텝에 되살아난다(가속 발판을 밟고 장외로 날아간 경우가 정확히 이

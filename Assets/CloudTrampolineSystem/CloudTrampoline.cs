@@ -38,7 +38,7 @@ using UnityEngine;
 /// RainbowBridgeSystem 패턴을 이식했다(두 원본 모두 수정하지 않음).
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class CloudTrampoline : MonoBehaviour
+public class CloudTrampoline : MonoBehaviour, IMpSynced, IMpEventSink
 {
     [Header("Bounce")]
     [Tooltip("플레이어를 튀어올릴 목표 높이 H(Unit). PlayerJump가 velocity.y=√(2gH)로 역산 대입하므로 " +
@@ -135,6 +135,51 @@ public class CloudTrampoline : MonoBehaviour
         }
     }
 
+    // [멀티 M4 B1] 붕괴 상태(채널 0)·하중(채널 1)은 서버가 확정한다. 튕김은 몸 주인 PC가 로컬에서 즉시 한다(몸=주인 권한).
+    // 서버는 참가자 몸의 복사본과 충돌 이벤트가 안 나므로 주인 PC가 올라탐/내려옴을 이벤트로 알린다(이벤트: 0=올라탐 data=(무게,몸ID) 1=내려옴).
+    // 왕복 이동은 서버가 구동하고 MpBodySync가 자세를 전한다.
+    private uint mpId;
+    private float syncedLoad;
+    private readonly Dictionary<ulong, float> remoteRiders = new Dictionary<ulong, float>();
+
+    private void Awake()
+    {
+        mpId = MpSync.Register(this);
+        MpBodySync.Ensure(this);
+    }
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 1) { syncedLoad = value; return; }
+        if (channel != 0) return;
+        State next = (State)(int)value;
+        if (next == State.Hidden && state == State.Collapsing) return; // 이 PC의 페이드가 끝나면 스스로 숨김으로 넘어간다
+        if (next == State.Collapsing && state != State.Collapsing) { riders.Clear(); boostSteps.Clear(); }
+        state = next;
+    }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        ulong id = (ulong)data.y;
+        if (kind == 0) remoteRiders[id] = data.x; else remoteRiders.Remove(id);
+        if (state == State.Active && TotalLoad() + RemoteLoad() >= collapseMassThreshold) BeginCollapse();
+    }
+
+    private float RemoteLoad()
+    {
+        float sum = 0f;
+        foreach (float w in remoteRiders.Values) sum += w;
+        return sum;
+    }
+
+    private static float BodyId(Rigidbody rb)
+    {
+        var no = rb.GetComponentInParent<Unity.Netcode.NetworkObject>();
+        return no != null ? no.NetworkObjectId : 0f;
+    }
+
     private void Start()
     {
         supportCollider = GetComponent<Collider>();
@@ -178,6 +223,9 @@ public class CloudTrampoline : MonoBehaviour
     private void FixedUpdate()
     {
         DropBoostOfBodiesLandedElsewhere();
+        if (MpSync.IsClient) return; // 참가자 PC: 왕복 이동은 MpBodySync가 맞춘다
+        MpSync.Publish(mpId, 0, (int)state);
+        MpSync.Publish(mpId, 1, TotalLoad() + RemoteLoad());
 
         // 숨어 있는 동안(콜라이더 off)은 제자리에 멈춘다. 계속 움직이면 "5초 뒤 돌아온다"가 "5초 뒤 다른
         // 자리에 돌아온다"가 되어 떨어진 플레이어가 기다릴 자리가 사라지고, 지형 안에서 콜라이더가 켜져
@@ -271,10 +319,11 @@ public class CloudTrampoline : MonoBehaviour
         Rigidbody rb = collision.gameObject.GetComponentInParent<Rigidbody>();
         if (rb != null) riders.Add(rb);
 
-        float load = TotalLoad();
+        float load = TotalLoad() + (MpSync.IsClient ? syncedLoad : RemoteLoad());
+        if (MpSync.IsClient && rb != null) MpSync.SendEvent(mpId, 0, new Vector3(PlayerWeight.Of(rb), BodyId(rb), 0f));
         if (load >= collapseMassThreshold)
         {
-            BeginCollapse();
+            if (!MpSync.IsClient) BeginCollapse(); // 참가자 PC에서는 서버가 올라탐 이벤트로 판정한다
             return;
         }
         if (load >= restMassThreshold)
@@ -308,7 +357,11 @@ public class CloudTrampoline : MonoBehaviour
     private void OnCollisionExit(Collision collision)
     {
         Rigidbody rb = collision.gameObject.GetComponentInParent<Rigidbody>();
-        if (rb != null) riders.Remove(rb);
+        if (rb != null)
+        {
+            riders.Remove(rb);
+            if (MpSync.IsClient) MpSync.SendEvent(mpId, 1, new Vector3(0f, BodyId(rb), 0f));
+        }
     }
 
     /// <summary>구름이 견디는 하중. 질량이 아니라 "무게"를 잰다 — 무중력 버블처럼 개별 중력을 낮추는
@@ -341,6 +394,7 @@ public class CloudTrampoline : MonoBehaviour
     private void BeginCollapse()
     {
         state = State.Collapsing;
+        remoteRiders.Clear();
         // 같은 접촉으로 붕괴가 재발동하지 않게 집계를 비운다. 페이드 중에도 도형이 판 위에 남아 있으면
         // OnCollisionStay가 다시 채우는데(운반이 유지되도록 의도한 것), 그동안 state가 Active가 아니라
         // OnCollisionEnter의 판정에는 도달하지 않는다.
@@ -380,6 +434,7 @@ public class CloudTrampoline : MonoBehaviour
                 break;
 
             case State.Hidden:
+                if (MpSync.IsClient) break; // 다시 나타나는 시점은 서버가 정한다(상태 동기화)
                 reappearTimer -= Time.deltaTime;
                 if (reappearTimer <= 0f)
                 {

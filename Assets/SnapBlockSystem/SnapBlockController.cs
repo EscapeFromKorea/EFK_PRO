@@ -308,7 +308,7 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
             SnapBlock.Face mine = aimedFace, theirs = candFace;
             carrier.ReleaseInPlace();
             held.jointBreakForce = jointBreakForce;
-            held.Weld(partner, mine, theirs);
+            if (MpSync.IsClient) held.MpRequestWeld(partner, mine.index, theirs.index); else held.Weld(partner, mine, theirs); // [멀티 M4] 결합은 서버가 한다
             return;
         }
 
@@ -316,7 +316,7 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
 
         if (aimedBlock.HasConnections)
         {
-            aimedBlock.DetachAll();
+            if (MpSync.IsClient) aimedBlock.MpRequestDetach(); else aimedBlock.DetachAll();
             return;
         }
 
@@ -324,7 +324,7 @@ public class SnapBlockController : MonoBehaviour, IInteractionProvider
         if (reason != null) return;
 
         aimedBlock.jointBreakForce = jointBreakForce;
-        aimedBlock.Weld(candBlock, aimedFace, candFace);
+        if (MpSync.IsClient) aimedBlock.MpRequestWeld(candBlock, aimedFace.index, candFace.index); else aimedBlock.Weld(candBlock, aimedFace, candFace);
     }
 
     // candBlock이 속한 구조물의 블록 수 + (aimedBlock이 그 구조물에 아직 없으면) 1.
