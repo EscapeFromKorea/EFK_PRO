@@ -12,7 +12,11 @@ public class MpLobby : NetworkBehaviour
     public static readonly string[] ShapeNames = { "구", "정육면체", "정사면체" };
     public static readonly string[] ShapePrefabs = { "NetProtoPlayer", "NetProtoPlayer_Cube", "NetProtoPlayer_Tetra" };
     // R-12: 선택 가능한 맵 목록은 여기 한 곳에서만 정한다(정식 단계엔 "클리어한 맵만"으로 바꿀 자리)
-    public static readonly string[] MapScenes = { "Map1_DayDream", "Map2_Kitchen", "Map3_ToyWorld", "Map4_Master" };
+    public static readonly string[] MapScenes = {
+        "Assets/Scenes/Map1_DayDream/Map1_DayDream.unity",
+        "Assets/Scenes/Map2_Kitchen/Rebuild/Scenes/Map2KitchenPlayable.unity",
+        "Assets/Scenes/Map3_ToyWorld/Scenes/Map3_ToyWorld.unity",
+        "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity" }; // LevelManager의 경로와 같아야 클리어 판정(CurrentIndex)이 맞는다
     public static readonly string[] MapNames = { "맵 1", "맵 2", "맵 3", "맵 4" };
 
     public static MpLobby I;
@@ -21,14 +25,22 @@ public class MpLobby : NetworkBehaviour
     public NetworkList<bool> Ready = new NetworkList<bool>();
     public NetworkVariable<int> Map = new NetworkVariable<int>(0);
     public NetworkVariable<bool> Started = new NetworkVariable<bool>(false);
-    int loadedCount;
+    // M3(b): Round가 오를 때마다 전원이 Map.Value 맵을 (다시) 로드한다. Cleared는 호스트가 판정한 클리어 상태(S-01)
+    public NetworkVariable<int> Round = new NetworkVariable<int>(0);
+    public NetworkVariable<bool> Cleared = new NetworkVariable<bool>(false);
+    readonly System.Collections.Generic.HashSet<ulong> loaded = new System.Collections.Generic.HashSet<ulong>();
+    // E-07 재접속: 입장 때 낸 토큰을 서버가 기억해 두었다가, 시작 후 끊긴 슬롯은 같은 토큰으로 돌아온 사람에게만 돌려준다
+    readonly System.Collections.Generic.Dictionary<ulong, string> tokenOf = new System.Collections.Generic.Dictionary<ulong, string>();
+    readonly string[] tokenBySlot = new string[3];
+    readonly System.Collections.Generic.List<NetworkObject> shapes = new System.Collections.Generic.List<NetworkObject>();
 
     public override void OnNetworkSpawn()
     {
         I = this;
         DontDestroyOnLoad(gameObject); // 맵 씬을 로드하면 홈 씬이 언로드되는데, 로비가 같이 파괴되면 시작 알림(LoadedRpc)이 호스트에 못 간다
         if (IsServer) for (int i = 0; i < 3; i++) { Owners.Add(Empty); Ready.Add(false); }
-        Started.OnValueChanged += (_, now) => { if (now) MpGame.Begin(this); };
+        Round.OnValueChanged += (_, now) => { if (now > 0) MpGame.Begin(this); };
+        if (!IsServer && Round.Value > 0) MpGame.Begin(this); // 이미 시작된 뒤 스폰이 도착한 경우(안전망)
     }
 
     public override void OnNetworkDespawn() { if (I == this) I = null; }
@@ -83,21 +95,70 @@ public class MpLobby : NetworkBehaviour
     public void StartRpc(RpcParams p = default)
     {
         if (p.Receive.SenderClientId != NetworkManager.ServerClientId || !CanStart) return;
-        loadedCount = 0;
-        Started.Value = true; // 전원이 이 값 변화를 보고 각자 맵을 로드한다(MpGame)
+        loaded.Clear();
+        for (int i = 0; i < 3; i++) tokenBySlot[i] = tokenOf.TryGetValue(Owners[i], out var t) ? t : null;
+        Started.Value = true;
+        Round.Value++; // 전원이 이 값 변화를 보고 각자 맵을 로드한다(MpGame)
+    }
+
+    /// <summary>S-01: 호스트만 클리어를 확정한다(LevelManager 훅). 클라이언트의 호출은 무시.</summary>
+    public void ServerNoteToken(ulong id, string token) => tokenOf[id] = token;
+
+    /// <summary>시작 후 입장 요청이 예약 슬롯의 주인인지(그 슬롯의 사람이 지금 접속 중이 아니어야 한다).</summary>
+    public bool ServerCanRejoin(string token)
+    {
+        if (string.IsNullOrEmpty(token)) return false;
+        for (int i = 0; i < 3; i++)
+            if (tokenBySlot[i] == token && !Connected(Owners[i])) return true;
+        return false;
+    }
+
+    /// <summary>재접속이 승인된 클라이언트가 실제로 연결되면 슬롯 주인을 새 id로 바꾼다.</summary>
+    public void ServerRejoined(ulong id)
+    {
+        if (!tokenOf.TryGetValue(id, out var token)) return;
+        for (int i = 0; i < 3; i++)
+            if (tokenBySlot[i] == token && Owners[i] != id) { Owners[i] = id; return; }
+    }
+
+    public void ServerClear() { if (IsServer && Started.Value) Cleared.Value = true; }
+
+    /// <summary>S-02: Next Stage는 방장만. 도형을 내리고 다음 맵 번호로 새 라운드를 연다. 마지막 맵이면 거부.</summary>
+    [Rpc(SendTo.Server)]
+    public void NextStageRpc(RpcParams p = default)
+    {
+        if (p.Receive.SenderClientId != NetworkManager.ServerClientId || !Cleared.Value || Map.Value + 1 >= MapScenes.Length) return;
+        foreach (var s in shapes) if (s != null && s.IsSpawned) s.Despawn(true); // 씬 동기화를 껐으니 맵이 바뀌기 전에 직접 내린다
+        shapes.Clear();
+        loaded.Clear();
+        Cleared.Value = false;
+        Map.Value++;
+        Round.Value++;
     }
 
     // 맵을 다 불러온 쪽이 알린다 → 3명이 다 불러오면 서버가 도형을 스폰(스폰 위치가 맵 로드에 의존하므로)
     [Rpc(SendTo.Server)]
-    public void LoadedRpc()
+    public void LoadedRpc(RpcParams p = default)
     {
-        if (++loadedCount < 3) return;
+        ulong who = p.Receive.SenderClientId;
+        if (!loaded.Add(who)) return;
+        if (shapes.Count > 0) { int mine = SlotOf(who); if (mine >= 0) SpawnShape(mine); return; } // 재접속·늦은 합류: 내 슬롯 도형만
+        int expected = 0;
+        for (int i = 0; i < 3; i++) if (Connected(Owners[i])) expected++; // 끊겨 있는 예약 슬롯은 기다리지 않는다
+        if (loaded.Count < expected) return;
         for (int slot = 0; slot < 3; slot++)
-        {
-            var go = Instantiate(Resources.Load<GameObject>(ShapePrefabs[slot]));
-            go.GetComponent<NetworkObject>().SpawnAsPlayerObject(Owners[slot]);
-            Debug.Log($"[Mp] 도형 스폰 slot={slot}({ShapeNames[slot]}) owner={Owners[slot]}");
-        }
+            if (Connected(Owners[slot])) SpawnShape(slot);
+    }
+
+    bool Connected(ulong id) => NetworkManager.ConnectedClients.ContainsKey(id);
+
+    void SpawnShape(int slot)
+    {
+        var go = Instantiate(Resources.Load<GameObject>(ShapePrefabs[slot]));
+        var no = go.GetComponent<NetworkObject>();
+        no.SpawnAsPlayerObject(Owners[slot]);
+        shapes.Add(no);
+        Debug.Log($"[Mp] 도형 스폰 slot={slot}({ShapeNames[slot]}) owner={Owners[slot]}");
     }
 
     /// <summary>접속이 끊긴 사람의 슬롯 비우기(R-10). 시작 전에만.</summary>

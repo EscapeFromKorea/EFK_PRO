@@ -85,8 +85,12 @@ public sealed class LevelManager : MonoBehaviour
             if (levels[i] != null && levels[i].scenePath == path) return i;
         return -1;
     }
+    /// <summary>멀티플레이가 걸어 두는 훅. 설정되면 클리어를 로컬에서 처리하지 않고 이쪽(호스트 판정)으로 넘긴다.</summary>
+    public static Action OnClearOverride;
+
     public void CompleteLevel()
     {
+        if (OnClearOverride != null) { OnClearOverride(); return; }
         if (cleared) return;
         if (CurrentIndex() < 0) { Debug.LogError("The current scene is not in LevelManager's level list."); return; }
         cleared = true;

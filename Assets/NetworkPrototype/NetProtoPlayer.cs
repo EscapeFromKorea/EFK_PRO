@@ -21,6 +21,8 @@ public class NetProtoPlayer : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        // 멀티플레이: 재접속자는 홈 화면에서 연결돼 기존 도형이 홈 씬에 만들어지고, 곧 맵 로드로 홈이 언로드되면 같이 사라진다 → 씬과 무관하게 유지
+        if (MpLobby.I != null) DontDestroyOnLoad(gameObject);
         mover = GetComponent<PlayerMover>();
         jump = GetComponent<PlayerJump>();
         rb = GetComponent<Rigidbody>();

@@ -20,6 +20,7 @@ public class MpNet : MonoBehaviour
     public const int MaxPlayers = 3;
 
     public static MpNet I;
+    static readonly string Token = Guid.NewGuid().ToString("N"); // E-07: 이 실행 동안 같은 사람임을 증명(나갔다 다시 들어와도 같다)
     public static string Message; // 홈으로 돌아왔을 때 보여 줄 메시지(H-04)
 
     public NetworkManager NM;
@@ -61,6 +62,7 @@ public class MpNet : MonoBehaviour
         NM.AddNetworkPrefab(Resources.Load<GameObject>("MpLobby"));
         foreach (var n in MpLobby.ShapePrefabs) NM.AddNetworkPrefab(Resources.Load<GameObject>(n));
         NM.OnClientDisconnectCallback += OnDisconnect;
+        NM.OnClientConnectedCallback += id => { if (NM.IsServer && MpLobby.I != null) MpLobby.I.ServerRejoined(id); };
         NetProtoTransform.OwnerAuth = true; // 몸은 오너 권한(D1)
     }
 
@@ -69,11 +71,14 @@ public class MpNet : MonoBehaviour
     {
         res.CreatePlayerObject = false;
         if (req.ClientNetworkId == NM.LocalClientId) { res.Approved = true; return; } // 호스트 자신
-        string theirs = Encoding.UTF8.GetString(req.Payload);
+        string[] parts = Encoding.UTF8.GetString(req.Payload).Split('|');
+        string theirs = parts[0], token = parts.Length > 1 ? parts[1] : null;
+        if (MpLobby.I != null) MpLobby.I.ServerNoteToken(req.ClientNetworkId, token);
+        bool rejoin = MpLobby.I != null && MpLobby.I.Started.Value && MpLobby.I.ServerCanRejoin(token);
         string why = null;
         if (theirs != Application.version) why = $"버전이 다릅니다(방장 {Application.version} / 내 {theirs})";
         else if (NM.ConnectedClientsIds.Count >= MaxPlayers) why = "정원(3명)이 가득 찼습니다";
-        else if (MpLobby.I != null && MpLobby.I.Started.Value) why = "이미 시작된 방입니다";
+        else if (MpLobby.I != null && MpLobby.I.Started.Value && !rejoin) why = "이미 시작된 방입니다";
         res.Approved = why == null;
         res.Reason = why ?? "";
     }
@@ -117,7 +122,7 @@ public class MpNet : MonoBehaviour
         try
         {
             await InitAuth();
-            NM.NetworkConfig.ConnectionData = Encoding.UTF8.GetBytes(Application.version);
+            NM.NetworkConfig.ConnectionData = Encoding.UTF8.GetBytes(Application.version + "|" + Token);
             Session = await MultiplayerService.Instance.JoinSessionByCodeAsync(code.Trim().ToUpperInvariant());
             // 연결 승인(버전·정원)은 세션 참가 뒤 NGO 단계에서 거부될 수 있다
             for (int i = 0; i < 100 && !NM.IsConnectedClient && NM.IsListening; i++) await Task.Delay(100);
@@ -133,6 +138,7 @@ public class MpNet : MonoBehaviour
         if (leaving) return;
         leaving = true;
         Message = msg;
+        LevelManager.OnClearOverride = null;
         PauseMenuController.OnLeaveToMain = null; // 홈에서는 "메인화면으로 나가기"를 다시 끈다
         try
         {
@@ -143,6 +149,7 @@ public class MpNet : MonoBehaviour
         }
         catch (Exception e) { Debug.LogWarning("[Mp] 세션 정리 중 오류(무시): " + e.Message); }
         Session = null;
+        foreach (var pl in FindObjectsByType<NetProtoPlayer>(FindObjectsSortMode.None)) Destroy(pl.gameObject); // DDOL로 남은 도형 정리
         if (NM != null) { Destroy(NM.gameObject); await Task.Yield(); } // 같은 NetworkManager 재사용은 불안정 → 새로 조립
         Build();
         leaving = false;

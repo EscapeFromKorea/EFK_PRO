@@ -340,7 +340,7 @@ public class PlayerFollowCamera : MonoBehaviour
         {
             if (Input.GetKeyDown(KeyCode.Escape))
                 SetCursorLocked(false);
-            else if (lockCursorOnPlay && Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0))
+            else if (lockCursorOnPlay && !CursorFree && Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0))
             {
                 SetCursorLocked(true);
                 // 잠금 해제 동안 멈춰 있던 필터 상태를 지운다 — 안 지우면 재잠금 첫 프레임에 그
@@ -512,6 +512,9 @@ public class PlayerFollowCamera : MonoBehaviour
 
         instance.orbitYaw = Mathf.Atan2(horizontal.x, horizontal.y) * Mathf.Rad2Deg;
     }
+
+    /// <summary>true인 동안은 클릭해도 커서를 다시 잠그지 않는다(클리어 화면 등 버튼을 눌러야 하는 UI용).</summary>
+    public static bool CursorFree;
 
     // ─── [mnppi 추가] 커서 락 헬퍼 ───
     private static void SetCursorLocked(bool locked)
