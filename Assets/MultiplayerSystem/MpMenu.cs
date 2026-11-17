@@ -18,6 +18,15 @@ public class MpMenu : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
     }
 
+    // 시작 전 로비는 홈 씬 위라 Leave가 씬을 다시 불러오지 않는다 — 세션이 없어졌으면(나가기·방장 이탈·끊김) 홈 화면으로 되돌린다.
+    // OnGUI 안에서 바꾸면 한 프레임의 Layout/Repaint 두 패스가 서로 다른 버튼을 그려 IMGUI ArgumentException이 난다 → Update에서 바꾼다.
+    void Update()
+    {
+        if (v != V.Lobby || MpNet.I == null || MpNet.I.Session != null) return;
+        v = V.Home;
+        msg = MpNet.Message; MpNet.Message = null;
+    }
+
     async void Run(System.Threading.Tasks.Task<string> t, V okView)
     {
         v = V.Busy; msg = null;
