@@ -43,7 +43,8 @@ public class RainbowBridgeSwitch : MonoBehaviour, IMpSynced
     [Tooltip("투명↔불투명 전환에 걸리는 시간(초). 0이면 즉시 전환.")]
     public float fadeDuration = 0.45f;
 
-    private int overlapCount = 0;
+    // 누르는 콜라이더 집합(파괴·끊김으로 Exit가 안 와도 걷어낼 수 있게 숫자 카운터 대신 집합)
+    private readonly HashSet<Collider> overlaps = new HashSet<Collider>();
     private float soloTimer = 0f;
 
     // 페이드 상태: targetAlpha는 목표(0=숨김/1=표시), currentAlpha는 현재 보간값.
@@ -114,7 +115,7 @@ public class RainbowBridgeSwitch : MonoBehaviour, IMpSynced
     {
         if (MpSync.IsClient || (!other.CompareTag("Player") && !other.CompareTag("InteractionItem"))) return;
 
-        overlapCount++;
+        overlaps.Add(other);
         if (!activatorRequiresHold)
             soloTimer = activeDurationSec;   // 솔플: 밟을 때마다 타이머 갱신
 
@@ -125,15 +126,20 @@ public class RainbowBridgeSwitch : MonoBehaviour, IMpSynced
     {
         if (MpSync.IsClient || (!other.CompareTag("Player") && !other.CompareTag("InteractionItem"))) return;
 
-        overlapCount = Mathf.Max(0, overlapCount - 1);
+        overlaps.Remove(other);
 
         // 협동 모드에서만 발판에서 완전히 벗어나면 페이드-아웃 시작. 솔플은 타이머가 끈다.
-        if (activatorRequiresHold && overlapCount == 0)
+        if (activatorRequiresHold && overlaps.Count == 0)
             Hide();
     }
 
     private void Update()
     {
+        // 올라선 몸이 파괴·끊김으로 사라지면 Exit가 오지 않는다 — 없어진 콜라이더를 걷어내고 비면 페이드-아웃
+        if (!MpSync.IsClient && overlaps.Count > 0 && overlaps.RemoveWhere(c => c == null || !c.gameObject.activeInHierarchy) > 0
+            && overlaps.Count == 0 && activatorRequiresHold)
+            Hide();
+
         // 솔플 유지 타이머
         if (!MpSync.IsClient && !activatorRequiresHold && targetAlpha > 0f)
         {

@@ -77,31 +77,10 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
     private ConfigurableJoint joint;             // 살아 있으면 도킹 중.
 
     // [멀티 M4] 참가자 PC에서는 블록이 서버 자세를 따라가는 키네마틱이라 물리 조인트로 못 묶는다 → 조인트 없이 도킹 상태만 갖고,
-    // 서버가 결합 구조물 전체를 내 몸 복사본에 고정 간격으로 붙여 끌고 다닌다. 이 PC에서는 몸이 블록에 막히지 않게 충돌을 끈다.
+    // 서버가 결합 구조물 전체를 내 몸 복사본에 고정 간격으로 붙여 끌고 다닌다(몸-블록 충돌 예외는 SnapBlock.MpLocalDock이 정육면체 대 블록으로만 건다).
     private bool mpDocked;
-    private readonly System.Collections.Generic.List<(Collider, Collider)> mpIgnored = new System.Collections.Generic.List<(Collider, Collider)>();
     private bool Docked => joint != null || mpDocked;
 
-    private void MpIgnoreBlocks(bool ignore)
-    {
-        if (!ignore)
-        {
-            foreach (var (a, b) in mpIgnored) if (a != null && b != null) Physics.IgnoreCollision(a, b, false);
-            mpIgnored.Clear();
-            return;
-        }
-        var mine = GetComponentsInChildren<Collider>();
-        foreach (SnapBlock sb in Object.FindObjectsByType<SnapBlock>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-        {
-            Collider bc = sb.GetComponent<Collider>();
-            if (bc == null) continue;
-            foreach (Collider c in mine)
-            {
-                Physics.IgnoreCollision(bc, c, true);
-                mpIgnored.Add((bc, c));
-            }
-        }
-    }
     private SnapBlock dockedBlock;
 
     private Vector3 lastPos;
@@ -552,7 +531,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         if (dockedBlock != null) dockedBlock.enabled = true; // 다시 용접·픽업·도킹 대상 탐색에 보이게.
         joint = null;
         dockedBlock = null;
-        if (mpDocked) { MpIgnoreBlocks(false); mpDocked = false; }
+        mpDocked = false;
     }
 
     // ── 자동 해제 판정 ────────────────────────────────────────

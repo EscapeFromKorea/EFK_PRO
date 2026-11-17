@@ -44,7 +44,7 @@ using UnityEngine.Rendering;
 /// 체크포인트(위 문단)로 보내는 기존 경로와 연출·안전 로직을 100% 공유하고, 목적지 조회와 점유
 /// 검사만 다르다 — SectionHitCounter가 임계 피격에서 이 오버로드를 발화한다.
 /// </summary>
-public class RespawnController : MonoBehaviour
+public class RespawnController : MonoBehaviour, IMpEventSink
 {
     [Header("킬 라인 (장외 판정 — 항상 켜져 있는 바닥)")]
     [Tooltip("이 높이 아래에 머무르면 장외로 본다. 맵 최저 지형보다 충분히 아래(권장 -30 이하)에 " +
@@ -153,11 +153,25 @@ public class RespawnController : MonoBehaviour
             Debug.LogWarning("[Respawn] RespawnController가 씬에 둘 이상이다 — 마지막 하나만 " +
                              "체크포인트를 받는다. 하나만 남겨라.", this);
         instance = this;
+        mpId = MpSync.Register(this);
     }
 
     private void OnDestroy()
     {
         if (instance == this) instance = null;
+        MpSync.Unregister(mpId, this);
+    }
+
+    // [멀티 M4] 복귀는 몸 주인 PC가 실행하므로 서버의 PlayerRespawned 구독자(ZoneEntry 등)는 남의 복귀를 모른다.
+    // 주인 PC가 복귀 시작을 서버에 알리면 서버가 그 몸 복사본으로 같은 이벤트를 낸다.
+    private uint mpId;
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || kind != 0 || !MpSync.SenderOwnsBody((ulong)data.x)) return;
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        if (nm != null && nm.SpawnManager.SpawnedObjects.TryGetValue((ulong)data.x, out var no) && no != null)
+            PlayerRespawned?.Invoke(no.gameObject);
     }
 
     private void OnDisable()
@@ -535,6 +549,11 @@ public class RespawnController : MonoBehaviour
         Debug.Log($"[Respawn] '{ShapeLabel(mover)}' 리스폰 — {reason} / {(useFade ? "페이드" : "낙하")}, " +
                   $"팀 누적 {RespawnCount}회");
         PlayerRespawned?.Invoke(mover.gameObject);
+        if (MpSync.IsClient)
+        {
+            var respawnedNo = mover.GetComponentInParent<Unity.Netcode.NetworkObject>();
+            if (respawnedNo != null) MpSync.SendEvent(mpId, 0, new Vector3(respawnedNo.NetworkObjectId, 0f, 0f));
+        }
 
         List<FadeMaterial> fadeMats = null;
         if (useFade)

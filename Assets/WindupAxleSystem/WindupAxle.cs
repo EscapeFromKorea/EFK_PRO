@@ -113,7 +113,7 @@ public class WindupAxle : MonoBehaviour, IMpSynced, IMpEventSink
         }
     }
 
-    public void OnMpEvent(int kind, Vector3 data, uint arg) { if (kind == 0) ApplyRotation(data.x); }
+    public void OnMpEvent(int kind, Vector3 data, uint arg) { if (kind == 0 && float.IsFinite(data.x)) ApplyRotation(Mathf.Clamp(data.x, -4f, 4f)); } // 입력 1회는 텀블 1.0 기준 — 비정상 값은 상한을 둔다
 
     void Awake()
     {

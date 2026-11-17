@@ -246,9 +246,28 @@ public class SnapBlock : MonoBehaviour, IMpSynced, IMpEventSink
 
     private void DockEnd()
     {
-        if (dockOwner != ulong.MaxValue && dockOwner != Unity.Netcode.NetworkManager.ServerClientId)
+        if (dockOwner != ulong.MaxValue && dockOwner != Unity.Netcode.NetworkManager.ServerClientId
+            && MpLobby.I.NetworkManager.ConnectedClients.ContainsKey(dockOwner)) // 끊긴 주인에게는 보내지 않는다
             MpLobby.I.DockInfoRpc(MpId, false, dockCubeId, Vector3.zero, Quaternion.identity, MpLobby.I.NetworkManager.RpcTarget.Single(dockOwner, Unity.Netcode.RpcTargetUse.Temp));
         dockOwner = ulong.MaxValue;
+        if (follow != null) follow.End();
+        body.isKinematic = false;
+        body.linearVelocity = Vector3.zero;
+        body.angularVelocity = Vector3.zero;
+        enabled = true;
+        MpSync.Publish(MpId, 0, 0f);
+    }
+
+    /// <summary>서버: 블록을 들거나 도킹한 몸이 사라졌다(끊김·파괴). 해제 이벤트(2·8)가 영영 안 오므로 서버가 직접 풀어
+    /// 블록이 키네마틱·비활성으로 공중에 얼어붙거나 도킹 요청이 영구히 막히는 것을 막는다.</summary>
+    public void MpCarrierLost()
+    {
+        if (dockOwner != ulong.MaxValue)
+        {
+            DockEnd();
+            dockMembers = null;
+            return;
+        }
         if (follow != null) follow.End();
         body.isKinematic = false;
         body.linearVelocity = Vector3.zero;
@@ -264,6 +283,7 @@ public class SnapBlock : MonoBehaviour, IMpSynced, IMpEventSink
         {
             case 0: // 들기: 서버는 블록을 키네마틱으로 만들고 들고 있는 몸을 따라가게 한다(주인 PC가 호스트면 로컬 운반 컴포넌트가 직접 움직인다)
                 if (follow != null && follow.CarrierNetId != 0) return; // 이미 누가 들고 있다
+                if (!MpSync.SenderOwnsBody((ulong)data.x)) return; // 남의 몸 이름으로 들 수 없다
                 if (HasConnections) return;
                 body.isKinematic = true;
                 body.linearVelocity = Vector3.zero;
@@ -305,6 +325,7 @@ public class SnapBlock : MonoBehaviour, IMpSynced, IMpEventSink
             case 7: // 도킹: 결합된 구조물 전체를 정육면체 복사본에 고정 간격으로 붙인다(참가자 PC는 물리 조인트로 못 묶는다)
             {
                 if (dockMembers != null && dockMembers.Count > 0) return;
+                if (!MpSync.SenderOwnsBody(arg)) return; // 남의 정육면체에 도킹시킬 수 없다
                 var nm = Unity.Netcode.NetworkManager.Singleton;
                 if (nm == null || !nm.SpawnManager.SpawnedObjects.TryGetValue(arg, out var cube) || cube == null) return;
                 var members = new List<SnapBlock> { this };
@@ -634,7 +655,13 @@ public class SnapBlockMpFollow : MonoBehaviour
         }
         if (CarrierNetId == 0 || !MpSync.IsServer || rb == null) return;
         var nm = Unity.Netcode.NetworkManager.Singleton;
-        if (nm == null || !nm.SpawnManager.SpawnedObjects.TryGetValue(CarrierNetId - 1, out var no) || no == null) { CarrierNetId = 0; return; }
+        if (nm == null || !nm.SpawnManager.SpawnedObjects.TryGetValue(CarrierNetId - 1, out var no) || no == null)
+        {
+            CarrierNetId = 0;
+            var sb = GetComponent<SnapBlock>();
+            if (sb != null) sb.MpCarrierLost(); // 운반자·정육면체가 사라졌다 — 해제 이벤트가 안 오므로 서버가 직접 푼다
+            return;
+        }
         if (no.IsOwner) return; // 서버 자신의 몸: 로컬 운반 컴포넌트가 처리
         Vector3 p = dock ? no.transform.position + no.transform.rotation * relPos : no.transform.position + Vector3.up * height;
         Quaternion r = dock ? no.transform.rotation * relRot : rot;

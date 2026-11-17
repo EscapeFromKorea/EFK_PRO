@@ -32,6 +32,9 @@ public class LeverHead : MonoBehaviour, IMpSynced, IMpEventSink
     private float mpAngle;
     private Vector3 ownerSmoothed;
     private float nextStaySend;
+    private bool remoteHeld;   // 서버: 참가자가 미는 중(이벤트 0/1 수신 중)
+    private float remoteSeen;  // 서버: 참가자 밀기 이벤트를 마지막으로 받은 시각
+    private const float RemoteTimeout = 0.8f; // 미는 중 이벤트(0.1초 주기)가 이만큼 끊기면 끊김·파괴로 보고 놓은 것으로 처리
 
     void Awake()
     {
@@ -45,6 +48,7 @@ public class LeverHead : MonoBehaviour, IMpSynced, IMpEventSink
 
     public void OnMpEvent(int kind, Vector3 n, uint arg)
     {
+        if (kind != 2) { remoteHeld = true; remoteSeen = Time.time; } else remoteHeld = false;
         if (kind == 0) HandleEnter(n);
         else if (kind == 1) HandleStay(n, true);
         else HandleExit();
@@ -87,6 +91,9 @@ public class LeverHead : MonoBehaviour, IMpSynced, IMpEventSink
             IsActivated = Mathf.Abs(Mathf.DeltaAngle(restAngle, GetCurrentAngle())) >= maxAngle * 0.75f;
             return;
         }
+
+        // 미는 참가자가 끊기거나 몸이 사라지면 떨어짐(2) 이벤트가 영영 오지 않는다 — 하트비트가 끊기면 놓은 것으로 본다
+        if (remoteHeld && Time.time - remoteSeen > RemoteTimeout) { remoteHeld = false; HandleExit(); }
 
         if (pendingExit)
         {

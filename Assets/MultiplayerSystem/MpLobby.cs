@@ -79,7 +79,14 @@ public class MpLobby : NetworkBehaviour
 
     /// <summary>몸 주인 PC → 서버 이벤트(레버를 민 방향 등). 호출자가 몸 주인인지는 호출 쪽이 확인한다.</summary>
     [Rpc(SendTo.Server)]
-    public void SyncEventRpc(uint id, int kind, Vector3 data, uint arg) => MpSync.Dispatch(id, kind, data, arg);
+    public void SyncEventRpc(uint id, int kind, Vector3 data, uint arg, RpcParams rpcParams = default)
+    {
+        // NaN·무한대는 기믹 상태를 영구히 오염시킨다(Clamp(NaN)=NaN) — 입구에서 버린다
+        if (!float.IsFinite(data.x) || !float.IsFinite(data.y) || !float.IsFinite(data.z)) return;
+        MpSync.SenderId = rpcParams.Receive.SenderClientId;
+        try { MpSync.Dispatch(id, kind, data, arg); }
+        finally { MpSync.SenderId = ulong.MaxValue; }
+    }
     readonly System.Collections.Generic.HashSet<ulong> loaded = new System.Collections.Generic.HashSet<ulong>();
     // E-07 재접속: 입장 때 낸 토큰을 서버가 기억해 두었다가, 시작 후 끊긴 슬롯은 같은 토큰으로 돌아온 사람에게만 돌려준다
     readonly System.Collections.Generic.Dictionary<ulong, string> tokenOf = new System.Collections.Generic.Dictionary<ulong, string>();

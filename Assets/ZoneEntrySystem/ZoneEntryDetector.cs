@@ -59,6 +59,9 @@ public class ZoneEntryDetector : MonoBehaviour
     private readonly Dictionary<PlayerMover, HashSet<Collider>> occupancy =
         new Dictionary<PlayerMover, HashSet<Collider>>();
     private readonly HashSet<PlayerMover> respawning = new HashSet<PlayerMover>();
+    // [멀티 M4] 서버가 보는 남의 몸 복사본은 복귀 중에도 ExternallyDriven이 안 켜진다 — 복귀 표시를 시간으로 유지한다
+    private readonly Dictionary<PlayerMover, float> respawnGraceUntil = new Dictionary<PlayerMover, float>();
+    private const float RemoteRespawnGraceSec = 3f; // ponytail: 복귀 연출(페이드+이동) 길이의 근사값 — 실측 후 조정
     private readonly List<Collider> scratchColliders = new List<Collider>();
     private readonly List<PlayerMover> scratchMovers = new List<PlayerMover>();
 
@@ -102,7 +105,7 @@ public class ZoneEntryDetector : MonoBehaviour
         if (subscribedRespawn != null) subscribedRespawn.PlayerRespawned -= OnPlayerRespawned;
         subscribedRespawn = null;
         occupancy.Clear();
-        respawning.Clear();
+        respawning.Clear(); respawnGraceUntil.Clear();
     }
 
     /// <summary>챕터 전체 재시작용(확정 — 호출은 챕터 컨트롤러나 씬 인스펙터 배선이 맡는다). 최초 발동 여부,
@@ -112,7 +115,7 @@ public class ZoneEntryDetector : MonoBehaviour
     {
         hasFired = false;
         nextAllowedTime = 0f;
-        respawning.Clear();
+        respawning.Clear(); respawnGraceUntil.Clear();
         SeedOccupancy();
     }
 
@@ -127,7 +130,11 @@ public class ZoneEntryDetector : MonoBehaviour
     {
         if (playerRoot == null) return;
         PlayerMover mover = playerRoot.GetComponentInParent<PlayerMover>();
-        if (mover != null) respawning.Add(mover);
+        if (mover != null)
+        {
+            respawning.Add(mover);
+            if (!MpSync.IsOwnBody(mover)) respawnGraceUntil[mover] = Time.time + RemoteRespawnGraceSec;
+        }
     }
 
     private void SeedOccupancy()
@@ -193,8 +200,8 @@ public class ZoneEntryDetector : MonoBehaviour
         {
             scratchMovers.Clear();
             foreach (PlayerMover m in respawning)
-                if (m == null || !m.ExternallyDriven) scratchMovers.Add(m);
-            foreach (PlayerMover m in scratchMovers) respawning.Remove(m);
+                if (m == null || (!m.ExternallyDriven && !(respawnGraceUntil.TryGetValue(m, out float until) && Time.time < until))) scratchMovers.Add(m);
+            foreach (PlayerMover m in scratchMovers) { respawning.Remove(m); if (m != null) respawnGraceUntil.Remove(m); }
         }
 
         if (occupancy.Count == 0 || zone == null) return;

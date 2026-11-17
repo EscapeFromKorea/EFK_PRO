@@ -120,6 +120,17 @@ public static class MpSync
         else MpLobby.I.SyncEventRpc(id, kind, data, arg);
     }
 
+    /// <summary>지금 처리 중인 이벤트를 보낸 클라이언트(서버가 RPC로 받은 경우). 서버 자신이 낸 이벤트면 MaxValue.</summary>
+    public static ulong SenderId = ulong.MaxValue;
+
+    /// <summary>이 이벤트를 보낸 PC가 그 몸(NetworkObjectId)의 주인인가. 남의 몸 이름으로 보낸 이벤트를 걸러낼 때 쓴다.</summary>
+    public static bool SenderOwnsBody(ulong bodyNetId)
+    {
+        if (SenderId == ulong.MaxValue) return true;
+        var nm = NetworkManager.Singleton;
+        return nm != null && nm.SpawnManager.SpawnedObjects.TryGetValue(bodyNetId, out var no) && no != null && no.OwnerClientId == SenderId;
+    }
+
     /// <summary>등록된 기믹을 ID로 찾는다(이벤트의 상대 기믹 지정용).</summary>
     public static Component Find(uint id) => reg.TryGetValue(id, out var c) ? c : null;
 

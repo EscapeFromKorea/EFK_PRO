@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
@@ -13,7 +14,8 @@ public class PadTrigger : MonoBehaviour, IMpSynced
     // 플레이어 오브젝트가 트리거(Player_Mesh)와 솔리드(Player_Collider) 등 여러 콜라이더를
     // 가질 수 있어 Enter/Exit가 중복 호출될 수 있다. 카운터로 실제 겹침 개수를 추적해
     // 하나만 먼저 빠져나가도 눌림이 풀리지 않게 한다.
-    private int overlapCount = 0;
+    // 누르는 콜라이더 집합. 숫자 카운터는 올라선 몸이 파괴·끊김으로 사라지면(Exit 미호출) 영구히 눌린 채 남는다.
+    private readonly HashSet<Collider> overlaps = new HashSet<Collider>();
 
     public doorPhysics doorPhysicsScript;
 
@@ -59,6 +61,8 @@ public class PadTrigger : MonoBehaviour, IMpSynced
 
     void FixedUpdate()
     {
+        if (!MpSync.IsClient && overlaps.Count > 0 && overlaps.RemoveWhere(c => c == null || !c.gameObject.activeInHierarchy) > 0 && overlaps.Count == 0)
+            isPressed = false;
         // pad 눌림 상태를 doorPhysics에 전달
         if (!MpSync.IsClient && doorPhysicsScript != null)
             doorPhysicsScript.SetPadPressed(isPressed);
@@ -73,7 +77,7 @@ public class PadTrigger : MonoBehaviour, IMpSynced
     {
         if (MpSync.IsClient || !IsValidPresser(other)) return;
 
-        overlapCount++;
+        overlaps.Add(other);
         isPressed = true;
     }
 
@@ -81,8 +85,8 @@ public class PadTrigger : MonoBehaviour, IMpSynced
     {
         if (MpSync.IsClient || !IsValidPresser(other)) return;
 
-        overlapCount = Mathf.Max(0, overlapCount - 1);
-        if (overlapCount == 0)
+        overlaps.Remove(other);
+        if (overlaps.Count == 0)
             isPressed = false;
     }
 
