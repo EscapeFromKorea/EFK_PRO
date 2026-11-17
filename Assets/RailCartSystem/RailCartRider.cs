@@ -218,6 +218,7 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
         SetOccupantCartCollisionsIgnored(false);
 
         body.transform.SetParent(occupantOriginalParent, true);
+        MpSync.RestoreBodyRoot(body.gameObject); // [멀티] 좌석 자식이 되며 맵 씬으로 옮겨진 몸을 DDOL로 되돌린다(맵 전환 때 파괴 방지)
         body.transform.position = exitPos;
         body.isKinematic = false;
         body.interpolation = occupantOriginalInterpolation;

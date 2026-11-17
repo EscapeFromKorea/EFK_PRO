@@ -29,8 +29,53 @@ using UnityEngine;
 /// [하드룰] 네모에 붙이는 건 런타임 자식 마커뿐이다(ThreadPinPlacer가 핀을 만드는 것과 같은 방식).
 /// PlayerSystem은 Kind / IsGrounded / velocity / PlayerVisualRoll.visual을 읽기만 한다 — 파일 수정 없음.
 /// </summary>
-public class ThreadCubeAnchor : MonoBehaviour
+public class ThreadCubeAnchor : MonoBehaviour, IMpSynced, IMpEventSink
 {
+    // [멀티 M4] 네모는 사람이 조작하므로 "조작 중이 아닐 것" 조건은 멀티에서 뺀다(2026-11-17 사용자 결정: 접지+멈춤이면 닻).
+    // 남의 네모 복사본은 키네마틱이라 속도·접지를 믿을 수 없다 — 네모 주인 PC가 판정해 서버에 올리고(이벤트 0),
+    // 서버가 "닻이 켜진 네모의 몸 ID+1"을 채널 0으로 전원에게 알린다. 매달리기는 매다는 사람 PC에서 이 값으로 판정한다.
+    private uint mpId;
+    private float mpArmedBody;     // 닻이 켜진 네모의 NetworkObjectId+1 (0 = 없음). 서버는 이벤트로, 참가자는 채널 0으로 갱신
+    private bool mpLastSentArmed;
+    private bool mpSentOnce;
+
+    void Awake() => mpId = MpSync.Register(this);
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) mpArmedBody = value; }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (kind != 0 || !MpSync.SenderOwnsBody((ulong)data.y)) return;
+        float body = data.y + 1f;
+        if (data.x > 0.5f) mpArmedBody = body;
+        else if (Mathf.Approximately(mpArmedBody, body)) mpArmedBody = 0f;
+        MpSync.Publish(mpId, 0, mpArmedBody);
+    }
+
+    private static float NetIdOf(Component c)
+    {
+        var no = c.GetComponentInParent<Unity.Netcode.NetworkObject>();
+        return no != null ? no.NetworkObjectId : -1f;
+    }
+
+    /// <summary>멀티: 내 네모면 직접 판정해 바뀔 때만 서버에 알리고, 남의 네모면 서버가 알린 값을 쓴다.</summary>
+    private bool IsArmedMp(PlayerShapeIdentity cube)
+    {
+        if (MpSync.IsOwnBody(cube))
+        {
+            bool ready = IsAnchorReady(cube, ignoreControl: true);
+            if (!mpSentOnce || ready != mpLastSentArmed)
+            {
+                mpSentOnce = true;
+                mpLastSentArmed = ready;
+                MpSync.SendEvent(mpId, 0, new Vector3(ready ? 1f : 0f, NetIdOf(cube), 0f));
+            }
+            return ready;
+        }
+        return Mathf.Approximately(mpArmedBody, NetIdOf(cube) + 1f);
+    }
+
     [Header("고리 위치/범위")]
     [Tooltip("네모 중심에서 고리를 얼마나 위에 달지(Unit). 실이 네모 몸통에 파묻히지 않을 만큼 띄운다.")]
     public float anchorHeightOffset = 0.9f;
@@ -104,14 +149,22 @@ public class ThreadCubeAnchor : MonoBehaviour
                 ring.GetComponent<Renderer>().enabled = false;
                 ThreadAnchor dying = ring.GetComponent<ThreadAnchor>();
                 if (dying != null) Destroy(dying);
+                if (MpSync.Active && MpSync.IsOwnBody(id) && mpLastSentArmed) // 굴리기 시작 — 다른 PC의 닻도 끈다
+                {
+                    mpLastSentArmed = false;
+                    MpSync.SendEvent(mpId, 0, new Vector3(0f, NetIdOf(id), 0f));
+                }
                 continue;
             }
 
             ThreadAnchor a = ring.GetComponent<ThreadAnchor>();
             if (a == null) continue; // Destroy는 프레임 끝에 실제로 반영된다 — 한 프레임 비어 있을 수 있다
 
-            bool armed = IsAnchorReady(id);
-            a.connectRange = armed ? connectRange : 0f; // 0이면 컨트롤러의 거리 판정에 절대 안 걸린다
+            bool armed = MpSync.Active ? IsArmedMp(id) : IsAnchorReady(id, ignoreControl: false);
+            // 멀티에서 내 네모의 고리는 내가 걸 수 없게 한다(무중력 버블에서 가벼워진 네모가 제 머리 위 고리에 매달리는
+            // 퇴행 조합 — 혼자 플레이에선 '조작 중이면 닻 아님' 조건이 막던 것). 색은 그대로 켜 네모 플레이어에게 상태를 보여준다.
+            bool ownCube = MpSync.Active && MpSync.IsOwnBody(id);
+            a.connectRange = armed && !ownCube ? connectRange : 0f; // 0이면 컨트롤러의 거리 판정에 절대 안 걸린다
             a.lockToSidePlane = lockToSidePlane;
             Renderer rend = ring.GetComponent<Renderer>();
             rend.enabled = true;
@@ -120,7 +173,7 @@ public class ThreadCubeAnchor : MonoBehaviour
     }
 
     /// <summary>네모가 지금 닻으로 성립하는가. "세워 둔 네모 + 접지 + 거의 정지"가 조건이다.</summary>
-    private bool IsAnchorReady(PlayerShapeIdentity cube)
+    private bool IsAnchorReady(PlayerShapeIdentity cube, bool ignoreControl)
     {
         Rigidbody rb = cube.GetComponent<Rigidbody>();
         if (rb == null) return false;
@@ -129,7 +182,7 @@ public class ThreadCubeAnchor : MonoBehaviour
         // 이 한 줄이 무중력 버블 안에서 가벼워진 네모가 제 머리 위 고리에 매달리는 퇴행적 조합도
         // 함께 막는다. (스위처가 없는 테스트 씬은 모두 IsControlled=true라 닻이 안 켜진다.)
         PlayerMover mover = cube.GetComponent<PlayerMover>();
-        if (mover != null && mover.IsControlled) return false;
+        if (!ignoreControl && mover != null && mover.IsControlled) return false;
 
         // [2026-08-21] 굴리기 중(rolling) 여부는 이제 호출부(Update)가 더 넓은 기준으로 먼저
         // 걸러서 rolling일 때는 이 함수 자체를 안 부른다 — 여기서 다시 IsTumbling만 좁게 보던

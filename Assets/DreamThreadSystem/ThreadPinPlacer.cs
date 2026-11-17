@@ -52,7 +52,7 @@ using UnityEngine;
 /// 런타임 토글한다 — 파일 수정 없음.
 /// </summary>
 [DefaultExecutionOrder(-50)]
-public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
+public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Header("레이캐스트 (벽 탐지)")]
     [Tooltip("세모 중심에서 이동 방향으로 쏘는 레이의 최대 사거리(Unit). 이 안에 벽이 없으면 핀 생성 실패.")]
@@ -109,6 +109,103 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
 
     private System.Action onPlace, onDetach, onRetrieve;
 
+    // [멀티 M4] 핀은 세모 주인 PC에서만 생긴다 — 다른 PC도 그 핀에 매달리고 줄다리 경간을 이을 수 있도록, 주인 PC가 핀을
+    // 서버에 올리고(이벤트 10+i = 핀 i: data=박힌 벽 기준 로컬 위치, arg=벽 ID / 1 = 개수 확정) 서버가 채널(0=개수,
+    // 핀마다 5개: 로컬 xyz + 벽 ID 상·하위 14비트, 11=주인 clientId+1)로 전원에게 알린다. 주인이 아닌 PC는 같은 벽의 자식으로
+    // "원격 핀"을 만든다 — 문처럼 움직이는 벽에 박힌 핀도 따라 움직인다(2026-11-17 실측: 월드 고정이면 다른 화면에서 핀이 제자리에 남았다).
+    // 벽을 못 찾으면(벽 없음 = 월드 위치) 월드 고정.
+    // ponytail: 세모가 한 판에 하나라는 가정(핀 주인 1명). 세모가 둘 이상 가능해지면 주인별 슬롯으로 늘린다.
+    private uint mpId;
+    private readonly Vector3[] mpPinPos = new Vector3[MaxPins];   // 벽 기준 로컬 위치(벽 ID가 0이면 월드)
+    private readonly uint[] mpPinWall = new uint[MaxPins];
+    private readonly List<(uint wall, Vector3 local)> remotePinKeys = new List<(uint, Vector3)>();
+    private const int PinCh = 5, OwnerCh = 1 + PinCh * MaxPins;
+    private int mpPinCount;
+    private float mpOwner; // 핀 주인 clientId+1 (0 = 없음)
+    private bool mpDirty;
+    private readonly List<GameObject> remotePins = new List<GameObject>();
+
+    void Awake() => mpId = MpSync.Register(this);
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) mpPinCount = Mathf.Clamp((int)value, 0, MaxPins);
+        else if (channel >= 1 && channel < OwnerCh)
+        {
+            int i = (channel - 1) / PinCh, k = (channel - 1) % PinCh;
+            if (k < 3) { Vector3 p = mpPinPos[i]; p[k] = value; mpPinPos[i] = p; }
+            else if (k == 3) mpPinWall[i] = ((uint)value << 14) | (mpPinWall[i] & 0x3FFFu);
+            else mpPinWall[i] = (mpPinWall[i] & ~0x3FFFu) | ((uint)value & 0x3FFFu);
+        }
+        else if (channel == OwnerCh) mpOwner = value;
+        mpDirty = true;
+    }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer) return;
+        if (kind >= 10 && kind < 10 + MaxPins) { mpPinPos[kind - 10] = data; mpPinWall[kind - 10] = arg & 0x0FFFFFFFu; return; }
+        if (kind != 1) return;
+        mpPinCount = Mathf.Clamp((int)data.x, 0, MaxPins);
+        ulong sender = MpSync.SenderId != ulong.MaxValue ? MpSync.SenderId : Unity.Netcode.NetworkManager.Singleton.LocalClientId;
+        mpOwner = sender + 1f;
+        MpSync.Publish(mpId, 0, mpPinCount);
+        for (int i = 0; i < MaxPins; i++)
+        {
+            int b = 1 + i * PinCh;
+            for (int k = 0; k < 3; k++) MpSync.Publish(mpId, b + k, mpPinPos[i][k]);
+            MpSync.Publish(mpId, b + 3, mpPinWall[i] >> 14);       // 28비트 ID를 float에 손실 없이 넣으려 14비트씩 나눈다
+            MpSync.Publish(mpId, b + 4, mpPinWall[i] & 0x3FFFu);
+        }
+        MpSync.Publish(mpId, OwnerCh, mpOwner);
+        mpDirty = true;
+    }
+
+    /// <summary>주인 PC: 지금 핀 목록을 서버에 올린다(박기·회수 직후).</summary>
+    private void MpSendPins()
+    {
+        if (!MpSync.Active) return;
+        pins.RemoveAll(p => p == null);
+        for (int i = 0; i < pins.Count; i++)
+        {
+            Transform wall = pins[i].transform.parent;
+            uint wallId = wall != null ? MpSync.TransformId(wall) : 0u;
+            Vector3 p = wall != null ? wall.InverseTransformPoint(pins[i].transform.position) : pins[i].transform.position;
+            MpSync.SendEvent(mpId, 10 + i, p, wallId);
+        }
+        MpSync.SendEvent(mpId, 1, new Vector3(pins.Count, 0f, 0f));
+    }
+
+    /// <summary>주인이 아닌 PC: 서버가 알린 핀 목록에 원격 핀을 맞춘다. 같은 자리의 핀은 그대로 둬 거기 매달린 사람이 끊기지 않게 한다.</summary>
+    private void SyncRemotePins()
+    {
+        mpDirty = false;
+        bool iAmOwner = mpOwner > 0f && Mathf.Approximately(mpOwner, Unity.Netcode.NetworkManager.Singleton.LocalClientId + 1f);
+        int want = iAmOwner ? 0 : mpPinCount;
+        var matched = new bool[MaxPins];
+        for (int r = remotePins.Count - 1; r >= 0; r--)
+        {
+            int hit = -1;
+            if (remotePins[r] != null)
+                for (int i = 0; i < want; i++)
+                    if (!matched[i] && remotePinKeys[r].wall == mpPinWall[i] && (remotePinKeys[r].local - mpPinPos[i]).sqrMagnitude < 1e-6f) { hit = i; break; }
+            if (hit >= 0) { matched[hit] = true; continue; }
+            if (remotePins[r] != null) Destroy(remotePins[r]);
+            remotePins.RemoveAt(r);
+            remotePinKeys.RemoveAt(r);
+        }
+        for (int i = 0; i < want; i++)
+        {
+            if (matched[i]) continue;
+            Transform wall = MpSync.FindTransform(mpPinWall[i]);
+            Vector3 world = wall != null ? wall.TransformPoint(mpPinPos[i]) : mpPinPos[i];
+            remotePins.Add(CreatePin(world, wall));
+            remotePinKeys.Add((mpPinWall[i], mpPinPos[i]));
+        }
+    }
+
     void OnEnable()
     {
         InteractionController.Register(this);
@@ -125,6 +222,7 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
 
     void Update()
     {
+        if (mpDirty && MpSync.Active) SyncRemotePins();
         PlayerMover controlled = InteractionController.Controlled;
         CacheMoveDir(controlled);
 
@@ -298,6 +396,14 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
             ThreadAnchor a = p.GetComponent<ThreadAnchor>();
             if (a != null) into.Add(a);
         }
+        // 다른 PC의 세모가 박은 핀도 줄다리 경간에 쓴다(주인 PC와 같은 다리를 만들어야 하므로)
+        // 목록에서 지우지 않는다 — remotePinKeys와 인덱스가 짝이라(파괴된 핀은 SyncRemotePins가 정리)
+        foreach (GameObject p in remotePins)
+        {
+            if (p == null) continue;
+            ThreadAnchor a = p.GetComponent<ThreadAnchor>();
+            if (a != null) into.Add(a);
+        }
     }
 
     // T = 박은 핀을 전부 회수(범위 제한 없음). 제거한 개수를 반환한다.
@@ -308,6 +414,7 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
         foreach (GameObject p in pins)
             if (p != null) Destroy(p);
         pins.Clear();
+        MpSendPins();
         return n;
     }
 
@@ -328,6 +435,7 @@ public class ThreadPinPlacer : MonoBehaviour, IInteractionProvider
             pins.RemoveAt(0);
         }
         pins.Add(CreatePin(wall.point + wall.normal * pinSurfaceOffset, wall.collider.transform));
+        MpSendPins();
         lastWallNormal = wall.normal; // 재부착 폴백 방향 갱신(같은 벽을 climb할 때 씀)
         Debug.Log("[DreamThread] 벽에 핀을 박았습니다(최대 2개). 세모/구가 F로 매달릴 수 있습니다.");
 

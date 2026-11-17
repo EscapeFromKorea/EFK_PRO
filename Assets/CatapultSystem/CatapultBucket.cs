@@ -119,7 +119,7 @@ using UnityEngine;
 /// 비율이 1을 넘는 경우가 없어 항상 "가벼울수록 더 빨리" 방향으로만 작동한다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class CatapultBucket : MonoBehaviour, IInteractionProvider
+public class CatapultBucket : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Header("발사 후 조작 복구")]
     [Tooltip("착지를 못 잡아도 이 시간(초) 안에 강제로 조작을 복구한다. " +
@@ -205,8 +205,82 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
     // 하지 않도록 이 하나를 캐시해 둘 다에 쓴다(YAGNI — 새 조회를 추가하지 않는다).
     private CatapultArm arm;
 
-    /// <summary>지금 탑승자가 있는지(빈 발사 판정 등 외부에서 조회용).</summary>
-    public bool HasOccupant => occupantBody != null;
+    /// <summary>지금 탑승자가 있는지(빈 발사 판정 등 외부에서 조회용). 멀티에서는 다른 PC의 정육면체가 탄 경우도 포함한다.</summary>
+    public bool HasOccupant => occupantBody != null || mpRemoteOccupant > 0f;
+
+    // ── [멀티 M4 B1] 탑승은 정육면체 주인 PC가 자기 몸을 버킷에 붙여 처리하고 서버에 알린다(이벤트 0 = 탑승: data.x=질량 비율,
+    // arg=몸 ID / 1 = 내림). 서버는 탑승자를 채널 0(몸 ID+1)으로 알리고, 발사 스윙이 끝나면 서버가 계산한 발사 속도를 채널 2~4에,
+    // 발사 번호를 채널 1에 올린다. 주인 PC는 번호가 바뀌면 팔을 서버 각도로 맞춘 뒤 몸을 떼고 그 속도를 그대로 대입한다
+    // (날아가는 방향·속도가 서버 계산과 같아야 한다 — 2026-11-17 사용자 조건).
+    private uint mpId;
+    private bool mpReady;
+    private float mpRemoteOccupant;   // 다른 PC 탑승자의 몸 ID+1(서버) / 서버가 알린 탑승자(참가자)
+    private float mpRemoteMassRatio = 1f;
+    private float mpLaunchSeq;
+    private Vector3 mpLaunchVel;
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    /// <summary>발사 속도 배율용 질량 비율(1=정상, &lt;1=축소). 판정 불가면 1.</summary>
+    public float OccupantMassRatio()
+    {
+        if (occupantBody != null)
+        {
+            PlayerShapeIdentity id = occupantBody.GetComponent<PlayerShapeIdentity>();
+            return id != null && id.stats != null && id.stats.mass > 0f ? occupantBody.mass / id.stats.mass : 1f;
+        }
+        return mpRemoteOccupant > 0f ? mpRemoteMassRatio : 1f;
+    }
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) { mpRemoteOccupant = value; return; }
+        if (channel >= 2 && channel <= 4) { mpLaunchVel[channel - 2] = value; return; }
+        if (channel != 1 || Mathf.Approximately(value, mpLaunchSeq)) return;
+        mpLaunchSeq = value;
+        if (!mpReady || occupantBody == null) return; // 늦게 합류한 PC의 초기값이거나 내가 탄 게 아니다
+        if (arm != null) arm.SnapToServerAngle();
+        Rigidbody body = ConsumeOccupant();
+        if (body != null) body.linearVelocity = mpLaunchVel;
+    }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        if (kind == 0 && occupantBody == null && mpRemoteOccupant <= 0f)
+        {
+            mpRemoteOccupant = arg + 1f;
+            mpRemoteMassRatio = Mathf.Clamp(data.x, 0.05f, 4f);
+        }
+        else if (kind == 1 && Mathf.Approximately(mpRemoteOccupant, arg + 1f)) mpRemoteOccupant = 0f;
+    }
+
+    /// <summary>서버: 다른 PC의 탑승자를 발사한다 — 그 주인 PC가 이 속도로 몸을 날린다.</summary>
+    public void MpLaunchRemoteOccupant(Vector3 velocity)
+    {
+        if (!MpSync.IsServer || mpRemoteOccupant <= 0f) return;
+        mpRemoteOccupant = 0f;
+        for (int k = 0; k < 3; k++) MpSync.Publish(mpId, 2 + k, velocity[k]);
+        mpLaunchSeq += 1f;
+        MpSync.Publish(mpId, 1, mpLaunchSeq);
+        MpSync.Publish(mpId, 0, 0f);
+    }
+
+    private static uint NetIdOf(Rigidbody body)
+    {
+        var no = body != null ? body.GetComponentInParent<Unity.Netcode.NetworkObject>() : null;
+        return no != null ? (uint)no.NetworkObjectId : 0u;
+    }
+
+    private void MpServerTick()
+    {
+        if (mpRemoteOccupant > 0f)
+        {
+            var nm = Unity.Netcode.NetworkManager.Singleton;
+            if (nm != null && !nm.SpawnManager.SpawnedObjects.ContainsKey((ulong)(mpRemoteOccupant - 1f))) mpRemoteOccupant = 0f; // 탄 채 끊김
+        }
+        MpSync.Publish(mpId, 0, occupantBody != null ? NetIdOf(occupantBody) + 1f : mpRemoteOccupant);
+    }
 
     /// <summary>지금 탑승 중인 Rigidbody(없으면 null) — ScalePad 연동. `CatapultArm.Fire()`가
     /// `ConsumeOccupant()`로 실제 분리하기 전에 발사 속도 계산용으로 미리 들여다본다(소비하지 않는
@@ -217,6 +291,8 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
     {
         arm = GetComponentInParent<CatapultArm>();
         mountParent = arm != null ? arm.armPivot : null;
+        mpId = MpSync.Register(this);
+        mpReady = true;
     }
 
     // CatapultArm을 못 찾았으면(수동 조립 등) 게이트를 걸지 않는다(과거 동작 폴백).
@@ -311,8 +387,10 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
         if (occupantBody == null || occupantMover != mover) return;
 
         occupantBody.transform.SetParent(occupantOriginalParent, true);
+        MpSync.RestoreBodyRoot(occupantBody.gameObject);
         occupantBody.isKinematic = false;
         occupantBody.interpolation = occupantOriginalInterpolation;
+        if (MpSync.IsClient) MpSync.SendEvent(mpId, 1, Vector3.zero, NetIdOf(occupantBody));
 
         occupantBody = null;
         occupantMover = null;
@@ -325,7 +403,7 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
     // 보여 준다(키맵 통합안 §2-1). 탑승 중에는 하차 키가 없다(발사로만 내린다).
     public void CollectActions(System.Collections.Generic.List<InteractionAction> into)
     {
-        if (occupantBody != null) return;
+        if (HasOccupant) return;
         PlayerMover mover = InteractionController.Controlled;
         if (mover == null) return;
         PlayerShapeIdentity identity = mover.GetComponent<PlayerShapeIdentity>();
@@ -358,6 +436,7 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
 
     void Update()
     {
+        if (MpSync.IsServer) MpServerTick();
 
         if (!launching) return;
 
@@ -377,7 +456,7 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
     // 이 메서드 하나로 완결된다(클래스 상단 "C키 탑승" 주석 참고).
     private void HandleBoardInput()
     {
-        if (occupantBody != null) return; // 이미 탑승 중
+        if (HasOccupant) return; // 이미 탑승 중(멀티: 다른 PC의 정육면체 포함)
 
         PlayerMover mover = FindControlledPlayer();
         if (mover == null) return;
@@ -473,7 +552,8 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
             overlapCount++; // 같은 탑승자의 이중 콜라이더 — 이미 탑승 처리됨
             return;
         }
-        if (occupantBody != null) return; // 버킷 하나에 탑승자는 한 번에 한 명뿐
+        if (HasOccupant) return; // 버킷 하나에 탑승자는 한 번에 한 명뿐
+        if (!MpSync.IsOwnBody(body)) return; // [멀티 M4] 탑승은 그 몸의 주인 PC만 처리한다(서버가 남의 몸 복사본을 태우지 않게)
 
         // 정육면체만 탑승 판정을 받는다(역할 게이트, PlayerWeight 미사용).
         if (identity.Kind != PlayerShapeStats.ShapeKind.Cube) return;
@@ -501,13 +581,13 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
     // 머무는 동안 매 프레임 재확인해 각도를 넘는 순간 자동으로 탑승되게 한다.
     void OnTriggerStay(Collider other)
     {
-        if (occupantBody != null) return; // 이미 탑승 중이면 재확인 불필요(제일 싼 체크를 먼저).
+        if (HasOccupant) return; // 이미 탑승 중이면 재확인 불필요(제일 싼 체크를 먼저).
         if (!other.CompareTag("Player")) return;
         PlayerShapeIdentity identity = other.GetComponentInParent<PlayerShapeIdentity>();
         if (identity == null || identity.Kind != PlayerShapeStats.ShapeKind.Cube) return;
 
         Rigidbody body = identity.GetComponent<Rigidbody>();
-        if (body == null) return;
+        if (body == null || !MpSync.IsOwnBody(body)) return;
 
         // ScalePad 연동 — 커진 상태면 탑승 자체를 거부한다(클래스 상단 "ScalePad 연동" 주석 참고).
         if (IsTooHeavyToBoard(body, identity)) return;
@@ -579,6 +659,7 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
         // 깨끗하게 시작해, 이전 발사의 왜곡된 월드 회전이 다음 탑승에 누적/전이되지 않게 한다(클래스
         // 상단 "Board()" 주석 참고).
         body.transform.localRotation = Quaternion.identity;
+        if (MpSync.IsClient) MpSync.SendEvent(mpId, 0, new Vector3(OccupantMassRatio(), 0f, 0f), NetIdOf(body));
 
         Debug.Log("[Catapult] 정육면체가 버킷에 탑승했습니다.");
     }
@@ -595,6 +676,7 @@ public class CatapultBucket : MonoBehaviour, IInteractionProvider
         PlayerShapeController shape = occupantShapeController;
 
         body.transform.SetParent(occupantOriginalParent, true);
+        MpSync.RestoreBodyRoot(body.gameObject);
         body.isKinematic = false;
         // 탑승 중 꺼뒀던 보간을 발사 즉시 원래 값으로 되돌린다(발사 후에는 다시 비킨네마틱 실제
         // 물리로 날아가므로 시각적 떨림 방지가 필요하다, 클래스 상단 주석 참고).

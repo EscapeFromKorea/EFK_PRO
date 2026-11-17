@@ -40,7 +40,7 @@ using UnityEngine;
 /// 입력값으로 덮어써 발사 자체가 사라지기 때문이다(아래 Launching).
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
-public class DreamThreadController : MonoBehaviour, IInteractionProvider
+public class DreamThreadController : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Header("실 길이 (마우스 휠 조절)")]
     [Tooltip("실의 최대 길이(Unit). PRD 진자 수치표가 실 8을 기준으로 한다.")]
@@ -129,6 +129,76 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
             Shader s = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
             if (s != null) line.material = new Material(s) { color = new Color(0.7f, 0.9f, 1f, 1f) };
         }
+        mpId = MpSync.Register(this);
+    }
+
+    // ── [멀티 M4] 남의 실 그리기(2026-11-17 사용자 결정) ─────────────────────────────
+    // 매달림·스윙 물리는 각 PC가 자기 몸에만 건다(남의 몸 복사본은 IsControlled=false라 이 컨트롤러가 고르지 않는다).
+    // 다른 PC 화면에는 실이 안 보이므로, 매달림/끊김을 서버에 알리고(이벤트 0 = 매달림: data=고리 위치, arg=몸 ID / 1 = 끊김)
+    // 서버가 슬롯별 채널(슬롯×4 + 0=몸 ID+1, +1~3=고리 위치)로 전원에게 알린다. 각 PC는 남의 몸이면 고리↔몸 직선을 그린다(뜯김 연출 없음).
+    private const int MpSlots = 3;
+    private uint mpId;
+    private readonly float[] mpBody = new float[MpSlots];
+    private readonly Vector3[] mpAnchor = new Vector3[MpSlots];
+    private readonly LineRenderer[] mpLines = new LineRenderer[MpSlots];
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        int slot = channel / 4, k = channel % 4;
+        if (slot >= MpSlots) return;
+        if (k == 0) mpBody[slot] = value;
+        else { Vector3 a = mpAnchor[slot]; a[k - 1] = value; mpAnchor[slot] = a; }
+    }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        ulong sender = MpSync.SenderId != ulong.MaxValue ? MpSync.SenderId : Unity.Netcode.NetworkManager.Singleton.LocalClientId;
+        int slot = MpLobby.I != null ? MpLobby.I.SlotOf(sender) : -1;
+        if (slot < 0 || slot >= MpSlots) return;
+        mpBody[slot] = kind == 0 ? arg + 1f : 0f;
+        if (kind == 0) mpAnchor[slot] = data;
+        MpSync.Publish(mpId, slot * 4, mpBody[slot]);
+        for (int k = 0; k < 3; k++) MpSync.Publish(mpId, slot * 4 + 1 + k, mpAnchor[slot][k]);
+    }
+
+    private void MpNotify(bool hanging, Rigidbody body, Vector3 anchorPos)
+    {
+        if (!MpSync.Active || body == null) return;
+        var no = body.GetComponentInParent<Unity.Netcode.NetworkObject>();
+        if (no != null) MpSync.SendEvent(mpId, hanging ? 0 : 1, anchorPos, (uint)no.NetworkObjectId);
+    }
+
+    private void DrawRemoteThreads()
+    {
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        for (int i = 0; i < MpSlots; i++)
+        {
+            bool show = false;
+            if (MpSync.Active && mpBody[i] > 0f && nm != null
+                && nm.SpawnManager.SpawnedObjects.TryGetValue((ulong)(mpBody[i] - 1f), out var no) && no != null && !no.IsOwner)
+            {
+                if (mpLines[i] == null) mpLines[i] = MakeRemoteLine(i);
+                mpLines[i].SetPosition(0, mpAnchor[i]);
+                mpLines[i].SetPosition(1, no.transform.position);
+                show = true;
+            }
+            if (mpLines[i] != null && mpLines[i].enabled != show) mpLines[i].enabled = show;
+        }
+    }
+
+    private LineRenderer MakeRemoteLine(int slot)
+    {
+        var lr = new GameObject($"DreamThread_RemoteLine{slot}").AddComponent<LineRenderer>();
+        lr.transform.SetParent(transform, false);
+        lr.sharedMaterial = line.sharedMaterial;
+        lr.useWorldSpace = true;
+        lr.positionCount = 2;
+        lr.widthMultiplier = lineWidth;
+        lr.startColor = lr.endColor = baseLineColor;
+        return lr;
     }
 
     void Reset()
@@ -382,6 +452,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
 
     void LateUpdate()
     {
+        DrawRemoteThreads();
         if (state != ThreadState.Hanging || activeBody == null || anchor == null) return;
 
         Vector3 top = anchor.transform.position;
@@ -548,6 +619,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
         CreateJoint();
         line.enabled = true;
         state = ThreadState.Hanging;
+        MpNotify(true, body, near.transform.position);
         launchTimer = 0f;
         overweightTimer = 0f; // 이전 매달림의 뜯김 상태를 물려받지 않게(LateUpdate가 실 시각도 원복한다).
     }
@@ -575,6 +647,7 @@ public class DreamThreadController : MonoBehaviour, IInteractionProvider
     // (조작권 상실 등) 그 자리에서 바로 mover를 켜고 정리한다.
     private void Release(bool intoLaunch)
     {
+        MpNotify(false, activeBody, Vector3.zero);
         if (joint != null) Destroy(joint);
         joint = null;
         if (activeBody != null) activeBody.constraints = savedConstraints;

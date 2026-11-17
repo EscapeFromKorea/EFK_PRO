@@ -23,6 +23,10 @@ public class NetProtoPlayer : NetworkBehaviour
     {
         // 멀티플레이: 재접속자는 홈 화면에서 연결돼 기존 도형이 홈 씬에 만들어지고, 곧 맵 로드로 홈이 언로드되면 같이 사라진다 → 씬과 무관하게 유지
         if (MpLobby.I != null) DontDestroyOnLoad(gameObject);
+        // [멀티 M4] 기믹이 몸을 자기 자식으로 붙여 함께 움직인다(투석기 조향석·버킷, 레일카 좌석). NGO는 NetworkObject가 아닌 부모로
+        // 옮기는 것을 오류로 되돌리고 참가자 PC에서는 부모 변경 자체를 막으므로, 몸의 부모 동기화를 끈다 — 부모화는 각 PC의 로컬 일이고
+        // 위치는 NetworkTransform이 월드 좌표(InLocalSpace=false)로 그대로 보낸다.
+        NetworkObject.AutoObjectParentSync = false;
         mover = GetComponent<PlayerMover>();
         jump = GetComponent<PlayerJump>();
         rb = GetComponent<Rigidbody>();

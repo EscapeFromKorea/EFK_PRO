@@ -343,7 +343,10 @@ public class ThreadBridge : MonoBehaviour
         foreach (PlayerMover m in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             Rigidbody rb = m.GetComponent<Rigidbody>();
-            if (rb == null || rb.isKinematic) continue; // 벽 부착 중인 세모 등은 줄에 하중을 주지 않는다
+            if (rb == null) continue;
+            // 벽 부착 중인 세모 등은 줄에 하중을 주지 않는다. [멀티 M4] 남의 몸 복사본은 원래 키네마틱이라 이 조건으로 거르면
+            // 각 PC가 자기 몸 무게만 세 줄 모양이 PC마다 달라진다 — 키네마틱이어도 남의 몸이면 하중에 넣는다(각 PC가 같은 곡선을 계산).
+            if (rb.isKinematic && MpSync.IsOwnBody(rb)) continue;
 
             float u = Mathf.Clamp01(Vector3.Dot(rb.position - s.endA, ab) / len2);
             if ((rb.position - PointAt(s, u)).sqrMagnitude > riderCaptureRadius * riderCaptureRadius) continue;

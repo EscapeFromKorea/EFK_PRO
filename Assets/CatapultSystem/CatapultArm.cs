@@ -82,8 +82,31 @@ using UnityEngine;
 /// 정상 이상 무거워도 페널티는 없다(실전에서는 `CatapultBucket.heavyBoardBlockScaleRatio`가 무거운
 /// 탑승 자체를 막아 이 경우가 안 생긴다).
 /// </summary>
-public class CatapultArm : MonoBehaviour
+public class CatapultArm : MonoBehaviour, IMpSynced
 {
+    // [멀티 M4 B1] 팔(장전·발사 스윙·반동)은 서버만 돌린다. 서버는 각도(채널 0)와 상태(채널 1)를 올리고 참가자 PC는 그 각도를 따라간다.
+    // 장전 입력(BeginPull/Fire)은 정사면체 주인 PC가 CatapultLoadController를 통해 서버로 보낸다. 발사 속도는 서버가 계산해
+    // 버킷을 거쳐 정육면체 주인 PC에 그대로 전달한다(2026-11-17 사용자 조건: 날아가는 방향·속도가 네트워크로 달라지지 않게).
+    private uint mpId;
+    private float mpAngle;
+    private bool mpHasAngle;
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) { mpAngle = value; mpHasAngle = true; }
+        else if (channel == 1) State = (ArmState)(int)value;
+    }
+
+    /// <summary>참가자 PC: 팔을 서버 각도로 즉시 맞춘다(발사 신호를 받은 순간 탑승자를 정확한 자리에서 떼기 위해).</summary>
+    public void SnapToServerAngle()
+    {
+        if (!mpHasAngle) return;
+        currentAngle = mpAngle;
+        ApplyAngle();
+    }
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
     public enum ArmState { Idle, Pulling, Loaded, Firing, Launching }
 
     [Header("팔 회전 (연출, 씬 튜닝 전제 — PRD 미확정 수치)")]
@@ -232,10 +255,18 @@ public class CatapultArm : MonoBehaviour
         basePivotEuler = armPivot.localEulerAngles;
         currentAngle = restAngle;
         ApplyAngle();
+        mpId = MpSync.Register(this);
     }
 
     void Update()
     {
+        if (MpSync.IsClient)
+        {
+            if (mpHasAngle) { currentAngle = Mathf.Lerp(currentAngle, mpAngle, 0.5f); ApplyAngle(); }
+            return;
+        }
+        if (MpSync.IsServer) { MpSync.Publish(mpId, 0, currentAngle); MpSync.Publish(mpId, 1, (int)State); }
+
         // 17차 개편 — 발사 결정 순간부터 팔이 restAngle까지 가속 스윙하는 동안, 탑승자는 여전히
         // 버킷에 부모화+킨네마틱 상태로 붙어 있어 팔과 함께 움직인다(클래스 상단 "발사" 주석 참고).
         // 스윙이 끝나야 비로소 분리 + velocity 대입이 일어난다.
@@ -257,6 +288,7 @@ public class CatapultArm : MonoBehaviour
                 {
                     occupant.linearVelocity = pendingLaunchVelocity;
                 }
+                else if (bucket != null) bucket.MpLaunchRemoteOccupant(pendingLaunchVelocity); // 다른 PC의 정육면체 — 그 주인 PC가 같은 속도로 날린다
 
                 // 램프가 이미 팔을 restAngle까지 데려다 놨으므로, 이어서 8차 개편의 반동 스프링을
                 // 그대로 재사용한다(정지 상태에서 시작해 오버슈트 폭은 작아지지만 "정착 후 클런크"
@@ -372,15 +404,9 @@ public class CatapultArm : MonoBehaviour
         // bucket.HasOccupant가 true인 시점부터 실제 ConsumeOccupant()(스윙 종료)까지는 탑승자가
         // 바뀌지 않으므로, 소비하지 않는 OccupantBody로 미리 들여다봐도 안전하다(클래스 상단
         // "ScalePad 연동" 헤더 참고, 실제 게이트/식 근거는 CatapultBucket.cs 상단 주석에 있다).
-        Rigidbody occupantForSpeed = bucket.OccupantBody;
-        PlayerShapeIdentity occupantIdentity = occupantForSpeed != null
-            ? occupantForSpeed.GetComponent<PlayerShapeIdentity>() : null;
-        float weightSpeedMultiplier = 1f;
-        if (occupantIdentity != null && occupantIdentity.stats != null && occupantIdentity.stats.mass > 0f)
-        {
-            float scaleRatio = occupantForSpeed.mass / occupantIdentity.stats.mass; // 1=Normal, <1=Shrunk(가벼움)
-            weightSpeedMultiplier = Mathf.Clamp(1f / Mathf.Max(0.01f, scaleRatio), 1f, maxWeightSpeedMultiplier);
-        }
+        // [멀티 M4] 다른 PC의 정육면체는 서버 복사본에 축소 질량이 반영되지 않으므로, 탑승 때 주인 PC가 보낸 질량 비율을 쓴다(버킷이 판단).
+        float scaleRatio = bucket.OccupantMassRatio(); // 1=Normal, <1=Shrunk(가벼움), 판정 불가면 1
+        float weightSpeedMultiplier = Mathf.Clamp(1f / Mathf.Max(0.01f, scaleRatio), 1f, maxWeightSpeedMultiplier);
 
         // 15차 개편 — 앵커 쪽(-Z)으로 발사하도록 기준 방향과 회전 부호를 함께 뒤집었다(클래스 상단
         // "왜 발사 방향을" 주석 참고 — 둘 중 하나만 뒤집으면 위/아래가 반대로 나온다).

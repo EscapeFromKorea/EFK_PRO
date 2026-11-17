@@ -120,6 +120,13 @@ public static class MpSync
         else MpLobby.I.SyncEventRpc(id, kind, data, arg);
     }
 
+    /// <summary>기믹이 자식으로 붙였던 몸을 떼어 낸 뒤 부른다. 멀티의 몸은 DontDestroyOnLoad 씬에 있어야 맵 전환에 살아남는데,
+    /// 기믹 자식으로 붙는 순간 그 기믹의 씬으로 옮겨지고 떼어도 돌아오지 않는다 — 루트가 됐으면 다시 DDOL로 옮긴다.</summary>
+    public static void RestoreBodyRoot(GameObject body)
+    {
+        if (Active && body != null && body.transform.parent == null) UnityEngine.Object.DontDestroyOnLoad(body);
+    }
+
     /// <summary>지금 처리 중인 이벤트를 보낸 클라이언트(서버가 RPC로 받은 경우). 서버 자신이 낸 이벤트면 MaxValue.</summary>
     public static ulong SenderId = ulong.MaxValue;
 
@@ -149,6 +156,28 @@ public static class MpSync
         var sb = new StringBuilder();
         for (var t = c.transform; t != null; t = t.parent) sb.Insert(0, "/" + t.GetSiblingIndex() + t.name);
         return c.gameObject.scene.name + sb + "#" + c.GetType().Name;
+    }
+
+    /// <summary>씬 오브젝트를 PC 간에 가리키는 ID(기믹 ID와 같은 경로 해시, 28비트). 핀이 박힌 벽처럼 등록 안 된 오브젝트를 이벤트로 넘길 때.</summary>
+    public static uint TransformId(Transform t) => IdOf(t);
+
+    static readonly Dictionary<uint, Transform> transformCache = new Dictionary<uint, Transform>();
+
+    /// <summary><see cref="TransformId"/>로 오브젝트를 찾는다. 처음 찾을 때(또는 캐시가 낡았을 때) 로드된 씬 전체를 한 번 훑는다 — 드문 이벤트용.</summary>
+    public static Transform FindTransform(uint id)
+    {
+        if (id == 0) return null;
+        if (transformCache.TryGetValue(id, out var t) && t != null) return t;
+        transformCache.Clear();
+        for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
+        {
+            var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+            if (!scene.isLoaded) continue;
+            foreach (var root in scene.GetRootGameObjects())
+                foreach (var tr in root.GetComponentsInChildren<Transform>(true))
+                    transformCache[IdOf(tr)] = tr;
+        }
+        return transformCache.TryGetValue(id, out t) ? t : null;
     }
 
     static uint IdOf(Component c)
