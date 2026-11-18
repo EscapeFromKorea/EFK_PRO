@@ -97,7 +97,7 @@ public class Portal : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         PlayerShapeIdentity identity = other.GetComponentInParent<PlayerShapeIdentity>();
-        if (identity == null) return;
+        if (identity == null || !MpSync.IsOwnBody(identity)) return; // [멀티] 굴리기 모드는 몸 주인 PC가 자기 몸에만 건다
 
         // [이중 발화 방지] 플레이어는 tag Player 콜라이더를 두 개 갖는다 — Player_Mesh(트리거)와
         // Player_Collider(솔리드). 둘 다 이 트리거에 들어오므로 OnTriggerEnter가 콜라이더당 한 번,

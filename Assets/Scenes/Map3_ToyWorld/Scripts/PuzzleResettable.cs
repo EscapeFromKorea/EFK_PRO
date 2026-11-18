@@ -14,7 +14,7 @@ public sealed class PuzzleResettable : MonoBehaviour, IPuzzleResettable
     private bool captured;
     private bool resetPending;
 
-    public bool NeedsAutomaticReset => captured && !resetPending && transform.position.y < autoResetBelowY;
+    public bool NeedsAutomaticReset => !MpSync.IsClient && captured && !resetPending && transform.position.y < autoResetBelowY;
 
     private void Awake() => CaptureResetState();
 
@@ -29,8 +29,10 @@ public sealed class PuzzleResettable : MonoBehaviour, IPuzzleResettable
 
     public void ResetPuzzleObject()
     {
-        if (resetPending) return;
+        if (resetPending || MpSync.IsClient) return; // 퍼즐 물체는 서버 권한이다(자세는 MpBodySync가 전한다)
         if (!captured) CaptureResetState();
+        // 멀티에서 누가 들거나 도킹한 블록은 그 사람 PC가 움직이고 있어 되돌리지 않는다(놓은 뒤 다시 초기화하면 된다)
+        if (MpSync.IsServer && TryGetComponent(out SnapBlock held) && !held.enabled) return;
         // Release through the existing SnapBlock API before teleporting either joint body.
         SnapBlock block = GetComponent<SnapBlock>();
         if (block != null && isActiveAndEnabled)

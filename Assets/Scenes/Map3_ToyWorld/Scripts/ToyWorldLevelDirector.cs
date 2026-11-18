@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 
 [DefaultExecutionOrder(-100)]
-public sealed class ToyWorldLevelDirector : MonoBehaviour
+public sealed class ToyWorldLevelDirector : MonoBehaviour, IMpSynced
 {
     public static ToyWorldLevelDirector Instance { get; private set; }
 
@@ -40,6 +40,21 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
 
         Instance = this;
         ApplyProgressToScene();
+        mpId = MpSync.Register(this);
+    }
+
+    // [멀티] 수집·설치·활성화·완료는 팀 공유 상태로 서버만 바꾼다(아이템·소켓·출구 트리거는 서버에서 몸 복사본으로도 발생한다).
+    // 채널 0=수집 비트, 1=설치 비트, 2=플래그. 참가자 PC의 Try*는 아무 일도 하지 않는다.
+    private uint mpId;
+
+    public void OnMpValue(int channel, float value)
+    {
+        int bits = (int)value;
+        if (channel == 0) state.SetCollectedMask(bits);
+        else if (channel == 1) state.SetInstalledMask(bits);
+        else if (channel == 2) state.SetFlagBits(bits);
+        else return;
+        ApplyProgressToScene();
     }
 
     private void Start() => ApplyProgressToScene();
@@ -47,6 +62,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        MpSync.Unregister(mpId, this);
     }
 
     public bool HasItem(ToyWorldRepairItemType type) => state.IsCollected(type);
@@ -54,7 +70,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
 
     public bool TryCollectItem(ToyWorldRepairItemType type)
     {
-        if (!state.TryCollect(type)) return false;
+        if (MpSync.IsClient || !state.TryCollect(type)) return false;
 
         if (verboseLogging)
             Debug.Log($"[ToyWorld] Collected {type}. Progress {state.CollectedCount}/3.", this);
@@ -65,6 +81,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
 
     public bool TryInstallItem(ToyWorldRepairItemType type)
     {
+        if (MpSync.IsClient) return false;
         if (!state.TryInstall(type))
         {
             if (verboseLogging)
@@ -81,7 +98,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
 
     public void SetInstallPadPressed(ToyWorldRepairItemType type, bool pressed)
     {
-        if (!state.SetInstallPadPressed(type, pressed)) return;
+        if (MpSync.IsClient || !state.SetInstallPadPressed(type, pressed)) return;
 
         if (verboseLogging)
             Debug.Log($"[ToyWorld] Install pad {type}: {(pressed ? "pressed" : "released")}. Active {state.InstalledCount}/3.", this);
@@ -91,7 +108,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
 
     public bool TryActivateMusicBox()
     {
-        if (!state.TryActivateMusicBox()) return false;
+        if (MpSync.IsClient || !state.TryActivateMusicBox()) return false;
 
         if (verboseLogging)
             Debug.Log("[ToyWorld] Broken Music Box activated. The exit route is now valid.", this);
@@ -102,6 +119,7 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
 
     public bool TryCompleteLevel()
     {
+        if (MpSync.IsClient) return false;
         if (!state.TryCompleteLevel())
         {
             if (verboseLogging)
@@ -117,6 +135,12 @@ public sealed class ToyWorldLevelDirector : MonoBehaviour
 
     private void ApplyProgressToScene()
     {
+        if (mpId != 0) // Awake의 첫 반영은 등록 전이다
+        {
+            MpSync.Publish(mpId, 0, state.CollectedMask);
+            MpSync.Publish(mpId, 1, state.InstalledMask);
+            MpSync.Publish(mpId, 2, state.FlagBits);
+        }
         if (finalGate != null)
             finalGate.SetPadPressed(state.AllCollected);
         if (installationGate != null)

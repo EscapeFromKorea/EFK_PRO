@@ -155,6 +155,7 @@ public class RailCart : MonoBehaviour, IWindupReceiver
         if (TryFindClosestSegment(out int seg, out _)) segmentIndex = seg;
         recoverPosition = transform.position;
         recoverRotation = transform.rotation;
+        if (Application.isPlaying) MpBodySync.Ensure(this); // [멀티] 서버가 카트를 굴리고 참가자 PC는 키네마틱으로 따라간다
     }
 
     void OnEnable()
@@ -245,6 +246,7 @@ public class RailCart : MonoBehaviour, IWindupReceiver
 
     void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
         float cargoMass = cargoBay != null ? cargoBay.TotalCargoMass() : 0f;
         rb.mass = baseMass + cargoMass * cargoMassMultiplier;
 

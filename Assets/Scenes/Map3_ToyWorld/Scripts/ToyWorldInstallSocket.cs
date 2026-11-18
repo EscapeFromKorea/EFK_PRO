@@ -53,6 +53,16 @@ public sealed class ToyWorldInstallSocket : MonoBehaviour
         ReleasePad();
     }
 
+    // [멀티] 소켓 위에서 접속이 끊긴 몸은 Exit가 오지 않는다 — 서버가 걷어낸다
+    private void FixedUpdate()
+    {
+        if (!MpSync.IsServer || playerContacts.Count == 0) return;
+        bool removed = false;
+        foreach (PlayerMover body in new List<PlayerMover>(playerContacts.Keys))
+            if (body == null) { playerContacts.Remove(body); removed = true; }
+        if (removed && playerContacts.Count == 0) ReleasePad();
+    }
+
     private void OnDisable()
     {
         if (playerContacts.Count == 0) return;

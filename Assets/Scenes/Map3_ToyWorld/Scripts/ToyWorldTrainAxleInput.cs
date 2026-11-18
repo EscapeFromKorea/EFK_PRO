@@ -25,7 +25,7 @@ public sealed class ToyWorldTrainAxleInput : MonoBehaviour
         bool isSolid = identity.solidCollider != null ? identity.solidCollider == other : !other.isTrigger;
         if (!isSolid) return;
         Rigidbody body = other.attachedRigidbody;
-        if (body == null) return;
+        if (body == null || !MpSync.IsOwnBody(body)) return; // 미는 속도는 몸 주인 PC만 안다. 감기 입력은 WindupAxle이 서버로 보낸다
         if (lastHitTime.TryGetValue(body, out float lastHit) && Time.time - lastHit < 0.25f) return;
 
         Vector3 push = body.linearVelocity;

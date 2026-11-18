@@ -36,6 +36,19 @@ public sealed class ToyWorldProgressState
     public bool LevelCompleted => levelCompleted;
     public bool CanExit => !levelCompleted;
 
+    // [멀티] 서버가 올리고 참가자 PC가 그대로 받는 진행 상태
+    public int CollectedMask => collectedMask;
+    public int InstalledMask => installedMask;
+    public int FlagBits => (installationCompleted ? 1 : 0) | (musicBoxActivated ? 2 : 0) | (levelCompleted ? 4 : 0);
+    public void SetCollectedMask(int mask) => collectedMask = mask;
+    public void SetInstalledMask(int mask) => installedMask = mask;
+    public void SetFlagBits(int bits)
+    {
+        installationCompleted = (bits & 1) != 0;
+        musicBoxActivated = (bits & 2) != 0;
+        levelCompleted = (bits & 4) != 0;
+    }
+
     public bool IsCollected(ToyWorldRepairItemType type) =>
         (collectedMask & Bit(type)) != 0;
 
