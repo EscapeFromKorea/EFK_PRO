@@ -28,7 +28,7 @@ using UnityEngine.Events;
 /// 검사가 "벽 파괴 전 벽 너머로 못 간다"를 지키는 장치다. 판단은 여기(CH1)서만 하고 에이전트에는
 /// 목표 지점만 넘긴다 — 에이전트를 재사용하는 CH8은 이 동작을 갖지 않는다.
 /// </summary>
-public class PathChaserController : MonoBehaviour
+public class PathChaserController : MonoBehaviour, IMpSynced
 {
     private enum State { Waiting, Chasing, WallWait, EndpointWait, Finished }
 
@@ -73,6 +73,31 @@ public class PathChaserController : MonoBehaviour
     public bool allowReset = true;
 
     private State state = State.Waiting;
+
+    // [멀티] 추격은 서버가 판단하고 상태(채널 0)를 전한다. 잡힘은 몸 주인 PC가 CatchZone으로 판정한다.
+    private uint mpId;
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel != 0) return;
+        State next = (State)(int)value;
+        if (agent != null) agent.gameObject.SetActive(next != State.Finished);
+        state = next;
+    }
+
+    private readonly System.Collections.Generic.List<PlayerShapeIdentity> mpPlayers =
+        new System.Collections.Generic.List<PlayerShapeIdentity>();
+
+    private System.Collections.Generic.IList<PlayerShapeIdentity> CurrentPlayers()
+    {
+        if (!MpSync.Active) return players;
+        mpPlayers.Clear();
+        foreach (PlayerMover body in MpSync.Bodies)
+            if (body.TryGetComponent(out PlayerShapeIdentity id)) mpPlayers.Add(id);
+        return mpPlayers;
+    }
     private float waitTimer;
     private PlayerShapeIdentity[] players;
     private bool hasAnchor;
@@ -106,6 +131,8 @@ public class PathChaserController : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
+        MpSync.Publish(mpId, 0, (int)state);
         if (state == State.Chasing || state == State.WallWait || state == State.EndpointWait)
             UpdateProximityChase();
 
@@ -158,7 +185,7 @@ public class PathChaserController : MonoBehaviour
         Vector3 pos = agent.transform.position;
         PlayerShapeIdentity target = null;
         float best = float.MaxValue;
-        foreach (PlayerShapeIdentity p in players)
+        foreach (PlayerShapeIdentity p in CurrentPlayers())
         {
             if (p == null || !p.gameObject.activeInHierarchy) continue;
             Vector3 c = CenterOf(p);
@@ -235,6 +262,7 @@ public class PathChaserController : MonoBehaviour
         // 에이전트를 끄는 것만으로 트리거도 함께 꺼진다(별도 "잡힘 무시" 플래그 불필요).
         // 추락 연출은 일부러 SetActive(false) 하나로 끝낸다(YAGNI — 파티클/애니메이션 없음).
         agent.gameObject.SetActive(false);
+        MpSync.Publish(mpId, 0, (int)state);
         OnChapterCleared?.Invoke();
     }
 

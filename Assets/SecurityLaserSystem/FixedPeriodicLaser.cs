@@ -54,7 +54,7 @@ public class FixedPeriodicLaser : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (beam == null) return;
+        if (beam == null || MpSync.IsClient) return;
 
         switch (phase)
         {

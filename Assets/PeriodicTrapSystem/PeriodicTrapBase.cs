@@ -18,7 +18,7 @@ using UnityEngine.Events;
 /// 압착이 아니라 의도된 피격이고, 맞은 즉시 리스폰으로 자리를 벗어나므로 압착이 성립하지 않는다.
 /// 서브클래스가 호출 시점을 스스로 가른다(각 트랩 클래스의 IsDangerous 참고).
 /// </summary>
-public abstract class PeriodicTrapBase : MonoBehaviour
+public abstract class PeriodicTrapBase : MonoBehaviour, IMpSynced
 {
     [Header("공통 — 위상 지연 (사양 §4 startPhase)")]
     [Tooltip("이 장치의 내부 시계 시작 값(초). 여러 장치를 다른 값으로 두면 통로가 동시에 닫히지 " +
@@ -55,6 +55,32 @@ public abstract class PeriodicTrapBase : MonoBehaviour
 
     /// <summary>주기 동작 중인가. 서브클래스의 IsDangerous가 이걸 함께 본다 — 정지·복귀 중에는 피해가 꺼진다.</summary>
     protected bool IsRunning => runState == RunState.Running;
+
+    // ── [멀티] 서버가 주기를 돌리고 자세는 MpBodySync가 전한다. 채널 0=위험 여부, 1=예고 표시, 2=피격 집계 창 번호.
+    // 피격은 몸 주인 PC가 판정한다(서버의 남의 몸 복사본은 키네마틱이라 장치와 충돌 이벤트가 나지 않는다).
+    protected uint MpId { get; private set; }
+    protected bool MpDangerous { get; private set; }
+    private float mpHitWindow;
+    protected virtual bool MpDangerNow => false;
+    protected virtual void MpShowTelegraph(bool warn) { }
+
+    /// <summary>서브클래스 Awake 끝에서 부른다(비활성 컴포넌트도 Awake는 돈다).</summary>
+    protected void MpInit()
+    {
+        MpBodySync.Ensure(this);
+        MpId = MpSync.Register(this);
+    }
+
+    private void OnDestroy() => MpSync.Unregister(MpId, this);
+
+    protected void MpPublishTelegraph(bool warn) => MpSync.Publish(MpId, 1, warn ? 1f : 0f);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) MpDangerous = value > 0.5f;
+        else if (channel == 1) MpShowTelegraph(value > 0.5f);
+        else if (channel == 2) hitThisActivation.Clear();
+    }
 
     /// <summary>작동을 시작한다. 이미 작동 중이면 무시한다(중복 입력 무시). 초기 자세로 되돌아가는 중이면
     /// 복귀가 끝난 직후 시작한다 — 항상 초기 자세의 첫 상태(도끼=예고, 망치=상부 대기, 가시=수납)에서
@@ -93,6 +119,8 @@ public abstract class PeriodicTrapBase : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
+        MpSync.Publish(MpId, 0, MpDangerNow ? 1f : 0f);
         if (runState == RunState.Running)
         {
             StepRun();
@@ -129,14 +157,19 @@ public abstract class PeriodicTrapBase : MonoBehaviour
     protected bool TryRegisterHit(Rigidbody playerBody)
     {
         if (playerBody == null) return false;
-        if (!hitThisActivation.Add(playerBody)) return false;
+        if (!MpSync.IsOwnBody(playerBody) || !hitThisActivation.Add(playerBody)) return false;
         OnHazardHit?.Invoke(playerBody.gameObject);
         return true;
     }
 
     /// <summary>위험 상태가 끝나고 다음 활성 구간으로 넘어갈 때 서브클래스가 부른다 — 같은 플레이어가
     /// 다음 활성 구간에 다시 맞을 수 있게 연다.</summary>
-    protected void ResetHitWindow() => hitThisActivation.Clear();
+    protected void ResetHitWindow()
+    {
+        hitThisActivation.Clear();
+        mpHitWindow += 1f;
+        MpSync.Publish(MpId, 2, mpHitWindow);
+    }
 
     /// <summary>이번 스텝에 mover를 intendedDelta만큼 옮겨도 되는지. false면 압착 위험이니 호출부는
     /// 이동/위상 진행을 이번 프레임 건너뛰어라(다음 프레임 재판정 — 별도 "정지됨" 상태 불필요).</summary>

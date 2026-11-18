@@ -160,7 +160,7 @@ public class FallingRock : MonoBehaviour
         }
 
         Rigidbody playerRb = collision.collider.attachedRigidbody;
-        if (owner != null && playerRb != null && owner.RegisterHit(playerRb, shape) &&
+        if (owner != null && playerRb != null && MpSync.IsOwnBody(playerRb) && owner.RegisterHit(playerRb, shape) &&
             extraKnockbackImpulse > 0f)
         {
             Vector3 away = playerRb.worldCenterOfMass - transform.position;

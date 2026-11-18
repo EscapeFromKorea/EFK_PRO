@@ -68,7 +68,7 @@ public class CharacterLockedLaser : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (beam == null) return;
+        if (beam == null || MpSync.IsClient) return;
 
         switch (phase)
         {
@@ -131,13 +131,26 @@ public class CharacterLockedLaser : MonoBehaviour
         if (mover != null && mover.ExternallyDriven) return false;
 
         Rigidbody rb = id.GetComponent<Rigidbody>();
-        if (rb != null && rb.isKinematic) return false;
+        if (!MpSync.Active && rb != null && rb.isKinematic) return false; // 멀티의 남의 몸 복사본은 원래 키네마틱이다
 
         return true;
     }
 
     /// <summary>targetKinds 중 하나라도 일치하고 유효·사거리 이내인 후보 중 가장 가까운 것을 고른다.
     /// 매 조준 시점(Telegraph 진입)마다 새로 호출된다 — 록온 도중에는 다시 부르지 않는다(스냅샷 유지).</summary>
+    private readonly System.Collections.Generic.List<PlayerShapeIdentity> mpCandidates =
+        new System.Collections.Generic.List<PlayerShapeIdentity>();
+
+    // 멀티의 도형은 맵 시작 뒤 스폰되므로 Start의 캐시를 쓸 수 없다
+    private System.Collections.Generic.IList<PlayerShapeIdentity> CurrentCandidates()
+    {
+        if (!MpSync.Active) return candidates;
+        mpCandidates.Clear();
+        foreach (PlayerMover body in MpSync.Bodies)
+            if (body.TryGetComponent(out PlayerShapeIdentity id)) mpCandidates.Add(id);
+        return mpCandidates;
+    }
+
     private PlayerShapeIdentity FindNearestValidTarget()
     {
         if (targetKinds == null) return null;
@@ -145,7 +158,7 @@ public class CharacterLockedLaser : MonoBehaviour
         PlayerShapeIdentity nearest = null;
         float nearestDist = float.MaxValue;
 
-        foreach (PlayerShapeIdentity id in candidates)
+        foreach (PlayerShapeIdentity id in CurrentCandidates())
         {
             if (System.Array.IndexOf(targetKinds, id.Kind) < 0) continue;
             if (!IsCandidateValid(id)) continue;

@@ -17,7 +17,7 @@ using UnityEngine.Events;
 /// SectionHitCounter.RegisterHitEvent에 배선한다. CH3/CH5가 서로 다른 목적지("CH3 시작"/"CH5 시작")로
 /// 가야 한다는 요구는 인스턴스마다 다른 카운터를 꽂는 것으로 끝나고, 이 스크립트는 목적지를 모른다.
 /// </summary>
-public class ProjectileLauncher : MonoBehaviour
+public class ProjectileLauncher : MonoBehaviour, IMpSynced
 {
     private enum Phase { Stopped, Warning, Resting }
 
@@ -63,6 +63,33 @@ public class ProjectileLauncher : MonoBehaviour
     private float phaseElapsed;
     private readonly List<Projectile> live = new List<Projectile>();
 
+    // [멀티] 발사 시점은 서버가 정한다(채널 0=단계 0정지/1예고/2휴식, 1=발사 번호). 탄은 직선이라 각 PC가 같은 탄을 만든다.
+    private uint mpId;
+    private bool mpReady;
+    private float mpShots;
+
+    private void Awake()
+    {
+        mpId = MpSync.Register(this);
+        mpReady = true;
+    }
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0)
+        {
+            if (value < 0.5f) Deactivate();
+            else warning?.SetWarning(value < 1.5f);
+        }
+        else if (channel == 1 && !Mathf.Approximately(value, mpShots))
+        {
+            mpShots = value;
+            if (mpReady) Fire(); // 늦게 합류한 PC는 이미 날아간 탄을 만들지 않는다
+        }
+    }
+
     /// <summary>이미 도는 주기 중이면 아무 일도 하지 않는다(사양 §3 "시작 입력 중첩 금지").</summary>
     public void Activate()
     {
@@ -76,6 +103,7 @@ public class ProjectileLauncher : MonoBehaviour
         phase = Phase.Stopped;
         phaseElapsed = 0f;
         warning?.SetWarning(false);
+        MpSync.Publish(mpId, 0, 0f);
 
         foreach (Projectile p in live)
             if (p != null) Destroy(p.gameObject);
@@ -84,12 +112,13 @@ public class ProjectileLauncher : MonoBehaviour
 
     private void Start()
     {
-        if (autoActivateOnStart) Activate();
+        if (autoActivateOnStart && !MpSync.IsClient) Activate();
     }
 
     private void FixedUpdate()
     {
         live.RemoveAll(p => p == null);
+        if (MpSync.IsClient) return;
 
         switch (phase)
         {
@@ -112,6 +141,7 @@ public class ProjectileLauncher : MonoBehaviour
     private void EnterPhase(Phase next)
     {
         phase = next;
+        MpSync.Publish(mpId, 0, next == Phase.Warning ? 1f : 2f);
         phaseElapsed = 0f;
         warning?.SetWarning(next == Phase.Warning);
     }
@@ -145,6 +175,7 @@ public class ProjectileLauncher : MonoBehaviour
         projectile.Launch(this, transform.forward * projectileSpeed, projectileLifetime, playerTag);
 
         live.Add(projectile);
+        if (MpSync.IsServer) { mpShots += 1f; MpSync.Publish(mpId, 1, mpShots); }
     }
 
     /// <summary>Projectile이 유효 대상 접촉을 보고한다(대상당 1회는 Projectile 쪽이 보장).</summary>
