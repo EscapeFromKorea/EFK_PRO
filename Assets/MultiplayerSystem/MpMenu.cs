@@ -1,42 +1,73 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
-/// [멀티 M2] 임시 홈·로비 화면(IMGUI). 연결·규칙은 MpNet/MpLobby가 맡고 여기는 그리기만 한다 —
-/// 정식 메인 화면이 정해지면 이 파일만 갈아끼운다(H-05).
+/// 임시 메인 화면(IMGUI): 싱글플레이(맵 선택) / 멀티플레이(방 생성·입장·로비) / 설정 / 종료하기.
+/// 연결·규칙은 MpNet/MpLobby가 맡고 여기는 그리기와 화면 전환만 한다 — 정식 메인 화면이 정해지면 이 파일만 갈아끼운다(H-05).
 /// </summary>
 public class MpMenu : MonoBehaviour
 {
-    enum V { Home, Join, Busy, Lobby }
+    enum V { Home, Single, Multi, Join, Busy, Lobby, Settings }
     V v = V.Home;
-    string code = "", msg;
+    string code = "", msg, busyText;
+    PauseMenuController pause;
 
     void Start()
     {
-        MpNet.Ensure();
+        pause = FindFirstObjectByType<PauseMenuController>();
+        PauseMenuController.OnLeaveToMain = null; // 메인 화면에서는 "메인화면으로 나가기"가 필요 없다
         msg = MpNet.Message; MpNet.Message = null; // H-04: 오류로 돌아왔으면 메시지 표시
-        Cursor.visible = true;
-        Cursor.lockState = CursorLockMode.None;
     }
 
-    // 시작 전 로비는 홈 씬 위라 Leave가 씬을 다시 불러오지 않는다 — 세션이 없어졌으면(나가기·방장 이탈·끊김) 홈 화면으로 되돌린다.
+    // 시작 전 로비는 홈 씬 위라 Leave가 씬을 다시 불러오지 않는다 — 세션이 없어졌으면(나가기·방장 이탈·끊김) 멀티 화면으로 되돌린다.
     // OnGUI 안에서 바꾸면 한 프레임의 Layout/Repaint 두 패스가 서로 다른 버튼을 그려 IMGUI ArgumentException이 난다 → Update에서 바꾼다.
     void Update()
     {
+        // ESC 메뉴에서 나오면 커서 복원 코루틴이 이 씬의 Start 뒤에 돌아 커서를 다시 잠글 수 있어 매 프레임 푼다.
+        Cursor.visible = true;
+        Cursor.lockState = CursorLockMode.None;
+        UnloadStrayScenes();
+        if (v == V.Settings && (pause == null || !pause.SettingsOpen)) v = V.Home;
         if (v != V.Lobby || MpNet.I == null || MpNet.I.Session != null) return;
-        v = V.Home;
+        v = V.Multi;
         msg = MpNet.Message; MpNet.Message = null;
+    }
+
+    // 맵 4 섹터를 불러오는 도중 나오면 진행 중이던 추가 로드가 메인 화면 위에 도착한다 — 도착하는 대로 내린다.
+    AsyncOperation strayUnload;
+    void UnloadStrayScenes()
+    {
+        if (strayUnload != null && !strayUnload.isDone) return;
+        for (int i = 0; i < SceneManager.sceneCount; i++)
+        {
+            var s = SceneManager.GetSceneAt(i);
+            if (!s.isLoaded || s == gameObject.scene) continue;
+            strayUnload = SceneManager.UnloadSceneAsync(s);
+            return;
+        }
     }
 
     async void Run(System.Threading.Tasks.Task<string> t, V okView)
     {
-        v = V.Busy; msg = null;
+        v = V.Busy; busyText = "연결 중…"; msg = null;
         string err = await t;
         if (this == null) return;
-        if (err == null) v = okView; else { v = V.Home; msg = err; }
+        if (err == null) v = okView; else { v = V.Multi; msg = err; }
     }
+
+    /// <summary>네트워크 없이 맵을 연다. 클리어 후 다음 맵 진행은 LevelManager의 기존 흐름을 그대로 쓴다.</summary>
+    public void StartSingle(int map)
+    {
+        v = V.Busy; busyText = "불러오는 중…"; msg = null;
+        PauseMenuController.OnLeaveToMain = () => SceneManager.LoadScene(MpNet.HomeScene);
+        SceneManager.LoadSceneAsync(MpLobby.MapScenes[map]);
+    }
+
+    void Go(V to) { v = to; msg = null; }
 
     void OnGUI()
     {
+        if (v == V.Settings) return; // 설정 창은 PauseMenuController가 그린다
         GUI.skin.label.richText = true;
         float s = Screen.height / 720f;
         GUI.matrix = Matrix4x4.Scale(new Vector3(s, s, 1));
@@ -46,8 +77,10 @@ public class MpMenu : MonoBehaviour
         switch (v)
         {
             case V.Home: Home(); break;
+            case V.Single: Single(); break;
+            case V.Multi: Multi(); break;
             case V.Join: Join(); break;
-            case V.Busy: GUILayout.Label("연결 중…"); break;
+            case V.Busy: GUILayout.Label(busyText); break;
             case V.Lobby: Lobby(); break;
         }
         GUILayout.EndArea();
@@ -55,19 +88,25 @@ public class MpMenu : MonoBehaviour
 
     void Home()
     {
-        if (GUILayout.Button("방 만들기", GUILayout.Height(40))) Run(MpNet.I.CreateRoom(), V.Lobby);
-        if (GUILayout.Button("방 입장하기", GUILayout.Height(40))) { v = V.Join; msg = null; }
-        GUI.enabled = false;
-        GUILayout.Button("설정 (M5)", GUILayout.Height(40));
-        GUI.enabled = true;
-        if (GUILayout.Button("게임 종료", GUILayout.Height(40)))
-        {
-#if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-#else
-            Application.Quit();
-#endif
-        }
+        if (GUILayout.Button("싱글플레이", GUILayout.Height(40))) Go(V.Single);
+        if (GUILayout.Button("멀티플레이", GUILayout.Height(40))) { MpNet.Ensure(); Go(V.Multi); }
+        if (GUILayout.Button("설정", GUILayout.Height(40)) && pause != null) { pause.OpenSettings(); Go(V.Settings); }
+        if (GUILayout.Button("종료하기", GUILayout.Height(40))) PauseMenuController.QuitGame();
+    }
+
+    void Single()
+    {
+        GUILayout.Label("맵 선택");
+        for (int i = 0; i < MpLobby.MapNames.Length; i++)
+            if (GUILayout.Button(MpLobby.MapNames[i], GUILayout.Height(40))) StartSingle(i);
+        if (GUILayout.Button("뒤로", GUILayout.Height(32))) Go(V.Home);
+    }
+
+    void Multi()
+    {
+        if (GUILayout.Button("방 생성하기", GUILayout.Height(40))) Run(MpNet.I.CreateRoom(), V.Lobby);
+        if (GUILayout.Button("방 입장하기", GUILayout.Height(40))) Go(V.Join);
+        if (GUILayout.Button("뒤로", GUILayout.Height(32))) Go(V.Home);
     }
 
     void Join()
@@ -77,7 +116,7 @@ public class MpMenu : MonoBehaviour
         GUI.enabled = code.Length >= 6;
         if (GUILayout.Button("입장", GUILayout.Height(40))) Run(MpNet.I.JoinRoom(code), V.Lobby);
         GUI.enabled = true;
-        if (GUILayout.Button("뒤로", GUILayout.Height(32))) { v = V.Home; msg = null; }
+        if (GUILayout.Button("뒤로", GUILayout.Height(32))) Go(V.Multi);
     }
 
     void Lobby()

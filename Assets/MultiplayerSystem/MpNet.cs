@@ -35,9 +35,6 @@ public class MpNet : MonoBehaviour
         I = go.AddComponent<MpNet>();
         I.Build();
         Application.runInBackground = true; // 포커스를 잃은 창이 멈춰 접속이 끊기지 않게
-        // P-06: ESC 메뉴가 Time.timeScale을 0으로 만들면 내 물리·네트워크만 멈추고 남들은 계속 움직인다 → 오버레이만 띄우고 게임은 계속
-        var pause = FindFirstObjectByType<PauseMenuController>();
-        if (pause != null) pause.freezeTime = false;
         return I;
     }
 

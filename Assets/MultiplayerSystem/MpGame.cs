@@ -31,14 +31,19 @@ public static class MpGame
         var op = SceneManager.LoadSceneAsync(scene);
         while (!op.isDone) yield return null;
         yield return null;
-        // "씬에 안 놔도 동작"하는 자동 생성형 컨트롤러는 RuntimeInitializeOnLoadMethod(AfterSceneLoad)로 앱 시작 때 한 번만 만들어진다.
-        // 첫 씬이 홈 화면이면 홈과 함께 파괴돼 맵에서는 E 상호작용·블록 운반 등이 통째로 죽는다 → 맵을 로드할 때마다 다시 보장한다.
-        foreach (var t in new[] { typeof(InteractionController), typeof(BlockCarryController), typeof(CubeDockController), typeof(FrictionStickerController), typeof(SnapBlockController) })
-            t.GetMethod("EnsureExists", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
         var movers = Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None).Where(m => !m.TryGetComponent<Unity.Netcode.NetworkObject>(out _)).ToArray(); // 맵에 원래 있던 도형만(재접속자의 DDOL 네트워크 도형은 제외)
+        // 맵 4: Map4Director가 섹터를 다 불러와 도형을 옮긴 뒤 중력을 되돌린다. 바닥이 준비될 때까지 기다린다
+        var director = Object.FindFirstObjectByType<Map4Director>();
+        if (director != null)
+            while (movers.Any(m => m != null && m.TryGetComponent(out Rigidbody rb) && !rb.useGravity)) yield return null;
+        if (lobby == null || !lobby.IsSpawned) yield break; // 기다리는 사이 방을 나갔다
         for (int i = 0; i < 3; i++) spawnBySlot[i] = null;
         foreach (var m in movers)
             if (m.TryGetComponent(out PlayerShapeIdentity id)) spawnBySlot[SlotOfKind(id.Kind)] = m.transform.position + Vector3.up * 0.3f;
+        // Director의 도형 배치 순서는 PC마다 다르다 — 각자 판단하면 두 도형이 한 자리에 나므로 슬롯 번호로 고정한다
+        if (director != null && director.TryGetSector(director.spawnSectorId, out var sector))
+            for (int i = 0; i < 3 && i < sector.spawnSlots.Length; i++)
+                if (sector.spawnSlots[i] != null) spawnBySlot[i] = sector.spawnSlots[i].position + Vector3.up * 0.3f;
         NetProtoRunner.SpawnBase = movers.Length > 0 ? movers.OrderBy(m => m.name).First().transform.position + Vector3.up * 0.3f : new Vector3(0, 2, 0);
         Debug.Log($"[Mp] 맵 로드 {scene} 기존 플레이어 {movers.Length}개 스폰기준={NetProtoRunner.SpawnBase:F2}");
         // 비활성화만 하면 PlayerControlSwitcher·PlayerFollowCamera의 static 인스턴스가 살아남아 새 플레이어의 조작권을 빼앗는다 → 즉시 파괴

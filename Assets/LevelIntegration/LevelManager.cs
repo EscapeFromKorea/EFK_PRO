@@ -42,8 +42,19 @@ public sealed class LevelManager : MonoBehaviour
         if (cleared) RestoreInput();
         Instance = null;
     }
+    // "씬에 안 놔도 동작"하는 컨트롤러는 AfterSceneLoad로 앱 시작 때 한 번만 만들어져 첫 씬과 함께 사라진다.
+    // 메인 화면에서 맵을 열거나 Next Stage로 넘어가도 E 상호작용·블록 운반 등이 살아 있도록 맵을 열 때마다 보장한다.
+    private System.Collections.IEnumerator EnsureGameplayControllers()
+    {
+        yield return null; // 이전 씬의 컨트롤러가 사라진 뒤에 찾는다
+        foreach (var t in new[] { typeof(InteractionController), typeof(BlockCarryController), typeof(CubeDockController), typeof(FrictionStickerController), typeof(SnapBlockController) })
+            t.GetMethod("EnsureExists", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
+    }
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        if (mode == LoadSceneMode.Single && levels != null && Array.Exists(levels, l => l != null && l.scenePath == scene.path))
+            StartCoroutine(EnsureGameplayControllers());
         if (scene.path == "Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S8.unity" &&
             SceneManager.GetActiveScene().path == "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity")
         {
@@ -121,24 +132,30 @@ public sealed class LevelManager : MonoBehaviour
         GUILayout.FlexibleSpace();
         var title = new GUIStyle(GUI.skin.label) { fontSize = 30, alignment = TextAnchor.MiddleCenter };
         GUILayout.Label("STAGE CLEAR", title, GUILayout.Height(55));
-        if (GUILayout.Button("Home", GUILayout.Height(48)))
-        {
-            RestoreInput();
-            Application.Quit();
-#if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-#endif
-        }
+        if (GUILayout.Button("Home", GUILayout.Height(48))) GoHome();
         GUI.enabled = hasNext;
-        if (GUILayout.Button(hasNext ? "Next Stage" : "Last Stage Clear", GUILayout.Height(48)))
-        {
-            string path = levels[current + 1].scenePath;
-            if (string.IsNullOrEmpty(path) || !Application.CanStreamedLevelBeLoaded(path))
-                Debug.LogError("Next stage is not enabled in Build Settings: " + path);
-            else { RestoreInput(); SceneManager.LoadScene(path); }
-        }
+        if (GUILayout.Button(hasNext ? "Next Stage" : "Last Stage Clear", GUILayout.Height(48))) GoNext();
         GUI.enabled = true;
         GUILayout.FlexibleSpace();
         GUILayout.EndArea();
+    }
+
+    /// <summary>클리어 화면 Home: 메인 화면으로. 메인 화면이 빌드에 없으면 기존처럼 종료한다.</summary>
+    public void GoHome()
+    {
+        RestoreInput();
+        if (Application.CanStreamedLevelBeLoaded(MpNet.HomeScene)) { SceneManager.LoadScene(MpNet.HomeScene); return; }
+        PauseMenuController.QuitGame();
+    }
+
+    /// <summary>클리어 화면 Next Stage: 레벨 목록의 다음 맵으로.</summary>
+    public void GoNext()
+    {
+        int current = CurrentIndex();
+        if (current < 0 || current + 1 >= levels.Length) return;
+        string path = levels[current + 1].scenePath;
+        if (string.IsNullOrEmpty(path) || !Application.CanStreamedLevelBeLoaded(path))
+            Debug.LogError("Next stage is not enabled in Build Settings: " + path);
+        else { RestoreInput(); SceneManager.LoadScene(path); }
     }
 }
