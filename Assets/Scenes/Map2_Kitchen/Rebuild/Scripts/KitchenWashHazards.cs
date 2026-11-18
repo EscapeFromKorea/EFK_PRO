@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Map2KitchenDraft
@@ -42,6 +43,34 @@ namespace Map2KitchenDraft
         private Vector3 aimDirection;
         private readonly RaycastHit[] sightHits = new RaycastHit[64];
 
+        // [멀티] 레이저는 피격 없는 연출이라 각 PC가 몸들의 위치 변화로 직접 판단한다(복사본은 키네마틱이라 속도가 0이다).
+        private const float MpMovingHold = 0.25f; // 복사본 위치는 네트워크 틱마다만 바뀌므로 잠깐 유지한다
+        private readonly Dictionary<PlayerMover, (Vector3 pos, float movedAt, bool seen)> mpMotion =
+            new Dictionary<PlayerMover, (Vector3, float, bool)>();
+
+        private Transform PickMpTarget()
+        {
+            Transform best = null;
+            float bestDistance = float.PositiveInfinity;
+            foreach (PlayerMover mover in MpSync.Bodies)
+            {
+                Vector3 pos = mover.transform.position;
+                float movedAt = float.NegativeInfinity;
+                if (mpMotion.TryGetValue(mover, out var motion))
+                {
+                    Vector3 delta = pos - motion.pos;
+                    delta.y = 0f;
+                    movedAt = delta.magnitude >= movementSpeedThreshold * Time.deltaTime ? Time.time : motion.movedAt;
+                }
+                mpMotion[mover] = (pos, movedAt, true);
+                if (Time.time - movedAt > MpMovingHold) continue;
+                if (!TryGetVisibleTarget(mover.transform, out Vector3 point, false)) continue;
+                float distance = (point - transform.position).sqrMagnitude;
+                if (distance < bestDistance) { bestDistance = distance; best = mover.transform; }
+            }
+            return best;
+        }
+
         private void Awake()
         {
             line = GetComponent<LineRenderer>();
@@ -64,9 +93,9 @@ namespace Map2KitchenDraft
 
         private void LateUpdate()
         {
-            Transform actor = PlayerControlSwitcher.ActiveTarget;
+            Transform actor = MpSync.Active ? PickMpTarget() : PlayerControlSwitcher.ActiveTarget;
             Vector3 targetPoint;
-            if (!TryGetMovingVisibleTarget(actor, out targetPoint))
+            if (!TryGetVisibleTarget(actor, out targetPoint, !MpSync.Active))
             {
                 StopTracking();
                 return;
@@ -96,7 +125,10 @@ namespace Map2KitchenDraft
         }
 
         /// <summary>True only when the active shape moves inside the sink and is directly visible.</summary>
-        public bool TryGetMovingVisibleTarget(Transform actor, out Vector3 aimPoint)
+        public bool TryGetMovingVisibleTarget(Transform actor, out Vector3 aimPoint) =>
+            TryGetVisibleTarget(actor, out aimPoint, true);
+
+        private bool TryGetVisibleTarget(Transform actor, out Vector3 aimPoint, bool checkBodyMotion)
         {
             aimPoint = Vector3.zero;
             if (actor == null || !actor.gameObject.activeInHierarchy || activityBounds == null ||
@@ -105,7 +137,7 @@ namespace Map2KitchenDraft
 
             PlayerShapeIdentity shape = actor.GetComponent<PlayerShapeIdentity>();
             Rigidbody body = actor.GetComponent<Rigidbody>();
-            if (shape == null || body == null || body.isKinematic)
+            if (shape == null || body == null || (checkBodyMotion && body.isKinematic))
                 return false;
 
             PlayerMover mover = actor.GetComponent<PlayerMover>();
@@ -114,7 +146,7 @@ namespace Map2KitchenDraft
 
             Vector3 horizontalVelocity = body.linearVelocity;
             horizontalVelocity.y = 0f;
-            if (horizontalVelocity.sqrMagnitude < movementSpeedThreshold * movementSpeedThreshold)
+            if (checkBodyMotion && horizontalVelocity.sqrMagnitude < movementSpeedThreshold * movementSpeedThreshold)
                 return false;
 
             aimPoint = shape.solidCollider != null ? shape.solidCollider.bounds.center : actor.position;

@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Map2KitchenDraft
 {
     /// <summary>Kitchen map review controls and the confirmed key-only exit condition.</summary>
-    public sealed class KitchenDraftController : MonoBehaviour
+    public sealed class KitchenDraftController : MonoBehaviour, IMpSynced, IMpEventSink
     {
         public Transform[] chapterStarts;
         public string[] chapterNames;
@@ -57,11 +57,54 @@ namespace Map2KitchenDraft
         private bool showReviewHelp;
         private KitchenMapHandoff mapHandoff;
 
+        // [멀티] 열쇠·도착은 팀 공유 상태로 서버가 확정한다(채널 0=열쇠, 1=도착). 참가자는 E를 이벤트 0(arg=내 몸 ID)으로 보고한다.
+        private uint mpId;
+
         private void Awake()
         {
             mapHandoff = FindFirstObjectByType<KitchenMapHandoff>();
             CaptureDoorPosition();
             ApplyDoorState();
+            mpId = MpSync.Register(this);
+        }
+
+        public void OnMpValue(int channel, float value)
+        {
+            if (channel == 1) { ExitReached = value > 0.5f; return; }
+            if (channel != 0) return;
+            HasKey = value > 0.5f;
+            if (key != null) key.gameObject.SetActive(!HasKey);
+            ApplyDoorState();
+        }
+
+        public void OnMpEvent(int kind, Vector3 data, uint arg)
+        {
+            if (kind != 0 || !MpSync.IsServer || HasKey || key == null || !MpSync.SenderOwnsBody(arg)) return;
+            var nm = Unity.Netcode.NetworkManager.Singleton;
+            if (nm == null || !nm.SpawnManager.SpawnedObjects.TryGetValue(arg, out var body) || body == null) return;
+            // 복사본 위치는 전송 지연만큼 뒤처진다 — 그만큼만 여유를 둔다
+            if (Vector3.Distance(body.transform.position, key.position) <= interactionRadius + 1.5f) GrantKey();
+        }
+
+        private void GrantKey()
+        {
+            HasKey = true;
+            key.gameObject.SetActive(false);
+            ApplyDoorState();
+            MpSync.Publish(mpId, 0, 1f);
+        }
+
+        /// <summary>[멀티] R: 내 도형만 지금 구역의 시작점으로 돌려보내고 크기를 기본값으로 되돌린다. 팀 상태(열쇠·문)는 유지한다.</summary>
+        public void RecoverOwnShape()
+        {
+            Transform actor = ControlledTransform();
+            if (actor == null || chapterStarts == null || CurrentChapter >= chapterStarts.Length) return;
+            Transform start = chapterStarts[CurrentChapter];
+            PlayerMover mover = actor.GetComponent<PlayerMover>();
+            if (start == null || mover == null || mover.ExternallyDriven) return;
+            if (actor.TryGetComponent(out PlayerShapeController shape)) shape.ResetToDefault();
+            MoveActor(actor, start.position);
+            PlayerFollowCamera.SnapToTarget(actor);
         }
 
         private void Update()
@@ -71,7 +114,15 @@ namespace Map2KitchenDraft
             {
                 CurrentChapter = FindChapter(actor.position);
                 TrackSinkVisit(actor);
-                if (Input.GetKeyDown(KeyCode.E)) TryCollectKey(actor);
+                if (Input.GetKeyDown(KeyCode.E) && !(MpSync.Active && InputGate.Blocked)) TryCollectKey(actor);
+            }
+
+            if (MpSync.Active)
+            {
+                // 검토용 구역 이동·전체 초기화는 팀 상태를 PC마다 어긋나게 하므로 멀티에서는 쓰지 않는다
+                if (Input.GetKeyDown(KeyCode.R) && !InputGate.Blocked) RecoverOwnShape();
+                if (Input.GetKeyDown(KeyCode.F1)) showReviewHelp = !showReviewHelp;
+                return;
             }
 
             // These shortcuts only support review of the first draft. They are not checkpoints.
@@ -134,9 +185,13 @@ namespace Map2KitchenDraft
             if (mover == null || !mover.isActiveAndEnabled) return false;
             if (Vector3.Distance(mover.transform.position, key.position) > interactionRadius) return false;
 
-            HasKey = true;
-            key.gameObject.SetActive(false);
-            ApplyDoorState();
+            if (MpSync.IsClient)
+            {
+                var no = mover.GetComponent<Unity.Netcode.NetworkObject>();
+                if (no != null) MpSync.SendEvent(mpId, 0, Vector3.zero, (uint)no.NetworkObjectId);
+                return true;
+            }
+            GrantKey();
             return true;
         }
 
@@ -144,8 +199,9 @@ namespace Map2KitchenDraft
         {
             if (!HasKey || ExitReached || actor == null) return;
             PlayerMover mover = actor.GetComponentInParent<PlayerMover>();
-            if (mover == null || !mover.isActiveAndEnabled) return;
+            if (mover == null || (!MpSync.Active && !mover.isActiveAndEnabled)) return; // 멀티의 남의 몸 복사본은 mover가 꺼져 있다
             ExitReached = true;
+            MpSync.Publish(mpId, 1, 1f);
             // In the playable scene KitchenMapHandoff begins the scene load before recording arrival.
         }
 
@@ -232,6 +288,8 @@ namespace Map2KitchenDraft
                 body.position = destination;
             }
             actor.position = destination;
+            if (actor.TryGetComponent(out Unity.Netcode.Components.NetworkTransform nt) && nt.IsSpawned && nt.CanCommitToTransform)
+                nt.Teleport(destination, actor.rotation, actor.localScale); // 다른 PC에서 미끄러져 보이지 않게
             Physics.SyncTransforms();
         }
 
@@ -330,6 +388,7 @@ namespace Map2KitchenDraft
 
         private void OnDestroy()
         {
+            MpSync.Unregister(mpId, this);
             if (panelPixel != null) Destroy(panelPixel);
         }
     }

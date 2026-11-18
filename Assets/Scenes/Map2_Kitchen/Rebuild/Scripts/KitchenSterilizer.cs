@@ -43,8 +43,8 @@ namespace Map2KitchenDraft
 
         private void FixedUpdate()
         {
-            UpdateHeads(Time.fixedTime);
-            Transform actor = PlayerControlSwitcher.ActiveTarget;
+            UpdateHeads(MpSync.SharedFixedTime); // 멀티: 모든 PC가 같은 시계를 써서 물줄기 위치가 일치한다
+            Transform actor = KitchenDraftController.ControlledTransform(); // 멀티: 각 PC가 자기 몸의 피격만 처리한다
             if (actor == null || !actor.TryGetComponent(out Rigidbody body)) return;
 
             foreach (Jet jet in jets)
@@ -73,7 +73,7 @@ namespace Map2KitchenDraft
 
         private void OnGUI()
         {
-            if (Time.time >= showHitUntil || PlayerControlSwitcher.ActiveTarget != hitActor) return;
+            if (Time.time >= showHitUntil || KitchenDraftController.ControlledTransform() != hitActor) return;
             if (messageStyle == null)
             {
                 messageStyle = new GUIStyle(GUI.skin.box)
