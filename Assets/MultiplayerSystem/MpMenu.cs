@@ -16,6 +16,7 @@ public class MpMenu : MonoBehaviour
     {
         pause = FindFirstObjectByType<PauseMenuController>();
         PauseMenuController.OnLeaveToMain = null; // 메인 화면에서는 "메인화면으로 나가기"가 필요 없다
+        LevelManager.OnClearOverride = null;      // 멀티를 끝내고 돌아왔다 — 이제부터의 클리어는 싱글 규칙이다
         msg = MpNet.Message; MpNet.Message = null; // H-04: 오류로 돌아왔으면 메시지 표시
     }
 

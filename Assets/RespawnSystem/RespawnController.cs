@@ -338,7 +338,7 @@ public class RespawnController : MonoBehaviour, IMpEventSink
                              "(인자는 플레이어 Root여야 한다).", playerRoot);
             return;
         }
-        if (MpSync.Active && !IsOwnBody(mover)) { Debug.LogWarning("[Respawn] 남의 몸의 구간 복귀는 아직 주인 PC로 전달하지 않는다(FallingRock·SectionSafePoint 변환 때 처리)", this); return; }
+        if (MpSync.Active && !IsOwnBody(mover)) { MpSync.RequestRespawnAtOwner(mover.gameObject, destination); return; } // 몸은 주인 PC가 옮긴다
         TryRespawn(mover, useFade: true, reason: $"구간 복귀({destination.sectionId})", destination: destination);
     }
 

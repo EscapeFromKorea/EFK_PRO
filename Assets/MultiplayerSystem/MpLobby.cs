@@ -63,12 +63,26 @@ public class MpLobby : NetworkBehaviour
 
     // 서버 → 몸 주인 PC: 이 몸을 체크포인트로 복귀시켜라(낙하 판정 등을 서버가 했을 때)
     [Rpc(SendTo.SpecifiedInParams)]
-    public void RespawnBodyRpc(ulong networkObjectId, RpcParams rpcParams = default)
+    public void RespawnBodyRpc(ulong networkObjectId, uint safePointId, RpcParams rpcParams = default)
     {
         if (!NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out var no) || !no.IsOwner) return;
         var rc = FindFirstObjectByType<RespawnController>();
-        if (rc != null) rc.RespawnPlayer(no.gameObject);
+        if (rc == null) return;
+        Transform point = MpSync.FindTransform(safePointId);
+        rc.RespawnPlayer(no.gameObject, point != null ? point.GetComponent<SectionSafePoint>() : null);
     }
+
+    // 서버 → 몸 주인 PC: 팀 이동 등으로 이 몸을 옮겨라
+    [Rpc(SendTo.SpecifiedInParams)]
+    public void MoveBodyRpc(ulong networkObjectId, Vector3 position, RpcParams rpcParams = default)
+    {
+        if (NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out var no) && no.IsOwner)
+            MpSync.TeleportOwnBody(no.transform, position);
+    }
+
+    // 서버 → 참가자 PC: 단말 안내 문구 등
+    [Rpc(SendTo.NotServer)]
+    public void TextRpc(uint id, string text) => MpSync.ApplyText(id, text);
 
     // 서버 → 정육면체 주인 PC: 도킹된 블록의 몸 기준 상대 자세. 주인 PC가 도킹 블록을 로컬에서 직접 따라오게 한다(지연 없이)
     [Rpc(SendTo.SpecifiedInParams)]

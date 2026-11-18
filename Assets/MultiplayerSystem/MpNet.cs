@@ -135,7 +135,7 @@ public class MpNet : MonoBehaviour
         if (leaving) return;
         leaving = true;
         Message = msg;
-        LevelManager.OnClearOverride = null;
+        // LevelManager.OnClearOverride는 메인 화면이 해제한다 — 나가는 도중 몸이 목표에 닿아도 싱글용 클리어(시간 정지)가 켜지면 안 된다
         PauseMenuController.OnLeaveToMain = null; // 홈에서는 "메인화면으로 나가기"를 다시 끈다
         try
         {
