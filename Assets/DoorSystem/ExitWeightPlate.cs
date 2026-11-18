@@ -30,7 +30,7 @@ using UnityEngine;
 /// 바디별로 세지 않으면 콜라이더 하나가 빠지는 순간 무게가 통째로 사라진다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class ExitWeightPlate : MonoBehaviour
+public class ExitWeightPlate : MonoBehaviour, IMpSynced
 {
     [Header("무게 조건")]
     [Tooltip("판 위 도형들의 합산 무게(질량 × 실효 중력 배율)가 이 값 이상이면 열린다.\n" +
@@ -58,6 +58,20 @@ public class ExitWeightPlate : MonoBehaviour
     private readonly Dictionary<Rigidbody, int> overlaps = new Dictionary<Rigidbody, int>();
     private bool isOpen;
 
+    // [멀티 M4 분류 A] 무게 판정은 서버만(몸 복사본의 질량·겹침이 서버에 있다). 열림 여부를 올리고 참가자 PC는 벽만 치운다(문은 doorPhysics 동기화가 처리)
+    private uint mpId;
+
+    void Awake() => mpId = MpSync.Register(this);
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel != 0 || (value > 0.5f) == isOpen) return;
+        isOpen = value > 0.5f;
+        ApplyBarriers();
+    }
+
     void Reset()
     {
         GetComponent<Collider>().isTrigger = true;
@@ -65,7 +79,7 @@ public class ExitWeightPlate : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
+        if (MpSync.IsClient || (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem"))) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
         overlaps.TryGetValue(rb, out int n);
@@ -74,7 +88,7 @@ public class ExitWeightPlate : MonoBehaviour
 
     void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
+        if (MpSync.IsClient || (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem"))) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
         if (!overlaps.TryGetValue(rb, out int n)) return;
@@ -84,13 +98,14 @@ public class ExitWeightPlate : MonoBehaviour
 
     void Update()
     {
-        if (isOpen && latchOpen) return;
+        if (MpSync.IsClient || (isOpen && latchOpen)) return;
 
         bool shouldOpen = TotalWeight() >= requiredWeight;
         if (shouldOpen == isOpen) return;
 
         isOpen = shouldOpen;
         ApplyBarriers();
+        MpSync.Publish(mpId, 0, isOpen ? 1f : 0f);
         Debug.Log(isOpen
             ? $"[ExitWeightPlate] '{name}'이 눌렸습니다 (무게 {TotalWeight():0.##} ≥ {requiredWeight}). 다음 구역이 열립니다."
             : $"[ExitWeightPlate] '{name}' 무게가 모자라 출구가 다시 닫혔습니다.");
@@ -113,7 +128,7 @@ public class ExitWeightPlate : MonoBehaviour
     {
         // 문은 새 여닫기 로직을 만들지 않고 레버·패드가 쓰는 창구를 그대로 부른다 — "현재 문과 똑같은
         // 방식으로 열린다"가 요구사항이고, doorPhysics가 이미 목표 위치·속도·끼임 방지를 다 갖고 있다.
-        if (targetDoor != null) targetDoor.SetPadPressed(isOpen);
+        if (targetDoor != null && !MpSync.IsClient) targetDoor.SetPadPressed(isOpen);
 
         if (exitBarriers == null) return;
         foreach (GameObject b in exitBarriers)

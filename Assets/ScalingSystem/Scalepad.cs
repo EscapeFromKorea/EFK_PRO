@@ -84,7 +84,8 @@ public class ScalePad : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag(playerTag)) return;
+        // [멀티 M4 분류 D] 몸 크기는 주인 PC가 바꾸고 NetworkTransform이 크기를 전한다 — 남의 몸 복사본의 트리거는 무시(이중 토글 방지)
+        if (!other.CompareTag(playerTag) || !MpSync.IsOwnBody(other)) return;
 
         PlayerShapeController shapeController = FindShapeController(other);
         if (shapeController == null)
@@ -114,7 +115,7 @@ public class ScalePad : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag(playerTag)) return;
+        if (!other.CompareTag(playerTag) || !MpSync.IsOwnBody(other)) return;
 
         PlayerShapeController shapeController = FindShapeController(other);
         if (shapeController == null) return;

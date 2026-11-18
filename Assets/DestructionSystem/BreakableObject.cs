@@ -25,7 +25,7 @@ using UnityEngine;
 /// 없고, 노브를 하나 더 늘리면 콜라이더와 어긋난 설정이 가능해진다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class BreakableObject : MonoBehaviour
+public class BreakableObject : MonoBehaviour, IMpSynced, IMpEventSink
 {
     [Header("파괴 조건 (AND)")]
     [Tooltip("PlayerWeight.Of(rb) 기준 임계 무게. 기본값 3은 정육면체(무게 3.0) 단독 통과를 의도한 " +
@@ -121,6 +121,34 @@ public class BreakableObject : MonoBehaviour
 
     private bool broken;
 
+    // [멀티 M4 B1] 부서짐은 한 번뿐인 상태 전이다. 판정은 부딪힌 몸의 주인 PC(서버 몸이면 서버)가 하고 — 서버는 참가자 몸의
+    // 키네마틱 복사본과는 충돌 이벤트가 안 나므로 — 곧바로 자기 화면에서 부순 뒤 서버에 알린다. 서버는 부서짐을 채널 0으로 올려
+    // 나머지 PC가 부수게 한다. 파편은 연출이라 PC마다 따로 만든다(난수 동기화 불필요). 늦게 합류하면 파편 없이 사라진 상태로 시작한다.
+    private uint mpId;
+    private bool mpReady;
+
+    private void Awake()
+    {
+        mpId = MpSync.Register(this);
+        mpReady = true;
+    }
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel != 0 || value < 0.5f || broken) return;
+        if (!mpReady) { broken = true; gameObject.SetActive(false); return; } // 늦게 합류: 이미 부서진 상태
+        Break(transform.position, breakThreshold);
+    }
+
+    public void OnMpEvent(int kind, Vector3 hitPoint, uint arg)
+    {
+        if (kind != 0 || broken) return;
+        Break(hitPoint, breakThreshold);
+        MpSync.Publish(mpId, 0, 1f);
+    }
+
     void Reset()
     {
         GetComponent<Collider>().isTrigger = false;
@@ -137,8 +165,12 @@ public class BreakableObject : MonoBehaviour
         bool weightOk = PlayerWeight.Of(otherRb) >= requiredWeight;
         bool speedOk = impactSpeed >= breakThreshold;
         if (!weightOk || !speedOk) return;
+        if (MpSync.IsClient && !MpSync.IsOwnBody(otherRb)) return; // 참가자 PC는 자기 몸의 충돌만 판정한다
 
-        Break(collision.GetContact(0).point, impactSpeed);
+        Vector3 hit = collision.GetContact(0).point;
+        Break(hit, impactSpeed);
+        if (MpSync.IsServer) MpSync.Publish(mpId, 0, 1f);
+        else if (MpSync.IsClient) MpSync.SendEvent(mpId, 0, hit);
     }
 
     private void Break(Vector3 hitPoint, float impactSpeed)

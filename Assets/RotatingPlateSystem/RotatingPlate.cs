@@ -99,6 +99,7 @@ public class RotatingPlate : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         hinge = GetComponent<HingeJoint>();
         ApplyConfig();
+        MpBodySync.Ensure(this); // [멀티 M4 B1] 서버가 굴리고 참가자 PC는 키네마틱으로 따라간다
     }
 
     private void Start() => SeesawWeightTilt.TryUpgrade(this);
@@ -136,6 +137,7 @@ public class RotatingPlate : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
         if (Mathf.Abs(pendingDriveTorque) > 1e-6f)
         {
             rb.AddTorque(HingeAxisWorld * (pendingDriveTorque * driveTorqueScale), ForceMode.Acceleration);

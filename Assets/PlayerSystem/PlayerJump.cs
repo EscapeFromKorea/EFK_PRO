@@ -42,9 +42,12 @@ public class PlayerJump : MonoBehaviour
     void Update()
     {
         if (mover != null && (!mover.IsControlled || mover.InputLocked)) return; // [mnppi 수정] 입력 잠금 추가
-        if (Input.GetButtonDown("Jump"))
+        if ((mover == null || !mover.UseRemoteInput) && Input.GetButtonDown("Jump"))
             jumpQueued = true;
     }
+
+    /// <summary>[멀티 프로토타입] 서버가 원격 클라이언트의 점프 입력을 대신 큐한다.</summary>
+    public void QueueJump() => jumpQueued = true;
 
     void FixedUpdate()
     {

@@ -64,6 +64,7 @@ public class ZeroGravityBubble : MonoBehaviour
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.attachedRigidbody;
         if (rb == null) return;
+        if (!MpSync.IsOwnBody(rb)) return; // [멀티 M4] 중력·점프 효과는 몸 주인 PC가 자기 몸에만 건다(남의 몸 복사본은 위치만 받는다)
 
         int count = activeColliderCount.TryGetValue(rb, out int c) ? c + 1 : 1;
         activeColliderCount[rb] = count;

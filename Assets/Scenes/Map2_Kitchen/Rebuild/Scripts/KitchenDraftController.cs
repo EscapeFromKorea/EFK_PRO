@@ -27,11 +27,20 @@ namespace Map2KitchenDraft
         // Zero-based; display text uses +1.
         public int CurrentChapter { get; private set; }
 
+        /// <summary>조작 중인 도형. Tab 스위처가 있으면 그 활성 도형, 없으면(멀티플레이: 스위처를 지우고 내 도형만 조작) 상호작용 컨트롤러가 고른 내 도형. 둘 다 없으면 null.</summary>
+        public static Transform ControlledTransform()
+        {
+            Transform switched = PlayerControlSwitcher.ActiveTarget;
+            if (switched != null) return switched;
+            PlayerMover mine = InteractionController.Controlled;
+            return mine != null ? mine.transform : null;
+        }
+
         public Transform ActivePlayer
         {
             get
             {
-                Transform switched = PlayerControlSwitcher.ActiveTarget;
+                Transform switched = ControlledTransform();
                 if (switched != null) return switched;
                 PlayerMover fallback = FindFirstObjectByType<PlayerMover>();
                 return fallback != null ? fallback.transform : null;
@@ -84,7 +93,7 @@ namespace Map2KitchenDraft
             if (HasVisitedSink || sinkInteriorVolume == null || actor == null) return false;
             PlayerMover mover = actor.GetComponentInParent<PlayerMover>();
             if (mover == null || !mover.isActiveAndEnabled) return false;
-            Transform selected = PlayerControlSwitcher.ActiveTarget;
+            Transform selected = ControlledTransform();
             if (selected != null && selected != mover.transform) return false;
             if (mover.transform.position.y >= 4.1f ||
                 !sinkInteriorVolume.bounds.Contains(mover.transform.position)) return false;

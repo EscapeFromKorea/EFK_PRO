@@ -39,7 +39,7 @@ using UnityEngine.Events;
 /// 머신에는 전혀 관여하지 않는다(PRD B-06).
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
-public class StepRotatingBridge : MonoBehaviour
+public class StepRotatingBridge : MonoBehaviour, IMpSynced
 {
     private enum BridgeState { Idle, Telegraph, Rotating, HoldAtTarget, Returning, RearmWait }
 
@@ -163,11 +163,22 @@ public class StepRotatingBridge : MonoBehaviour
         rb.useGravity = false;
     }
 
+    // 예고(Telegraph) 중인지를 서버가 채널 0으로 올린다. 떨림은 자세(MpBodySync)로 전달되지 않는 자식 연출이라 참가자 PC가 직접 낸다.
+    private uint mpId;
+    private bool mpTelegraph;
+    private bool Telegraphing => MpSync.IsClient ? mpTelegraph : state == BridgeState.Telegraph;
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) mpTelegraph = value > 0.5f; }
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
     private void Awake()
     {
         body = GetComponent<Rigidbody>();
         body.isKinematic = true; // Reset을 거치지 않고 수동 부착됐어도 강제한다
         body.useGravity = false;
+        MpBodySync.Ensure(this); // [멀티 M4 B1] 서버가 상태 기계를 돌리고 자세를 올린다. 참가자 PC는 키네마틱으로 따라간다
+        mpId = MpSync.Register(this);
 
         if (riderSensor == null)
             foreach (Collider c in GetComponents<Collider>())
@@ -210,6 +221,8 @@ public class StepRotatingBridge : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) { UpdateTelegraphShake(); return; } // 자세는 MpBodySync가 맞추고, 예고 떨림만 여기서
+        MpSync.Publish(mpId, 0, state == BridgeState.Telegraph ? 1f : 0f);
         CleanupDeadRiders();
         UpdateFallWatch();
         UpdateTelegraphShake();
@@ -308,6 +321,7 @@ public class StepRotatingBridge : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
@@ -322,6 +336,7 @@ public class StepRotatingBridge : MonoBehaviour
     // Exit 하나로는 절대 0에 도달하지 못해 재무장이 영구히 막힌다.
     private void OnTriggerStay(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || riderOverlap.ContainsKey(rb)) return;
@@ -331,6 +346,7 @@ public class StepRotatingBridge : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag)) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || !riderOverlap.TryGetValue(rb, out int n)) return;
@@ -392,7 +408,7 @@ public class StepRotatingBridge : MonoBehaviour
     {
         if (visualRoot == null) return;
 
-        if (state != BridgeState.Telegraph)
+        if (!Telegraphing)
         {
             if (visualRoot.localPosition != visualRestLocalPos)
                 visualRoot.localPosition = visualRestLocalPos;

@@ -15,7 +15,7 @@ namespace Map2KitchenDraft
         private Transform qualifiedActor;
 
         public bool HasCrossedUpperExit => qualifiedActor != null && kitchen != null &&
-            kitchen.HasKey && qualifiedActor == PlayerControlSwitcher.ActiveTarget;
+            kitchen.HasKey && qualifiedActor == KitchenDraftController.ControlledTransform();
         public bool IsLoading { get; private set; }
 
         public bool ContainsDispatchRoute(Vector3 position) =>
@@ -41,7 +41,7 @@ namespace Map2KitchenDraft
             if (qualifiedActor != null && !dispatchShaft.bounds.Contains(qualifiedActor.position))
                 qualifiedActor = null;
 
-            Transform actor = PlayerControlSwitcher.ActiveTarget;
+            Transform actor = KitchenDraftController.ControlledTransform();
             if (actor != null && upperLedge != null && upperLedge.bounds.Contains(actor.position))
                 qualifiedActor = actor;
         }

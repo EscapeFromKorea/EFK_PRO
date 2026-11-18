@@ -31,7 +31,7 @@ using UnityEngine;
 /// 추적하면 두 벌의 진실이 생긴다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class RespawnZone : MonoBehaviour
+public class RespawnZone : MonoBehaviour, IMpSynced
 {
     public enum FlagState { Hidden, Visited, Active }
 
@@ -74,6 +74,20 @@ public class RespawnZone : MonoBehaviour
     [Tooltip("게양 시작 높이(깃발 부모 기준 로컬 Y). 막대 밑동이 부모의 원점이면 0 그대로 두면 된다.")]
     public float raiseFromLocalY = 0f;
 
+    // [멀티 M4 분류 D] 체크포인트 저장은 서버만(구역 트리거는 복사본 몸에도 서버에서 발생). 깃발 상태(채널 0)를 올리면 전원이 깃발을 맞추고,
+    // 참가자 PC의 RespawnController는 Active 구역을 현재 체크포인트로 쓴다.
+    private uint mpId;
+    private static RespawnZone activeZone;
+    public static RespawnZone Active => activeZone;
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) SetFlagState((FlagState)(int)value); }
+
+    private void OnDestroy()
+    {
+        MpSync.Unregister(mpId, this);
+        if (activeZone == this) activeZone = null;
+    }
+
     private Collider zoneCollider;
     private FlagState flagState = FlagState.Hidden;
     private Vector3 flagRaisedLocalPos;
@@ -88,6 +102,7 @@ public class RespawnZone : MonoBehaviour
 
     private void Awake()
     {
+        mpId = MpSync.Register(this);
         zoneCollider = GetComponent<Collider>();
         if (!zoneCollider.isTrigger)
             Debug.LogError("[RespawnZone] Collider가 Trigger가 아니다. isTrigger를 켜라.", this);
@@ -103,7 +118,14 @@ public class RespawnZone : MonoBehaviour
     /// <summary>컨트롤러가 체크포인트 상태 변화를 밀어 준다. 활성은 씬에서 항상 하나뿐이다.</summary>
     public void SetFlagState(FlagState next)
     {
-        if (flagRenderer == null || flagState == next) return;
+        if (flagState == next) return;
+
+        bool wasHidden = flagState == FlagState.Hidden;
+        flagState = next;
+        if (next == FlagState.Active) activeZone = this;
+        else if (activeZone == this) activeZone = null;
+        MpSync.Publish(mpId, 0, (int)next); // 깃발 렌더러가 없어도 체크포인트 상태는 전원이 알아야 한다
+        if (flagRenderer == null) return;
 
         // 구역 오브젝트가 비활성이라 Awake 전에 불리면 flagBlock이 null이다 — 여기서 먼저 초기화한다.
         if (flagBlock == null)
@@ -111,9 +133,6 @@ public class RespawnZone : MonoBehaviour
             flagRaisedLocalPos = flagRenderer.transform.localPosition;
             flagBlock = new MaterialPropertyBlock();
         }
-
-        bool wasHidden = flagState == FlagState.Hidden;
-        flagState = next;
 
         if (next == FlagState.Hidden)
         {
@@ -151,7 +170,7 @@ public class RespawnZone : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (MpSync.IsClient || !other.CompareTag("Player")) return;
 
         // 플레이어는 콜라이더가 둘(Player_Mesh/Player_Collider)이라 진입마다 두 번 불린다.
         // 같은 구역의 중복 저장은 컨트롤러가 걸러낸다(레이도 그때 한 번만 쏜다).

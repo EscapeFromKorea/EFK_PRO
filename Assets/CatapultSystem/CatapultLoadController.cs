@@ -63,7 +63,7 @@ using UnityEngine;
 ///   씬 튜닝 전 임시값 `[TBD]`(정확한 수치·정책은 실측 필요, 아래 필드 툴팁 참고).
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
-public class CatapultLoadController : MonoBehaviour, IInteractionProvider
+public class CatapultLoadController : MonoBehaviour, IInteractionProvider, IMpEventSink
 {
     private enum State { Idle, Connected }
 
@@ -102,8 +102,57 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
     private LineRenderer line;
     private float wheelRatio; // 9차 개편 — 마우스 휠 누적 당김 비율(0~1). 거리 계산을 완전히 대체한다.
 
+    // ── [멀티 M4 B1] 줄 연결·휠·당김 줄 구속은 정사면체 주인 PC가 자기 몸에 한다. 팔은 서버가 돌리므로(CatapultArm) 팔에 줄
+    // 명령을 서버로 보낸다: 이벤트 0 = 당김 비율(data.x, 바뀔 때만), 1 = 발사(data.x=비율), 2 = 발사 없이 놓음,
+    // 3 = 복귀로 놓음(서버가 버킷이 비었으면 팔을 원위치). arg = 정사면체 몸 ID. 서버는 받은 비율로 매 프레임 BeginPull을 부른다.
+    private uint mpId;
+    private bool mpPullSent;
+    private float mpLastSentRatio;
+    private bool mpRemotePulling;   // 서버: 다른 PC의 정사면체가 당기는 중
+    private float mpRemoteRatio;
+    private ulong mpRemoteBody;
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || arm == null || !MpSync.SenderOwnsBody(arg)) return;
+        float r = Mathf.Clamp01(data.x);
+        mpRemoteBody = arg;
+        if (kind == 0) { mpRemotePulling = true; mpRemoteRatio = r; return; }
+        mpRemotePulling = false;
+        if (kind == 1) arm.Fire(r);
+        else if (kind == 3 && (arm.bucket == null || !arm.bucket.HasOccupant)) arm.Fire(0f);
+    }
+
+    private void ArmPull(float ratio)
+    {
+        if (arm == null) return;
+        if (!MpSync.IsClient) { arm.BeginPull(ratio); return; }
+        if (mpPullSent && Mathf.Approximately(ratio, mpLastSentRatio)) return;
+        mpPullSent = true;
+        mpLastSentRatio = ratio;
+        MpSync.SendEvent(mpId, 0, new Vector3(ratio, 0f, 0f), BodyIdOf(connectedBody));
+    }
+
+    private void ArmCommand(int kind, float ratio, Rigidbody body)
+    {
+        mpPullSent = false;
+        if (arm == null) return;
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, kind, new Vector3(ratio, 0f, 0f), BodyIdOf(body)); return; }
+        if (kind == 1) arm.Fire(ratio);
+        else if (kind == 3 && (arm.bucket == null || !arm.bucket.HasOccupant)) arm.Fire(0f);
+    }
+
+    private static uint BodyIdOf(Rigidbody body)
+    {
+        var no = body != null ? body.GetComponentInParent<Unity.Netcode.NetworkObject>() : null;
+        return no != null ? (uint)no.NetworkObjectId : 0u;
+    }
+
     void Awake()
     {
+        mpId = MpSync.Register(this);
         line = GetComponent<LineRenderer>();
         line.positionCount = 2;
         line.useWorldSpace = true;
@@ -162,8 +211,9 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
     private void HandleReleaseHold(PlayerMover mover)
     {
         if (state != State.Connected || connectedMover == null || connectedMover != mover) return;
-        Disconnect(fire: false);
-        if (arm != null && (arm.bucket == null || !arm.bucket.HasOccupant)) arm.Fire(0f);
+        Rigidbody body = connectedBody;
+        Disconnect(fire: false, notify: false);
+        ArmCommand(3, 0f, body); // 버킷이 비었으면 팔을 원위치(멀티에서는 서버가 버킷 상태로 판단)
     }
 
     void FixedUpdate() => UpdateLeash();
@@ -280,6 +330,12 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
     void Update()
     {
         if (state == State.Connected) UpdatePull();
+        if (mpRemotePulling && MpSync.IsServer && arm != null)
+        {
+            var nm = Unity.Netcode.NetworkManager.Singleton;
+            if (nm != null && !nm.SpawnManager.SpawnedObjects.ContainsKey(mpRemoteBody)) mpRemotePulling = false; // 당긴 채 끊김 — 팔은 그 자리에 둔다
+            else arm.BeginPull(mpRemoteRatio);
+        }
     }
 
     private void HandleInput()
@@ -315,7 +371,7 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
         float scroll = connectedMover != null && connectedMover.IsControlled ? Input.GetAxis("Mouse ScrollWheel") : 0f;
         wheelRatio = Mathf.Clamp01(wheelRatio + scroll * wheelSensitivity);
 
-        if (arm != null) arm.BeginPull(wheelRatio);
+        ArmPull(wheelRatio);
 
         line.SetPosition(0, anchor.transform.position);
         line.SetPosition(1, connectedBody.position);
@@ -367,7 +423,7 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
         state = State.Connected;
         // 9차 개편 — 연결 순간의 초기 비율은 거리 계산이 아니라 현재 wheelRatio(리셋 정책에 따라
         // 0이거나 이전 값)를 그대로 쓴다.
-        arm.BeginPull(wheelRatio);
+        ArmPull(wheelRatio);
         line.enabled = true;
         Debug.Log("[Catapult] 당김 줄에 연결했습니다. 마우스 휠로 당김 정도를 조절하세요.");
     }
@@ -391,9 +447,10 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
 
     // 그 순간의 당김 비율(wheelRatio)로 발사(fire: true)하거나, 대상/고리 소멸 등으로 발사 없이
     // 놓는다(fire: false).
-    private void Disconnect(bool fire)
+    private void Disconnect(bool fire, bool notify = true)
     {
         float ratio = wheelRatio;
+        Rigidbody body = connectedBody;
 
         state = State.Idle;
         connectedMover = null;
@@ -402,8 +459,8 @@ public class CatapultLoadController : MonoBehaviour, IInteractionProvider
         line.enabled = false;
         if (resetRatioOnDisconnect) wheelRatio = 0f; // 다음 연결은 새로 시작(정책, 클래스 상단 주석 참고).
 
-        if (fire && arm != null)
-            arm.Fire(ratio);
+        if (fire) ArmCommand(1, ratio, body);
+        else if (notify) ArmCommand(2, 0f, body); // 서버의 당김을 멈춘다(오프라인·서버 자신은 원래대로 아무것도 안 함)
     }
 
     private static PlayerMover FindControlledPlayer()

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class doorPhysics : MonoBehaviour
+public class doorPhysics : MonoBehaviour, IMpSynced
 {
     [Header("Door 이동 설정")]
     private Rigidbody doorRigidbody;
@@ -28,6 +28,10 @@ public class doorPhysics : MonoBehaviour
 
     private int blockedOverlapCount = 0;
 
+    // [멀티 M4 분류 A] 서버만 로직을 돌리고 문 위치(시작→목표 진행도 0~1)를 올린다. 참가자 PC는 받은 진행도로 문을 따라간다.
+    private uint mpId;
+    private float mpProgress;
+
     void Awake()
     {
         doorRigidbody = GetComponent<Rigidbody>();
@@ -42,11 +46,24 @@ public class doorPhysics : MonoBehaviour
 
             currentTargetPosition = doorStartPosition;
         }
+        mpId = MpSync.Register(this);
     }
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) mpProgress = value; }
 
     void FixedUpdate()
     {
         if (doorRigidbody == null) return;
+
+        if (MpSync.IsClient)
+        {
+            // 참가자 PC: 서버가 정한 위치로 따라간다(몸은 이 문과 로컬에서 정상 충돌). 서버보다 약간 빠르게 쫓아 지연을 메운다
+            doorRigidbody.MovePosition(Vector3.MoveTowards(doorRigidbody.transform.position,
+                Vector3.Lerp(doorStartPosition, doorTargetPosition, mpProgress), doorSpeed * 2f * Time.fixedDeltaTime));
+            return;
+        }
 
         float maxAngle = leverHead != null ? leverHead.maxAngle : 40f;
         float leverAngle = leverHead != null ? leverHead.GetCurrentAngle() : -maxAngle;
@@ -75,6 +92,10 @@ public class doorPhysics : MonoBehaviour
         doorRigidbody.MovePosition(
             Vector3.MoveTowards(doorRigidbody.transform.position, moveTarget, doorSpeed * Time.fixedDeltaTime)
         );
+
+        Vector3 span = doorTargetPosition - doorStartPosition;
+        if (span.sqrMagnitude > 1e-6f)
+            MpSync.Publish(mpId, 0, Mathf.Clamp01(Vector3.Dot(doorRigidbody.transform.position - doorStartPosition, span) / span.sqrMagnitude));
     }
 
     public void SetPadPressed(bool pressed)
@@ -92,7 +113,7 @@ public class doorPhysics : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (MpSync.IsClient || !other.CompareTag("Player")) return;
 
         blockedOverlapCount++;
         isBlocked = true;
@@ -100,7 +121,7 @@ public class doorPhysics : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (MpSync.IsClient || !other.CompareTag("Player")) return;
 
         blockedOverlapCount = Mathf.Max(0, blockedOverlapCount - 1);
         if (blockedOverlapCount == 0)

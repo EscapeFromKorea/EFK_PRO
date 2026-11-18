@@ -23,6 +23,8 @@ public class Lab_TeamAssetSaveGuard : AssetModificationProcessor
 
     private static string[] OnWillSaveAssets(string[] paths)
     {
+        // 멀티 프로토타입 등 맵4 밖 작업용 예외: 환경변수 EFK_ALLOW_TEAM_SAVE=1일 때만 통과(평소엔 그대로 차단).
+        if (System.Environment.GetEnvironmentVariable("EFK_ALLOW_TEAM_SAVE") == "1") return paths;
         List<string> allowed = new List<string>(paths.Length);
         foreach (string p in paths)
         {

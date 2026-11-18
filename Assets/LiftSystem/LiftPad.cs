@@ -19,7 +19,7 @@ using UnityEngine;
 /// 겹쳐 있는 바디 전체의 <b>현재</b> 무게를 매 FixedUpdate 다시 확인한다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class LiftPad : MonoBehaviour
+public class LiftPad : MonoBehaviour, IMpSynced
 {
     [Header("패드 눌림 애니메이션 (선택 — DoorSystem/PadTrigger와 같은 시각 피드백)")]
     public float padPressDepth = 0.1f;
@@ -41,6 +41,12 @@ public class LiftPad : MonoBehaviour
     private Vector3 padPressedPosition;
     private bool isPressed;
 
+    // [멀티 M4 B1] 눌림 판정·리프트 구동은 서버만. 눌림 여부(채널 0)를 올려 전원이 패드 눌림 연출을 한다
+    private uint mpId;
+    void Awake() => mpId = MpSync.Register(this);
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpValue(int channel, float value) { if (channel == 0) isPressed = value > 0.5f; }
+
     // 바디별 겹침 콜라이더 수(무게 무관 — 겹침 자체를 셈). PadTrigger의 overlapCount와 같은 이유:
     // Player_Mesh(트리거)·Player_Collider(솔리드) 두 콜라이더가 한 도형당 Enter/Exit를 중복 호출한다.
     private readonly Dictionary<Rigidbody, int> overlaps = new Dictionary<Rigidbody, int>();
@@ -59,8 +65,12 @@ public class LiftPad : MonoBehaviour
 
     private void FixedUpdate()
     {
-        isPressed = AnyLightBodyOverlapping();
-        if (targetLift != null) targetLift.SetHeld(isPressed);
+        if (!MpSync.IsClient)
+        {
+            isPressed = AnyLightBodyOverlapping();
+            if (targetLift != null) targetLift.SetHeld(isPressed);
+            MpSync.Publish(mpId, 0, isPressed ? 1f : 0f);
+        }
 
         Vector3 padTarget = isPressed ? padPressedPosition : padStartPosition;
         transform.position = Vector3.MoveTowards(transform.position, padTarget, padSpeed * Time.fixedDeltaTime);
@@ -68,6 +78,7 @@ public class LiftPad : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null) return;
@@ -78,6 +89,7 @@ public class LiftPad : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
+        if (MpSync.IsClient) return;
         if (!other.CompareTag(playerTag) && !other.CompareTag("InteractionItem")) return;
         Rigidbody rb = other.GetComponentInParent<Rigidbody>();
         if (rb == null || !overlaps.TryGetValue(rb, out int n)) return;

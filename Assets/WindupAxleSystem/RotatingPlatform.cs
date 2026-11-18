@@ -63,6 +63,7 @@ public class RotatingPlatform : MonoBehaviour, IWindupReceiver
         body.useGravity = false;
         body.interpolation = RigidbodyInterpolation.Interpolate;
         baseRotation = body.rotation;
+        MpBodySync.Ensure(this); // [멀티 M4 B1] 서버가 단계 회전을 돌리고 참가자 PC는 키네마틱으로 따라간다
     }
 
     void OnEnable()
@@ -77,6 +78,7 @@ public class RotatingPlatform : MonoBehaviour, IWindupReceiver
 
     void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
         // HoldPad는 "발판 위에서만 재생"이 전담하므로 충전→대기열 전환 자체는 지연 없이 즉시다.
         bool committed = activationMode == WindupActivationMode.HoldPad
             || Time.time - lastSwingTime >= releaseDelay;

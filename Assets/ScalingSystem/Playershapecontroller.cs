@@ -118,7 +118,9 @@ public class PlayerShapeController : MonoBehaviour
         // targetScale은 패드를 밟는 순간(ToggleScale)에만 바뀌므로 여기서는 갱신하지 않는다.
 
         // 현재 localScale을 목표 스케일로 부드럽게 이동
-        if (lerpSpeed > 0f)
+        // [멀티 M4] 남의 몸 복사본의 크기는 NetworkTransform이 전한다 — 여기서 초기 크기로 되돌리면 매 프레임 동기화와 싸운다
+        if (!MpSync.IsOwnBody(this)) { /* 크기는 네트워크가 정한다 */ }
+        else if (lerpSpeed > 0f)
         {
             transform.localScale = Vector3.Lerp(transform.localScale, targetScale, Time.deltaTime * lerpSpeed);
 

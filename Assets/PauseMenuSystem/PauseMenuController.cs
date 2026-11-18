@@ -12,6 +12,9 @@ public class PauseMenuController : MonoBehaviour
     // 싱글플레이는 시간을 멈춘다. 온라인 협동으로 넘어가면 false(오버레이만 띄우고 게임은 계속)로 바꾼다.
     public bool freezeTime = true;
 
+    // 멀티플레이: 세션을 종료하고 홈 화면으로 간다. 설정되면 "메인화면으로 나가기"가 켜진다(PRD S-03).
+    public static System.Action OnLeaveToMain;
+
     enum State { Closed, Main, Settings }
     State _state = State.Closed;
 
@@ -192,8 +195,8 @@ public class PauseMenuController : MonoBehaviour
         GUI.Label(new Rect(r.x, r.y + 20, r.width, 60), "일시정지", _title);
         if (GUI.Button(new Rect(r.x + 60, r.y + 110, 400, 70), "돌아가기", _button)) Close();
         if (GUI.Button(new Rect(r.x + 60, r.y + 200, 400, 70), "설정", _button)) { _state = State.Settings; _scroll = Vector2.zero; }
-        GUI.enabled = false; // 메인 화면은 아직 없다.
-        GUI.Button(new Rect(r.x + 60, r.y + 290, 400, 70), "메인화면으로 나가기 (준비 중)", _button);
+        GUI.enabled = OnLeaveToMain != null; // 멀티플레이 홈 화면이 훅을 걸었을 때만 켜진다(S-03).
+        if (GUI.Button(new Rect(r.x + 60, r.y + 290, 400, 70), OnLeaveToMain != null ? "메인화면으로 나가기" : "메인화면으로 나가기 (준비 중)", _button)) { Close(); OnLeaveToMain(); }
         GUI.enabled = true;
         if (GUI.Button(new Rect(r.x + 60, r.y + 380, 400, 70), "게임 종료하기", _button)) QuitGame();
     }

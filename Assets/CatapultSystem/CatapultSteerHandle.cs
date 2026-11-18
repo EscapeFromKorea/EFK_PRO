@@ -110,7 +110,7 @@ using UnityEngine;
 /// (사용자 명시적 확정)** — 구는 현재(도킹된, 확대된) 위치에서 그대로 다시 조작 가능해질 뿐이고,
 /// 걸어/뛰어 나가는 것은 플레이어 몫이다.
 /// </summary>
-public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
+public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Header("도킹 대상 (구 전용)")]
     [Tooltip("도킹 지점 — 고리 시각 장식의 중심(또는 그 안의 빈 자식). CatapultMenuItem이 자동으로 " +
@@ -171,7 +171,50 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
     void Awake()
     {
         if (rootBody != null) baseYaw = rootBody.rotation.eulerAngles.y;
+        if (rootBody != null) MpBodySync.Ensure(rootBody); // [멀티 M4 B1] 투석기 몸체 자세는 서버가 돌리고 참가자 PC는 따라간다
+        mpId = MpSync.Register(this);
     }
+
+    // ── [멀티 M4 B1] 도킹(구를 조향석에 붙임)은 구 주인 PC가 자기 몸에 한다. 몸체 회전은 서버가 하므로 좌우 입력을 서버로 보낸다:
+    // 이벤트 0 = 도킹, 1 = 해제, 2 = 좌우 입력(data.x, 20Hz). arg = 구 몸 ID. 서버는 도킹한 몸 ID+1을 채널 0으로 알려
+    // 다른 PC가 "이미 도킹됨"을 안다.
+    private uint mpId;
+    private float mpDockedBody;      // 도킹 중인 몸 ID+1(서버: 다른 PC의 구 / 참가자: 서버가 알린 값)
+    private float mpRemoteHorizontal;
+    private float mpRemoteHorizontalAt;
+    private float mpNextSteerSend;
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) mpDockedBody = value; }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        float body = arg + 1f;
+        if (kind == 0 && dockedBody == null && mpDockedBody <= 0f)
+        {
+            mpDockedBody = body;
+            if (rootBody != null)
+                dockedYawOffset = Mathf.Clamp(Mathf.DeltaAngle(baseYaw, rootBody.rotation.eulerAngles.y), -steerYawRange, steerYawRange);
+        }
+        else if (kind == 1 && Mathf.Approximately(mpDockedBody, body)) { mpDockedBody = 0f; mpRemoteHorizontal = 0f; }
+        else if (kind == 2 && Mathf.Approximately(mpDockedBody, body))
+        {
+            mpRemoteHorizontal = float.IsFinite(data.x) ? Mathf.Clamp(data.x, -1f, 1f) : 0f;
+            mpRemoteHorizontalAt = Time.time;
+        }
+        MpSync.Publish(mpId, 0, mpDockedBody);
+    }
+
+    private static uint BodyIdOf(Rigidbody body)
+    {
+        var no = body != null ? body.GetComponentInParent<Unity.Netcode.NetworkObject>() : null;
+        return no != null ? (uint)no.NetworkObjectId : 0u;
+    }
+
+    // 다른 PC의 구가 도킹해 있는가(내 PC에서는 그 몸을 직접 들고 있지 않다)
+    private bool RemoteDocked => dockedBody == null && MpSync.Active && mpDockedBody > 0f;
 
     private System.Action onInteract;
 
@@ -240,7 +283,8 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
         into.Add(new InteractionAction
         {
             channel = InteractionChannel.Hand, trigger = InteractionTrigger.Tap,
-            verb = "조향석 도킹", enabled = true,
+            verb = "조향석 도킹", enabled = !RemoteDocked,
+            reason = RemoteDocked ? "다른 플레이어가 조향석에 도킹되어 있습니다." : null,
             priority = InteractionPriority.Panel, distance = d, execute = onInteract,
         });
     }
@@ -255,11 +299,30 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
         // "입력 게이트" 주석 참고).
         pendingHorizontal = (dockedBody != null && dockedMover != null && dockedMover.IsControlled)
             ? Input.GetAxis("Horizontal") : 0f;
+
+        // 참가자 PC: 몸체는 서버가 돌리므로 입력을 서버로 보낸다(도킹 중에만, 20Hz)
+        if (MpSync.IsClient && dockedBody != null && Time.time >= mpNextSteerSend)
+        {
+            mpNextSteerSend = Time.time + 0.05f;
+            MpSync.SendEvent(mpId, 2, new Vector3(pendingHorizontal, 0f, 0f), BodyIdOf(dockedBody));
+        }
+        // 서버: 다른 PC의 구가 도킹해 있으면 그 입력을 쓴다(입력이 끊기면 0 — 끊김·파괴로 멈춘 입력이 계속 돌리지 않게)
+        if (MpSync.IsServer && dockedBody == null && mpDockedBody > 0f)
+        {
+            var nm = Unity.Netcode.NetworkManager.Singleton;
+            if (nm != null && !nm.SpawnManager.SpawnedObjects.ContainsKey((ulong)(mpDockedBody - 1f)))
+            {
+                mpDockedBody = 0f; // 도킹한 채 끊김
+                MpSync.Publish(mpId, 0, 0f);
+            }
+            pendingHorizontal = Time.time - mpRemoteHorizontalAt < 0.3f ? mpRemoteHorizontal : 0f;
+        }
     }
 
     void FixedUpdate()
     {
-        if (rootBody == null || dockedBody == null) return;
+        if (MpSync.IsClient) return; // 몸체 회전은 서버가 하고 MpBodySync가 전한다
+        if (rootBody == null || (dockedBody == null && !(MpSync.IsServer && mpDockedBody > 0f))) return;
 
         // `rootBody.rotation`을 다시 읽지 않는다. 이번 스텝의 델타를 스크립트가 이미 들고 있는
         // `dockedYawOffset`(baseYaw 기준, 클램프됨)에만 누적한다 — 물리 시뮬레이션이 만든 드리프트가
@@ -278,6 +341,7 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
 
     private void HandleDockInput()
     {
+        if (RemoteDocked) return; // 다른 PC의 구가 도킹 중
         if (dockedBody != null)
         {
             // 입력 게이트(DreamThreadController/CatapultLoadController와 같은 패턴, 클래스 상단
@@ -369,6 +433,8 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
         body.transform.localRotation = Quaternion.identity;
 
         mover.ExternallyDriven = true; // mover.enabled는 절대 건드리지 않는다(Tab 로스터 보존, 하드룰).
+        if (MpSync.IsClient) MpSync.SendEvent(mpId, 0, Vector3.zero, BodyIdOf(body));
+        else if (MpSync.IsServer) MpSync.Publish(mpId, 0, BodyIdOf(body) + 1f);
 
         // ScalingSystem 파일은 SetScaleState/SetGrowMultiplier(2026-09-29 추가, 사용자 승인 하
         // 교차 폴더 수정)만 호출한다 — growMultiplier가 공유 필드라는 사실도, "해제 후 원래 값으로
@@ -406,7 +472,10 @@ public class CatapultSteerHandle : MonoBehaviour, IInteractionProvider
             // 현재(도킹된, 확대된) 위치를 그대로 유지한 채 부모만 되돌린다 — 자동 이탈 없음(사용자
             // 명시적 확정, 클래스 상단 "해제" 주석 참고).
             dockedBody.transform.SetParent(dockedOriginalParent, true);
+            MpSync.RestoreBodyRoot(dockedBody.gameObject);
             dockedBody.isKinematic = false;
+            if (MpSync.IsClient) MpSync.SendEvent(mpId, 1, Vector3.zero, BodyIdOf(dockedBody));
+            else if (MpSync.IsServer) MpSync.Publish(mpId, 0, 0f);
             // 도킹 중 꺼뒀던 보간을 해제 즉시 원래 값으로 되돌린다(CatapultBucket.ConsumeOccupant()
             // 와 같은 이유 — 해제 후엔 다시 비킨네마틱 실제 물리로 움직이므로 시각적 떨림 방지가
             // 필요하다).

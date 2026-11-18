@@ -25,7 +25,7 @@ using UnityEngine;
 /// 그때는 해당 머티리얼을 Transparent로 바꾸면 된다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class RainbowBridgeSwitch : MonoBehaviour
+public class RainbowBridgeSwitch : MonoBehaviour, IMpSynced
 {
     [Header("활성화 대상 (다리 세그먼트)")]
     [Tooltip("발판이 눌릴 때 실체화할 오브젝트들. 각 오브젝트 자신/자식의 Collider와 Renderer를 " +
@@ -43,7 +43,8 @@ public class RainbowBridgeSwitch : MonoBehaviour
     [Tooltip("투명↔불투명 전환에 걸리는 시간(초). 0이면 즉시 전환.")]
     public float fadeDuration = 0.45f;
 
-    private int overlapCount = 0;
+    // 누르는 콜라이더 집합(파괴·끊김으로 Exit가 안 와도 걷어낼 수 있게 숫자 카운터 대신 집합)
+    private readonly HashSet<Collider> overlaps = new HashSet<Collider>();
     private float soloTimer = 0f;
 
     // 페이드 상태: targetAlpha는 목표(0=숨김/1=표시), currentAlpha는 현재 보간값.
@@ -58,6 +59,9 @@ public class RainbowBridgeSwitch : MonoBehaviour
     private MaterialPropertyBlock mpb;
     private bool collidersOn = false;
 
+    // [멀티 M4 분류 A] 밟힘·솔플 타이머는 서버만 판정하고 목표 알파(채널 0)를 올린다. 페이드·콜라이더는 각 PC가 로컬로 돌린다(몸이 다리를 밟아야 하므로)
+    private uint mpId;
+
     private static readonly int ColorId = Shader.PropertyToID("_Color");         // Built-in Standard
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"); // URP/HDRP Lit
 
@@ -66,6 +70,12 @@ public class RainbowBridgeSwitch : MonoBehaviour
         GetComponent<Collider>().isTrigger = true;
     }
 
+    private void Awake() => mpId = MpSync.Register(this);
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) targetAlpha = value > 0.5f ? 1f : 0f; }
+
     private void Start()
     {
         mpb = new MaterialPropertyBlock();
@@ -73,7 +83,7 @@ public class RainbowBridgeSwitch : MonoBehaviour
 
         // 시작은 완전 숨김으로 강제(에디터에서 켜진 채 저장됐을 수 있음).
         currentAlpha = 0f;
-        targetAlpha = 0f;
+        // targetAlpha는 0이 기본값이다. 여기서 다시 0으로 쓰면 Awake에서 받은 서버 값(재접속·늦은 합류)을 덮어쓴다.
         ApplyVisual();
         lastAppliedAlpha = 0f;
         SetCollidersOn(false);
@@ -103,9 +113,9 @@ public class RainbowBridgeSwitch : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
+        if (MpSync.IsClient || (!other.CompareTag("Player") && !other.CompareTag("InteractionItem"))) return;
 
-        overlapCount++;
+        overlaps.Add(other);
         if (!activatorRequiresHold)
             soloTimer = activeDurationSec;   // 솔플: 밟을 때마다 타이머 갱신
 
@@ -114,25 +124,32 @@ public class RainbowBridgeSwitch : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag("Player") && !other.CompareTag("InteractionItem")) return;
+        if (MpSync.IsClient || (!other.CompareTag("Player") && !other.CompareTag("InteractionItem"))) return;
 
-        overlapCount = Mathf.Max(0, overlapCount - 1);
+        overlaps.Remove(other);
 
         // 협동 모드에서만 발판에서 완전히 벗어나면 페이드-아웃 시작. 솔플은 타이머가 끈다.
-        if (activatorRequiresHold && overlapCount == 0)
+        if (activatorRequiresHold && overlaps.Count == 0)
             Hide();
     }
 
     private void Update()
     {
+        // 올라선 몸이 파괴·끊김으로 사라지면 Exit가 오지 않는다 — 없어진 콜라이더를 걷어내고 비면 페이드-아웃
+        if (!MpSync.IsClient && overlaps.Count > 0 && overlaps.RemoveWhere(c => c == null || !c.gameObject.activeInHierarchy) > 0
+            && overlaps.Count == 0 && activatorRequiresHold)
+            Hide();
+
         // 솔플 유지 타이머
-        if (!activatorRequiresHold && targetAlpha > 0f)
+        if (!MpSync.IsClient && !activatorRequiresHold && targetAlpha > 0f)
         {
             soloTimer -= Time.deltaTime;
             if (soloTimer <= 0f) Hide();
         }
 
         // 알파 보간
+        MpSync.Publish(mpId, 0, targetAlpha);
+
         if (fadeDuration <= 0f)
             currentAlpha = targetAlpha;
         else
