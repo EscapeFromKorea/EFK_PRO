@@ -84,7 +84,7 @@ public abstract class IsolationOccupancyZone : MonoBehaviour
     public static PlayerMover ControlledViewer()
     {
         Transform active = PlayerControlSwitcher.ActiveTarget;
-        return active != null ? active.GetComponent<PlayerMover>() : null;
+        return active != null ? active.GetComponent<PlayerMover>() : InteractionController.Controlled; // 멀티에는 Tab 전환기가 없다
     }
 
     // 트리거 안에서 파괴된 참가자(Exit가 오지 않음)를 정리한다.

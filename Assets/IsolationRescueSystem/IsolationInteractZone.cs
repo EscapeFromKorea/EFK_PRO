@@ -14,7 +14,7 @@ using UnityEngine;
 /// 같은 통합안의 규칙 2("불가능할 땐 이유를 표시한다")에 따라, 눌렀는데 안 되는 경우는 <see cref="Say"/>로
 /// 이유를 HUD에 띄운다. HUD가 없으면 로그만 남긴다.
 /// </summary>
-public abstract class IsolationInteractZone : IsolationOccupancyZone, IInteractionProvider
+public abstract class IsolationInteractZone : IsolationOccupancyZone, IInteractionProvider, IMpEventSink
 {
     [Tooltip("거부 사유를 띄울 HUD. 비워 두면 로그만 남긴다.")]
     public IsolationRescueHud hud;
@@ -24,6 +24,17 @@ public abstract class IsolationInteractZone : IsolationOccupancyZone, IInteracti
 
     private System.Action press;
 
+    // [멀티] 누르기는 서버가 실행한다
+    private uint mpId;
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpEvent(int kind, Vector3 data, uint arg) { if (kind == 0 && MpSync.IsServer) Press(); }
+    private void PressOrRequest()
+    {
+        if (MpSync.IsClient) MpSync.SendEvent(mpId, 0, Vector3.zero);
+        else Press();
+    }
+
     private void OnEnable() => InteractionController.Register(this);
     private void OnDisable() => InteractionController.Unregister(this);
 
@@ -31,7 +42,7 @@ public abstract class IsolationInteractZone : IsolationOccupancyZone, IInteracti
     {
         PlayerMover p = InteractionController.Controlled;
         if (p == null || !Contains(p)) return;
-        press ??= Press;
+        press ??= PressOrRequest;
         into.Add(new InteractionAction
         {
             channel = InteractionChannel.Hand,

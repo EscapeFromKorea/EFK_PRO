@@ -56,6 +56,7 @@ public class IsolationCaptureTrigger : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
         ResolvePending();
     }
 
@@ -85,7 +86,7 @@ public class IsolationCaptureTrigger : MonoBehaviour
     // 참가자가 트리거를 완전히 벗어났다. 나간 방향으로 통과/되돌아감을 가른다.
     private void OnLeftTrigger(PlayerMover mover)
     {
-        if (controller == null || mover == null) return;
+        if (MpSync.IsClient || controller == null || mover == null) return;
 
         float depth = DepthOf(mover);
 

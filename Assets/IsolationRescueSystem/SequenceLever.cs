@@ -68,7 +68,7 @@ public class SequenceLever : MonoBehaviour
 
     private void Update()
     {
-        if (lever == null) return;
+        if (lever == null || MpSync.IsClient) return;
         Evaluate(NormalizedPosition(lever));
     }
 

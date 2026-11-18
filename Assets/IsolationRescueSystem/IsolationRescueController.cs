@@ -27,7 +27,7 @@ using UnityEngine.Events;
 /// - 문 안전검사 판정 자체: doorPhysics가 끼임 상태(isBlocked)를 공개하지 않아 이 컴포넌트는 결과
 ///   신호만 받는다(ReportDoorClosedSafe / ReportDoorBlocked).
 /// </summary>
-public class IsolationRescueController : MonoBehaviour
+public class IsolationRescueController : MonoBehaviour, IMpSynced
 {
     /// <summary>PRD §4 상태 전이표의 상태들(대기/준비/진행/최종 해제 대기/성공/시간 초과/중단).</summary>
     public enum State
@@ -116,7 +116,7 @@ public class IsolationRescueController : MonoBehaviour
     public int StageIndex { get; private set; }
 
     /// <summary>현재 단계에서 맞힌 입력 수(진행도 예: 1/3).</summary>
-    public int InputCount => inputs.Count;
+    public int InputCount => MpSync.IsClient ? mpInputs : inputs.Count;
 
     /// <summary>문제 버전 = 현재 단계에서 오답으로 정답 순서가 순환된 횟수.</summary>
     public int QuestionVersion { get; private set; }
@@ -146,9 +146,60 @@ public class IsolationRescueController : MonoBehaviour
     private bool readyInside;
     private bool readyOutside;
 
+    // ── [멀티] 진행은 서버가 판정한다. 채널 0=상태, 1=안쪽 몸 ID+1, 2=단계, 3=입력 수, 4=문제 버전, 5=전원, 6=시도, 7=마감 시각, 8=타이머 동작.
+    private uint mpId;
+    private int mpInputs;
+    private bool mpTimerRunning;
+    private float mpDeadline;
+
+    private void Awake()
+    {
+        mpId = MpSync.Register(this);
+        if (MpSync.Active && Timer != null) Timer.Clock = () => MpSync.SharedFixedTime; // 전원이 같은 남은 시간을 본다
+    }
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        int v = (int)value;
+        switch (channel)
+        {
+            case 0: Current = (State)v; break;
+            case 1:
+                PlayerMover inside = v > 0 ? MpSync.MoverById((uint)(v - 1)) : null;
+                InsidePlayer = inside != null ? inside.gameObject : null;
+                break;
+            case 2: StageIndex = v; break;
+            case 3: mpInputs = v; break;
+            case 4: QuestionVersion = v; break;
+            case 5: PowerOn = v != 0; break;
+            case 6: Attempt = v; break;
+            case 7: mpDeadline = value; break;
+            case 8: mpTimerRunning = v != 0; break;
+        }
+        if (Timer != null) Timer.MpApply(mpTimerRunning, mpDeadline);
+        RefreshOrder();
+    }
+
     private void Update()
     {
+        if (MpSync.IsClient) return;
         CheckDeadline();
+        if (!MpSync.IsServer) return;
+        uint inside = InsidePlayer != null ? MpSync.BodyId(InsidePlayer.transform) : 0u;
+        MpSync.Publish(mpId, 0, (int)Current);
+        MpSync.Publish(mpId, 1, inside != 0u ? inside + 1f : 0f);
+        MpSync.Publish(mpId, 2, StageIndex);
+        MpSync.Publish(mpId, 3, inputs.Count);
+        MpSync.Publish(mpId, 4, QuestionVersion);
+        MpSync.Publish(mpId, 5, PowerOn ? 1f : 0f);
+        MpSync.Publish(mpId, 6, Attempt);
+        if (Timer != null)
+        {
+            MpSync.Publish(mpId, 7, Timer.Deadline);
+            MpSync.Publish(mpId, 8, Timer.IsRunning ? 1f : 0f);
+        }
     }
 
     // ── 콘텐츠 검증 ───────────────────────────────────────────────────

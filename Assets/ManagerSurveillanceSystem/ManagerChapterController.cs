@@ -35,7 +35,7 @@ using UnityEngine.Events;
 /// 끝나는 즉시 CH8 시작 지점으로 다시 보낸다. 대기자가 남아 있거나, 수락된 복귀 연출이 하나라도 끝나지 않았으면
 /// 자동 재시작하지 않는다 — 먼저 도착한 한 명이 구역에 서는 것만으로 관리자가 다시 움직이면 안 된다(PR #108 피드백).
 /// </summary>
-public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
+public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver, IMpSynced
 {
     public enum State
     {
@@ -90,6 +90,16 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
     public string LastRefusal { get; private set; }
 
     private bool bound;
+
+    // [멀티] 챕터는 서버가 돌린다. 채널 0=상태, 1=팀 실패.
+    private uint mpId;
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) Current = (State)(int)value;
+        else if (channel == 1) TeamFailed = value > 0.5f;
+    }
     private string useRequester;   // 텔레메트리용 — 이번 사용 요청의 요청자·측정 거리(거부 사유와 함께 보낸다).
     private float useDist;
 
@@ -150,6 +160,9 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
 
     private void Update()
     {
+        if (MpSync.IsClient) return;
+        MpSync.Publish(mpId, 0, (int)Current);
+        MpSync.Publish(mpId, 1, TeamFailed ? 1f : 0f);
         RetryPendingReturns();
         returning.RemoveAll(m => m == null || !m.ExternallyDriven);
         // 전원이 CH8 시작 지점 복귀 연출까지 끝내기 전엔 재시작하지 않는다(PRD "안전 복귀 완료 후 준비").
@@ -297,9 +310,9 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
     private bool SendToStart(PlayerMover m, SectionSafePoint point)
     {
         Rigidbody rb = m.GetComponent<Rigidbody>();
-        if (!ManagerAgent.IsAlive(m) || (rb != null && rb.isKinematic)) return false;
+        if (!ManagerAgent.IsAlive(m) || (!MpSync.Active && rb != null && rb.isKinematic)) return false; // 남의 몸 복사본은 원래 키네마틱
         respawnController.RespawnPlayer(m.gameObject, point);
-        if (!m.ExternallyDriven) return false; // 안전점 점유 등으로 거절
+        if (!MpSync.Active && !m.ExternallyDriven) return false; // 안전점 점유 등으로 거절
         returning.Add(m);
         LokiTelemetry.Event("ch8_respawn",
             $"player={m.name} point={(point != null ? point.sectionId : "null(공용 체크포인트)")}");
@@ -329,6 +342,7 @@ public class ManagerChapterController : MonoBehaviour, IParticipantPauseReceiver
     /// <summary>챕터 재시작(ChapterReset 수신): 관리자를 경로 처음으로 돌리고 준비 상태로. 이탈 정지 상태는 유지한다.</summary>
     public void ResetAll()
     {
+        if (MpSync.IsClient) return;
         Current = State.Ready;
         TeamFailed = false;
         LastRefusal = null;

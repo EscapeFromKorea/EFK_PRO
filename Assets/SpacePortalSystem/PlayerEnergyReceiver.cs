@@ -102,9 +102,29 @@ public class PlayerEnergyReceiver : MonoBehaviour
 
     /// <summary>EnergyBall의 E 탭 줍기 액션이 호출한다. 이미 다른 색을 들고 있으면 주울 수 없다
     /// (재생성은 스왑이 아니라 설치 시점에 건다, <see cref="ConfirmPlacement"/>).</summary>
+    /// <summary>[멀티] 서버가 이 몸에게 볼을 넘겼다.</summary>
+    public void MpCarry(EnergyBall ball)
+    {
+        CarriedBall = ball;
+        ApplyGlow(ball.color);
+    }
+
+    /// <summary>[멀티] 이 몸이 더는 그 볼을 들고 있지 않다.</summary>
+    public void MpDrop(EnergyBall ball)
+    {
+        if (CarriedBall != ball) return;
+        CarriedBall = null;
+        ApplyGlow(null);
+    }
+
     public void TryPickup(EnergyBall ball)
     {
         if (ball == null) return;
+        if (MpSync.Active)
+        {
+            if (CarriedBall == null) ball.MpRequestPickup(this); // 먼저 요청한 사람이 갖는다(서버 확정)
+            return;
+        }
         if (CarriedBall != null)
         {
             Debug.Log($"[SpacePortal] 이미 {CarriedBall.color} 에너지볼을 들고 있어 {ball.color}를 주울 수 없다.");
@@ -270,6 +290,13 @@ public class PlayerEnergyReceiver : MonoBehaviour
 
     private void ConfirmPlacement(EnergyColor color)
     {
+        if (MpSync.Active)
+        {
+            aimSurface.MpRequestPlace(color, aimCenter);
+            if (CarriedBall != null) CarriedBall.MpNotifyInstalled(this);
+            InstalledColor = color;
+            return;
+        }
         SpacePortal portal = color == EnergyColor.Orange ? SpacePortal.Orange : SpacePortal.Blue;
         if (portal == null)
         {

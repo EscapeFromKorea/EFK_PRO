@@ -206,6 +206,8 @@ public class SpacePortal : MonoBehaviour
 
         Rigidbody body = other.attachedRigidbody;
         if (body == null) return;
+        // [멀티] 플레이어 몸은 주인 PC가, 물체는 서버가 옮긴다
+        if (body.GetComponentInParent<PlayerShapeIdentity>() != null ? !MpSync.IsOwnBody(body) : MpSync.IsClient) return;
         if (tracked.ContainsKey(body)) return; // Stay가 매 스텝 부르므로 가장 싼 검사를 먼저.
 
         PlayerShapeIdentity identity = body.GetComponentInParent<PlayerShapeIdentity>();

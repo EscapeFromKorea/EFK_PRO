@@ -20,7 +20,7 @@ using UnityEngine;
 /// [표적 고정] 처음 획득 시 가장 가까운 대상(동거리면 PlayerShapeIdentity.Kind 순). 의심·추격 중에는 그 대상만
 /// 보고, 순찰로 돌아온 뒤에만 다시 획득한다.
 /// </summary>
-public class ManagerAgent : MonoBehaviour
+public class ManagerAgent : MonoBehaviour, IMpSynced
 {
     public enum State { Inactive, Patrol, Suspect, Chase, Asleep }
 
@@ -79,6 +79,14 @@ public class ManagerAgent : MonoBehaviour
     {
         get
         {
+            if (MpSync.Active)
+            {
+                mpPlayers.Clear();
+                foreach (PlayerMover body in MpSync.Bodies)
+                    if (body.TryGetComponent(out PlayerShapeIdentity id)) mpPlayers.Add(id);
+                mpPlayers.Sort((a, b) => a.Kind.CompareTo(b.Kind));
+                return mpPlayers;
+            }
             if (players == null)
             {
                 players = FindObjectsByType<PlayerShapeIdentity>(FindObjectsSortMode.None);
@@ -89,6 +97,17 @@ public class ManagerAgent : MonoBehaviour
     }
 
     private PlayerShapeIdentity[] players;
+    private readonly List<PlayerShapeIdentity> mpPlayers = new List<PlayerShapeIdentity>();
+
+    // [멀티] 판단은 서버만 한다. 채널 0=상태, 1=감시 켜짐, 2=바라보는 방향(도). 위치는 PathChaserAgent의 MpBodySync가 전한다.
+    private uint mpId;
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) Current = (State)(int)value;
+        else if (channel == 1) Surveillance = value > 0.5f;
+        else if (channel == 2) { facing = Quaternion.Euler(0f, value, 0f) * Vector3.forward; ApplyVisual(); }
+    }
     private Vector3 facing = Vector3.forward;
     private Vector3 startFacing = Vector3.forward;
     private Vector3 lastPos;
@@ -121,13 +140,21 @@ public class ManagerAgent : MonoBehaviour
     private void Awake()
     {
         // 준비 상태에선 움직이면 안 된다 — 에이전트는 상태를 모르는 이동체라 켜 두면 첫 프레임부터 순회한다.
+        mpId = MpSync.Register(this);
         if (agent != null) agent.enabled = false;
         Vector3 f = Flat(visual != null ? visual.forward : transform.forward);
         startFacing = f.sqrMagnitude > 1e-6f ? f.normalized : Vector3.forward;
         facing = startFacing;
     }
 
-    private void FixedUpdate() => Tick(Time.fixedDeltaTime);
+    private void FixedUpdate()
+    {
+        if (MpSync.IsClient) return;
+        Tick(Time.fixedDeltaTime);
+        MpSync.Publish(mpId, 0, (int)Current);
+        MpSync.Publish(mpId, 1, Surveillance ? 1f : 0f);
+        MpSync.Publish(mpId, 2, Mathf.Round(Mathf.Atan2(facing.x, facing.z) * Mathf.Rad2Deg));
+    }
 
     // ── 명령 (컨트롤러가 부른다) ─────────────────────────────────────
 
@@ -484,7 +511,7 @@ public class ManagerAgent : MonoBehaviour
     /// 충분하다 — 생기면 RespawnController에 "복귀 중" 조회 창구를 추가해 그걸 읽어라.</summary>
     public static bool IsAlive(PlayerMover m)
     {
-        return m != null && m.isActiveAndEnabled && !m.ExternallyDriven;
+        return m != null && (MpSync.Active ? m.gameObject.activeInHierarchy : m.isActiveAndEnabled) && !m.ExternallyDriven; // 멀티의 복사본은 mover가 꺼져 있다
     }
 
     // ── 텔레메트리 ───────────────────────────────────────────────────

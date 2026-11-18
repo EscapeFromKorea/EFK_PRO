@@ -73,6 +73,7 @@ public class PowerHoldSwitch : MonoBehaviour
     /// </summary>
     public void Refresh()
     {
+        if (MpSync.IsClient) return; // 전원 스위치는 서버가 판정한다(남의 몸 복사본도 트리거를 일으킨다)
         bool on = IsOn;
         if (reportedOnce && on == lastReported) return;
 

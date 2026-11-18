@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>CH8의 실제 출구 통과를 맵4 완료로 연결한다. 팀 기믹 상태를 읽고 맵 소유 안전 위치만 이동한다.</summary>
 [RequireComponent(typeof(BoxCollider))]
-public sealed class Lab_FinalExitFlow : MonoBehaviour
+public sealed class Lab_FinalExitFlow : MonoBehaviour, IMpSynced
 {
     public ManagerKeyDoor keyDoor;
     public ManagerChapterController chapter;
@@ -19,6 +19,29 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
     public string LastFailure { get; private set; }
 
     private bool bound;
+
+    // [멀티] 서버가 판정하고, 세 몸은 각자의 주인 PC가 최종 구역으로 옮긴다. 채널 0=완료.
+    private uint mpId;
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpValue(int channel, float value) { if (channel == 0) Completed = value > 0.5f; }
+
+    private bool MpGather(out string reason)
+    {
+        reason = null;
+        if (exitFloor == null || finalCheckpoint == null || finalSlots == null || finalSlots.Length != 3)
+        { reason = "최종 바닥·체크포인트·세 안전 위치 참조 누락"; return false; }
+        float floorY = exitFloor.bounds.max.y;
+        foreach (PlayerMover body in MpSync.Bodies)
+        {
+            Transform slot = finalSlots[Mathf.Clamp(MpSync.SlotOf(body), 0, 2)];
+            if (slot == null) { reason = "안전 위치 누락"; return false; }
+            PlayerShapeIdentity id = body.GetComponent<PlayerShapeIdentity>();
+            float foot = id != null && id.solidCollider != null ? body.transform.position.y - id.solidCollider.bounds.min.y : 0.5f;
+            MpSync.MoveBody(body, new Vector3(slot.position.x, floorY + foot + floorClearance, slot.position.z));
+        }
+        return true;
+    }
     private bool busy;
     private GUIStyle completionStyle, completionBodyStyle;
 
@@ -43,6 +66,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
     private void ResetCompletion()
     {
         Completed = false;
+        MpSync.Publish(mpId, 0, 0f);
         CompletionCount = 0;
         FirstEntrantKind = default;
         LastFailure = null;
@@ -54,7 +78,7 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
 
     private void TryComplete(Collider other)
     {
-        if (Completed || busy || other == null || !other.CompareTag("Player")) return;
+        if (MpSync.IsClient || Completed || busy || other == null || !other.CompareTag("Player")) return;
         PlayerMover entrant = other.GetComponentInParent<PlayerMover>();
         if (entrant == null) return;
         if (keyDoor == null || chapter == null || !keyDoor.IsOpen ||
@@ -63,8 +87,10 @@ public sealed class Lab_FinalExitFlow : MonoBehaviour
         busy = true;
         try
         {
-            if (!TryGather(entrant, out string reason)) { LastFailure = reason; return; }
+            string reason;
+            if (!(MpSync.Active ? MpGather(out reason) : TryGather(entrant, out reason))) { LastFailure = reason; return; }
             Completed = true;
+            MpSync.Publish(mpId, 0, 1f);
             CompletionCount++;
             FirstEntrantKind = entrant.GetComponent<PlayerShapeIdentity>().Kind;
             LastFailure = null;

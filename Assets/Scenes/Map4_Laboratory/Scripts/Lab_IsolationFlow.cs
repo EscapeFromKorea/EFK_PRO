@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>맵4 CH2의 씬 간 연결. 팀 격리 기믹은 그대로 사용하고, 성공 후 S4 통과만 처리한다.</summary>
 [RequireComponent(typeof(Collider))]
-public sealed class Lab_IsolationFlow : MonoBehaviour
+public sealed class Lab_IsolationFlow : MonoBehaviour, IMpSynced
 {
     public IsolationRescueController controller;
     public IsolationRoleReturn roleReturn;
@@ -13,6 +13,11 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
 
     public bool HasTransferred { get; private set; }
     private bool transferInProgress;
+
+    // [멀티] 팀 이동은 서버가 판정하고 각 몸의 주인 PC가 옮긴다. 채널 0=이동 완료.
+    private uint mpId;
+    private void Awake() => mpId = MpSync.Register(this);
+    public void OnMpValue(int channel, float value) { if (channel == 0) HasTransferred = value > 0.5f; }
     private readonly Dictionary<PlayerMover, float> returningOutside = new Dictionary<PlayerMover, float>();
 
     private void Start()
@@ -26,12 +31,14 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
 
     private void OnDestroy()
     {
+        MpSync.Unregister(mpId, this);
         if (controller != null) controller.onRestarted.RemoveListener(ResetTransfer);
     }
 
     private void ResetTransfer()
     {
         HasTransferred = false;
+        MpSync.Publish(mpId, 0, 0f);
         transferInProgress = false;
         returningOutside.Clear();
     }
@@ -48,7 +55,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
         Transform localFrame = roleReturn.transform.parent;
         foreach (PlayerMover mover in FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
-            if (mover == null || mover.gameObject == controller.InsidePlayer) continue;
+            if (mover == null || mover.gameObject == controller.InsidePlayer || !MpSync.IsOwnBody(mover)) continue; // 복귀는 각자 자기 몸만
             Vector3 p = localFrame.InverseTransformPoint(mover.transform.position);
             bool inRoom = p.x < -14.1f && p.x > -38f && p.z > 30.5f && p.z < 53.5f;
             if (!inRoom) { returningOutside.Remove(mover); continue; }
@@ -65,7 +72,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         PlayerMover mover = other != null ? other.GetComponentInParent<PlayerMover>() : null;
-        if (mover != null) TryTransfer(mover.gameObject);
+        if (mover != null && !MpSync.IsClient) TryTransfer(mover.gameObject);
     }
 
     /// <summary>성공 후 S4 문 뒤에서 처음 감지한 도형만 통과를 확정한다. 테스트에서도 이 공개 API를 사용한다.</summary>
@@ -108,7 +115,15 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
             return false;
         }
 
-        if (moveWholeTeam)
+        if (MpSync.Active)
+        {
+            foreach (PlayerMover body in MpSync.Bodies)
+            {
+                int slot = Mathf.Clamp(MpSync.SlotOf(body), 0, 2);
+                MpSync.MoveBody(body, sector.spawnSlots[slot].position);
+            }
+        }
+        else if (moveWholeTeam)
         {
             PlayerMover[] movers = FindObjectsByType<PlayerMover>(FindObjectsSortMode.None);
             if (movers.Length != 3)
@@ -156,6 +171,7 @@ public sealed class Lab_IsolationFlow : MonoBehaviour
         }
 
         HasTransferred = true;
+        MpSync.Publish(mpId, 0, 1f);
         transferInProgress = false;
         RespawnController.SetCheckpoint(checkpoint);
         PlayerFollowCamera.SnapToTarget();

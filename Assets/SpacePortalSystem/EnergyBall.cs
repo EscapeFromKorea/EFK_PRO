@@ -20,7 +20,7 @@ public enum EnergyColor { Orange, Blue }
 /// Portal.cs의 "리시버는 포탈이 즉석에서 AddComponent" 관례처럼 그 자리에서 붙인다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class EnergyBall : MonoBehaviour, IInteractionProvider
+public class EnergyBall : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Tooltip("이 볼의 색. 주황=입구, 파랑=출구(PRD §1 원문).")]
     public EnergyColor color = EnergyColor.Orange;
@@ -54,8 +54,59 @@ public class EnergyBall : MonoBehaviour, IInteractionProvider
         if (col != null) col.isTrigger = true;
     }
 
+    // ── [멀티] 볼은 서버가 관리한다. 채널 0=상태, 1=가진 몸 ID+1. 이벤트 0=줍기, 1=설치됨(arg=몸 ID).
+    private uint mpId;
+    private BallState mpState;
+    private float mpOwner;
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void MpRequestPickup(PlayerEnergyReceiver r) => MpSync.SendEvent(mpId, 0, Vector3.zero, MpSync.BodyId(r));
+    public void MpNotifyInstalled(PlayerEnergyReceiver r) => MpSync.SendEvent(mpId, 1, Vector3.zero, MpSync.BodyId(r));
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        if (kind == 0 && State == BallState.Ground) MpSetState(BallState.Carried, arg + 1f);
+        else if (kind == 1 && State == BallState.Carried && Mathf.Approximately(mpOwner, arg + 1f))
+        {
+            MpSetState(BallState.Installed, arg + 1f);
+            Respawn();
+        }
+    }
+
+    private void MpSetState(BallState s, float owner)
+    {
+        MpSync.Publish(mpId, 1, owner);
+        MpSync.Publish(mpId, 0, (int)s);
+        mpOwner = owner;
+        mpState = s;
+        MpApplyState();
+    }
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 1) mpOwner = value;
+        else if (channel == 0) { mpState = (BallState)(int)value; MpApplyState(); }
+    }
+
+    private void MpApplyState()
+    {
+        PlayerMover m = mpOwner > 0f ? MpSync.MoverById((uint)(mpOwner - 1f)) : null;
+        PlayerEnergyReceiver r = null;
+        if (m != null && !m.TryGetComponent(out r)) r = m.gameObject.AddComponent<PlayerEnergyReceiver>();
+        if (mpState == BallState.Carried) { SetCarried(r); if (r != null) r.MpCarry(this); }
+        else
+        {
+            if (r != null) r.MpDrop(this);
+            if (mpState == BallState.Installed) SetInstalled(r);
+            else SetGround(originPosition);
+        }
+    }
+
     private void Awake()
     {
+        mpId = MpSync.Register(this);
         groundPosition = transform.position;
         originPosition = transform.position;
         renderers = GetComponentsInChildren<Renderer>();
@@ -103,7 +154,7 @@ public class EnergyBall : MonoBehaviour, IInteractionProvider
         if (State != BallState.Ground) return;
 
         PlayerShapeIdentity identity = other.GetComponentInParent<PlayerShapeIdentity>();
-        if (identity == null) return;
+        if (identity == null || !MpSync.IsOwnBody(identity)) return; // 줍기 안내는 내 몸 기준이다
 
         PlayerEnergyReceiver receiver = identity.GetComponent<PlayerEnergyReceiver>();
         if (receiver == null) receiver = identity.gameObject.AddComponent<PlayerEnergyReceiver>();
@@ -150,7 +201,8 @@ public class EnergyBall : MonoBehaviour, IInteractionProvider
     private System.Collections.IEnumerator RespawnAfterDelay()
     {
         yield return new WaitForSeconds(respawnDelaySeconds);
-        SetGround(originPosition);
+        if (MpSync.IsServer) MpSetState(BallState.Ground, 0f);
+        else SetGround(originPosition);
     }
 
     private void SetVisible(bool visible)

@@ -76,14 +76,14 @@ public class BookPanel : MonoBehaviour
     {
         if (bound || slot == null || slot.manager == null) return;
         bound = true;
-        slot.manager.ChapterReset += ResetToFirstPage;
+        slot.manager.ChapterResetLocal += ResetToFirstPage; // 쪽 번호는 각 PC의 화면 상태다
     }
 
     public void Unbind()
     {
         if (!bound) return;
         bound = false;
-        if (slot != null && slot.manager != null) slot.manager.ChapterReset -= ResetToFirstPage;
+        if (slot != null && slot.manager != null) slot.manager.ChapterResetLocal -= ResetToFirstPage;
     }
 
     private void Start()

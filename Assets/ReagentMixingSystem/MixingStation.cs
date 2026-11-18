@@ -34,7 +34,7 @@ using UnityEngine.Events;
 /// [화면 정보 격리]
 /// 재료 이름·색·표식과 이미 투입한 목록만 그린다. recipe는 판정에만 쓰고 화면에 절대 그리지 않는다.
 /// </summary>
-public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
+public class MixingStation : MonoBehaviour, IParticipantPauseReceiver, IMpSynced, IMpEventSink, IMpTextSink
 {
     [Serializable]
     public class Reagent
@@ -113,7 +113,79 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
     /// <summary>권한을 이미 소비했다(병 표시 "사용 완료").</summary>
     public bool TokenUsed { get; private set; }
     public bool ParticipantPaused { get; private set; }
-    public string LastFeedback { get; private set; }
+    private string lastFeedback;
+    public string LastFeedback
+    {
+        get => lastFeedback;
+        private set { lastFeedback = value; MpSync.SendText(mpId, value); }
+    }
+
+    // ── [멀티] 조합식과 진행은 서버가 정한다(무작위 포함). 이벤트 0=선택 data.x, 1=투입, 2=비우기(arg=몸 ID).
+    // 채널 0=시도, 1=선택+1, 2=버퍼 수, 3=완성/권한/사용 비트, 4~7=조합식 재료 번호+1, 8~11=버퍼 재료 번호+1.
+    private uint mpId;
+    private readonly int[] mpRecipe = new int[4];
+    private readonly int[] mpBuffer = new int[4];
+    private int mpBufferCount;
+
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpText(string text) => lastFeedback = text;
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        PlayerMover actor = MpSync.MoverById(arg);
+        if (kind == 0) Select((int)data.x, actor);
+        else if (kind == 1) Submit(actor);
+        else if (kind == 2) Clear(actor);
+    }
+
+    public void OnMpValue(int channel, float value)
+    {
+        int v = (int)value;
+        if (channel == 0) Attempt = v;
+        else if (channel == 1) SelectedIndex = v - 1;
+        else if (channel == 2) mpBufferCount = v;
+        else if (channel == 3)
+        {
+            IsComplete = (v & 1) != 0;
+            HasToken = (v & 2) != 0;
+            TokenUsed = (v & 4) != 0;
+            RefreshBottle();
+        }
+        else if (channel >= 4 && channel <= 7) mpRecipe[channel - 4] = v;
+        else if (channel >= 8 && channel <= 11) mpBuffer[channel - 8] = v;
+        else return;
+        if (channel >= 4 && channel <= 7 || channel == 0) MpRebuildRecipe();
+        buffer.Clear();
+        for (int i = 0; i < mpBufferCount && i < mpBuffer.Length; i++)
+            if (mpBuffer[i] > 0) buffer.Add(mpBuffer[i] - 1);
+    }
+
+    private void MpRebuildRecipe()
+    {
+        int n = reagents != null ? Mathf.Min(reagents.Length, mpRecipe.Length) : 0;
+        string[] next = new string[n];
+        for (int i = 0; i < n; i++)
+        {
+            if (mpRecipe[i] <= 0 || mpRecipe[i] > reagents.Length) return; // 아직 다 안 왔다
+            next[i] = reagents[mpRecipe[i] - 1].id;
+        }
+        recipe = next;
+        WriteBook();
+    }
+
+    private void MpPublish()
+    {
+        MpSync.Publish(mpId, 0, Attempt);
+        MpSync.Publish(mpId, 1, SelectedIndex + 1);
+        MpSync.Publish(mpId, 2, buffer.Count);
+        MpSync.Publish(mpId, 3, (IsComplete ? 1 : 0) | (HasToken ? 2 : 0) | (TokenUsed ? 4 : 0));
+        for (int i = 0; i < mpRecipe.Length; i++)
+            MpSync.Publish(mpId, 4 + i, i < recipe.Length ? System.Array.FindIndex(reagents, r => r.id == recipe[i]) + 1 : 0);
+        for (int i = 0; i < mpBuffer.Length; i++)
+            MpSync.Publish(mpId, 8 + i, i < buffer.Count ? buffer[i] + 1 : 0);
+    }
 
     private readonly List<int> buffer = new List<int>();
     private bool bound;
@@ -124,12 +196,13 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
     private void Start()
     {
         RefreshBottle();
-        if (Attempt == 0) NewAttempt(); // ChapterReset이 먼저 왔다면 이미 만들어져 있다.
+        if (Attempt == 0 && !MpSync.IsClient) NewAttempt(); // ChapterReset이 먼저 왔다면 이미 만들어져 있다.
     }
 
     /// <summary>새 시도: 번호 +1, 재료 전체를 섞어 직전과 다른 조합식을 만들고 책 본문을 다시 쓴다.</summary>
     public void NewAttempt()
     {
+        if (MpSync.IsClient) return;
         Attempt++;
         string[] prev = recipe;
         int n = reagents != null ? reagents.Length : 0;
@@ -230,6 +303,7 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
     /// <summary>챕터 전체 재시작(잡힘 포함): 버퍼·선택·완성 병·권한을 전부 초기화한다(M-07).</summary>
     public void ResetAll()
     {
+        if (MpSync.IsClient) return;
         buffer.Clear();
         SelectedIndex = -1;
         IsComplete = false;
@@ -243,6 +317,7 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
 
     public bool Select(int reagentIndex, PlayerMover actor)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 0, new Vector3(reagentIndex, 0f, 0f), MpSync.BodyId(actor)); return true; }
         if (!CanAct(actor) || IsComplete) return false;
         if (reagents == null || reagentIndex < 0 || reagentIndex >= reagents.Length) return false;
         SelectedIndex = reagentIndex;
@@ -253,6 +328,7 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
     /// <summary>선택한 재료를 한 번 투입한다.</summary>
     public MixResult Submit(PlayerMover actor)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 1, Vector3.zero, MpSync.BodyId(actor)); return MixResult.Rejected; }
         MixResult result = SubmitInner(actor);
         LokiTelemetry.Event("ch8_mix_submit",
             $"actor={(actor != null ? actor.name : "null")} result={result} buffer={buffer.Count}/{(recipe != null ? recipe.Length : 0)} " +
@@ -307,6 +383,7 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
     /// <summary>버퍼와 선택을 비운다. 완성 후에는 거부한다(병 삭제 없음).</summary>
     public bool Clear(PlayerMover actor)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 2, Vector3.zero, MpSync.BodyId(actor)); return true; }
         if (!CanAct(actor)) return false;
         if (IsComplete)
         {
@@ -334,7 +411,8 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
     private bool CanAct(PlayerMover actor)
     {
         if (actor == null || ParticipantPaused) return false;
-        return slot != null && slot.IsPanelOpen && slot.PanelUser == actor;
+        if (slot == null) return false;
+        return MpSync.Active ? slot.HasUser(actor) : slot.IsPanelOpen && slot.PanelUser == actor; // 화면은 담당자 PC에서만 열린다
     }
 
     private void RefreshBottle()
@@ -346,6 +424,7 @@ public class MixingStation : MonoBehaviour, IParticipantPauseReceiver
 
     private void Update()
     {
+        if (MpSync.IsServer) MpPublish();
         if (slot == null || slot.manager == null) return;
         PlayerMover local = slot.manager.ControlledPlayer();
         if (!slot.CanShowTo(local)) return;

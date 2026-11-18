@@ -54,7 +54,7 @@ public class IsolationEntryDoor : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (Current != Phase.Closing || door == null) return;
+        if (MpSync.IsClient || Current != Phase.Closing || door == null) return;
         Tick(Time.fixedDeltaTime, door.IsBlocked, door.IsAtClosedPosition);
     }
 

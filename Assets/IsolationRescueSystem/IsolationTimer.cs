@@ -42,6 +42,13 @@ public class IsolationTimer : MonoBehaviour
     public float Remaining => IsRunning ? Mathf.Max(0f, Deadline - Now) : 0f;
 
     /// <summary>타이머를 시작한다. duration이 양수가 아니면 시작하지 않고 false.</summary>
+    /// <summary>[멀티] 참가자 PC: 서버가 정한 마감 시각을 그대로 쓴다.</summary>
+    public void MpApply(bool running, float deadline)
+    {
+        IsRunning = running;
+        Deadline = deadline;
+    }
+
     public bool TryBegin()
     {
         if (duration <= 0f)

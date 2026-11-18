@@ -58,6 +58,7 @@ public sealed class Lab_ServerRoomFlow : MonoBehaviour
 
     private void Update()
     {
+        if (MpSync.IsClient) return;
         // PowerMaintenanceController.ResetAll()은 기본 게이트를 다시 연다. Ready 동안 계속 닫아 둔다.
         if (quiz != null && power != null && power.Current == PowerMaintenanceController.State.Ready && quiz.SubmitGateOpen)
             quiz.SetSubmitGate(false);
@@ -65,6 +66,7 @@ public sealed class Lab_ServerRoomFlow : MonoBehaviour
 
     private void AssignEntry()
     {
+        if (MpSync.IsClient) return; // 회로 배정은 서버가 한다
         if (!entryPanel.AssignCircuit(entryCircuit, 1))
             Debug.LogError("[S7] ENTRY 회로 배정 실패 — 입구 문과 실험 시작이 잠긴다.", this);
     }
@@ -77,6 +79,7 @@ public sealed class Lab_ServerRoomFlow : MonoBehaviour
 
     private void ResetChapter()
     {
+        if (MpSync.IsClient) return;
         if (quiz != null) quiz.SetSubmitGate(false);
         if (entryDoor != null) entryDoor.SetPadPressed(false);
         if (exitDoor != null) exitDoor.SetPadPressed(false);
