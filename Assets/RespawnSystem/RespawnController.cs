@@ -571,6 +571,13 @@ public class RespawnController : MonoBehaviour, IMpEventSink
             yield break;
         }
 
+        // 모든 복귀(R·낙하·피격)는 기믹이 바꾼 크기를 기본값으로 되돌린다. 스폰 높이가 콜라이더 크기로 정해지므로 순간이동 계산보다 먼저 한다.
+        if (mover.TryGetComponent(out PlayerShapeController shape))
+        {
+            shape.ResetToDefault();
+            Physics.SyncTransforms();
+        }
+
         // 낙하 리스폰은 떨어지던 속도를 이어받는다 — 순간이동 후 0에서 다시 가속하면 "떨어지던 흐름이
         // 끊기고 다시 떨어뜨려진" 것으로 보인다. 페이드는 그 자리에서 사라지는 연출이라 이어받지 않는다
         // (반투명한 채 아래로 쏘아지면 연출이 깨진다).
