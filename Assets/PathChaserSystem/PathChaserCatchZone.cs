@@ -55,6 +55,6 @@ public class PathChaserCatchZone : MonoBehaviour
         PlayerMover mover = other.GetComponentInParent<PlayerMover>();
         if (mover == null) return;
 
-        controller.NotifyCaught(mover.gameObject);
+        if (MpSync.IsOwnBody(mover)) controller.NotifyCaught(mover.gameObject); // 잡힘 판정과 복귀는 몸 주인 PC가 한다
     }
 }

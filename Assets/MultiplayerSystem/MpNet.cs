@@ -35,9 +35,6 @@ public class MpNet : MonoBehaviour
         I = go.AddComponent<MpNet>();
         I.Build();
         Application.runInBackground = true; // 포커스를 잃은 창이 멈춰 접속이 끊기지 않게
-        // P-06: ESC 메뉴가 Time.timeScale을 0으로 만들면 내 물리·네트워크만 멈추고 남들은 계속 움직인다 → 오버레이만 띄우고 게임은 계속
-        var pause = FindFirstObjectByType<PauseMenuController>();
-        if (pause != null) pause.freezeTime = false;
         return I;
     }
 
@@ -138,7 +135,7 @@ public class MpNet : MonoBehaviour
         if (leaving) return;
         leaving = true;
         Message = msg;
-        LevelManager.OnClearOverride = null;
+        // LevelManager.OnClearOverride는 메인 화면이 해제한다 — 나가는 도중 몸이 목표에 닿아도 싱글용 클리어(시간 정지)가 켜지면 안 된다
         PauseMenuController.OnLeaveToMain = null; // 홈에서는 "메인화면으로 나가기"를 다시 끈다
         try
         {

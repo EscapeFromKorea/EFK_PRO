@@ -58,7 +58,7 @@ public class Projectile : MonoBehaviour
             GameObject playerRoot = collision.rigidbody != null
                 ? collision.rigidbody.gameObject
                 : collision.collider.gameObject;
-            launcher?.ReportHit(playerRoot);
+            if (MpSync.IsOwnBody(collision.collider)) launcher?.ReportHit(playerRoot); // 각 PC의 탄은 자기 몸의 피격만 보고한다
         }
 
         Despawn(); // 벽이든 유효 대상이든 최초 접촉에서 소멸(사양 §3 "가장 먼저 만족하는 조건")

@@ -71,9 +71,12 @@ public class HammerTrap : PeriodicTrapBase
         phase = Phase.TopWait;
         phaseElapsed = 0f;
         mpb = new MaterialPropertyBlock();
+        MpInit();
     }
 
-    private bool IsDangerous => IsRunning && (phase == Phase.Descending || phase == Phase.BottomWait);
+    protected override bool MpDangerNow => IsDangerous;
+    protected override void MpShowTelegraph(bool warn) => ApplyTelegraph(warn);
+    private bool IsDangerous => MpSync.IsClient ? MpDangerous : IsRunning && (phase == Phase.Descending || phase == Phase.BottomWait);
 
     protected override void StartRun()
     {
@@ -150,6 +153,7 @@ public class HammerTrap : PeriodicTrapBase
 
     private void ApplyTelegraph(bool warn)
     {
+        MpPublishTelegraph(warn);
         if (telegraphMarker == null) return;
         mpb.SetColor("_Color", warn ? telegraphColor : idleColor);
         telegraphMarker.SetPropertyBlock(mpb);

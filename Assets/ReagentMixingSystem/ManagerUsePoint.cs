@@ -16,7 +16,7 @@ using UnityEngine.Events;
 /// 트리거 콜라이더를 달면 관리자 compound의 일부가 되어 트리거 메시지가 관리자 루트에도 간다 — 루트에 잡힘
 /// 판정이 있으면 "사용 범위 진입"이 "잡힘"으로 읽힌다. 그래서 콜라이더 없이 조작 중인 참가자와의 거리만 잰다.
 /// </summary>
-public class ManagerUsePoint : MonoBehaviour, IInteractionProvider
+public class ManagerUsePoint : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink, IMpTextSink
 {
     [Tooltip("완성물 보유 여부를 읽을 혼합대. 조작 중인 참가자 조회도 이 혼합대의 RoleAssignmentManager로 한다.")]
     public MixingStation station;
@@ -39,7 +39,22 @@ public class ManagerUsePoint : MonoBehaviour, IInteractionProvider
     private float feedbackUntil;
     private System.Action onInteract;
 
-    private void Awake() => onInteract = () => RequestUse(LocalInRange());
+    private void Awake()
+    {
+        onInteract = () => RequestUse(LocalInRange());
+        mpId = MpSync.Register(this);
+    }
+
+    // [멀티] 사용 판정은 서버가 한다. 채널 0=사용 가능, 이벤트 0=사용 요청(arg=몸 ID).
+    private uint mpId;
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    private void Update() { if (MpSync.IsServer) MpSync.Publish(mpId, 0, available ? 2f : 1f); }
+    public void OnMpValue(int channel, float value) { if (channel == 0) available = value > 1.5f; }
+    public void OnMpText(string text) { LastFeedback = text; feedbackUntil = Time.unscaledTime + 2.5f; }
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (kind == 0 && MpSync.IsServer && MpSync.SenderOwnsBody(arg)) RequestUse(MpSync.MoverById(arg));
+    }
 
     private void OnEnable() => InteractionController.Register(this);
 
@@ -65,6 +80,7 @@ public class ManagerUsePoint : MonoBehaviour, IInteractionProvider
     /// <summary>사용 요청 한 번. 완성물이 없으면 안내만 하고 false. 키 입력과 분리해 입력 없이 재현할 수 있다.</summary>
     public bool RequestUse(PlayerMover requester)
     {
+        if (MpSync.IsClient) { if (requester != null) MpSync.SendEvent(mpId, 0, Vector3.zero, MpSync.BodyId(requester)); return false; }
         if (!available || requester == null) return false;
         if (station == null || !station.HasToken)
         {
@@ -80,6 +96,7 @@ public class ManagerUsePoint : MonoBehaviour, IInteractionProvider
 
     public void SetFeedback(string message)
     {
+        MpSync.SendText(mpId, message);
         LastFeedback = message;
         feedbackUntil = Time.unscaledTime + 2.5f;
     }

@@ -33,7 +33,7 @@ public class ManagerCatchZone : MonoBehaviour
 
     private void Handle(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (MpSync.IsClient || !other.CompareTag("Player")) return; // 잡힘은 팀 실패라 서버가 판정한다(복사본도 트리거를 일으킨다)
         PlayerMover mover = other.GetComponentInParent<PlayerMover>();
 
         if (controller == null || managerAgent == null || !managerAgent.CatchActive || !ManagerAgent.IsAlive(mover))

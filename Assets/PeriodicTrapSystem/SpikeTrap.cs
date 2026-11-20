@@ -59,9 +59,12 @@ public class SpikeTrap : PeriodicTrapBase
         phase = Phase.Retracted;
         phaseElapsed = 0f;
         mpb = new MaterialPropertyBlock();
+        MpInit();
     }
 
-    private bool IsDangerous => IsRunning && (phase == Phase.Rising || phase == Phase.Extended);
+    protected override bool MpDangerNow => IsDangerous;
+    protected override void MpShowTelegraph(bool warn) => ApplyTelegraph(warn);
+    private bool IsDangerous => MpSync.IsClient ? MpDangerous : IsRunning && (phase == Phase.Rising || phase == Phase.Extended);
 
     protected override void StartRun()
     {
@@ -136,6 +139,7 @@ public class SpikeTrap : PeriodicTrapBase
 
     private void ApplyTelegraph(bool warn)
     {
+        MpPublishTelegraph(warn);
         if (telegraphMarker == null) return;
         mpb.SetColor("_Color", warn ? telegraphColor : idleColor);
         telegraphMarker.SetPropertyBlock(mpb);

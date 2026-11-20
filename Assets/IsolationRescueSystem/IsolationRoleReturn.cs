@@ -33,7 +33,7 @@ public class IsolationRoleReturn : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         PlayerMover mover = other != null ? other.GetComponentInParent<PlayerMover>() : null;
-        if (mover != null) Return(mover.gameObject);
+        if (mover != null && MpSync.IsOwnBody(mover)) Return(mover.gameObject);
     }
 
     /// <summary>이 참가자를 역할에 맞는 안전점으로 복귀시킨다. 복귀를 요청했으면 true.</summary>

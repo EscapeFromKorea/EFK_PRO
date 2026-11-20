@@ -16,7 +16,7 @@ using UnityEngine;
 /// </summary>
 [RequireComponent(typeof(PortalSurface))]
 [RequireComponent(typeof(Rigidbody))]
-public class MovablePortalPanel : MonoBehaviour
+public class MovablePortalPanel : MonoBehaviour, IMpSynced
 {
     public enum PanelMode { Rail, Pivot }
 
@@ -110,10 +110,16 @@ public class MovablePortalPanel : MonoBehaviour
         initialPosition = transform.position;
         initialRotation = transform.rotation;
         Progress = 0f;
+        mpId = MpSync.Register(this);
     }
 
     /// <summary>유일한 입력 경계(WindupAxle.ApplyRotation과 같은 철학). 레버/전력/플레이어 물리력
     /// 중 무엇이 부르든 이 메서드 하나만 거친다 — 구체 드라이버 구현은 범위 밖(§13-8).</summary>
+    // [멀티] 패널은 서버가 움직이고 진행도(채널 0)를 전한다. 참가자 PC는 같은 식으로 자세를 계산해 따라간다.
+    private uint mpId;
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpValue(int channel, float value) { if (channel == 0) Progress = value; }
+
     public void ApplyDrive(float signedDelta)
     {
         requestedDelta += signedDelta;
@@ -122,13 +128,15 @@ public class MovablePortalPanel : MonoBehaviour
 
     private void Update()
     {
-        if (!debugKeyboardDrive) return;
+        if (!debugKeyboardDrive || MpSync.IsClient) return;
         if (Input.GetKey(KeyCode.RightBracket)) ApplyDrive(1f);
         if (Input.GetKey(KeyCode.LeftBracket)) ApplyDrive(-1f);
     }
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) { ApplyTransform(Time.fixedDeltaTime); return; }
+        MpSync.Publish(mpId, 0, Progress);
         bool drivingNow = IsDriving;
         float dt = Time.fixedDeltaTime;
         float speedLimit = ProgressSpeedLimit();

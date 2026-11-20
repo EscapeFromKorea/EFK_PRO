@@ -42,7 +42,7 @@ using UnityEngine.Events;
 ///  - 챕터 재시작 시 배선 패널 화면 초기화: WiringPanel에 리셋 API가 없고(#103 소유) 다음 시작 때
 ///    AssignCircuit이 리셋하므로 건드리지 않는다.
 /// </summary>
-public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiver
+public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiver, IMpSynced
 {
     public enum State
     {
@@ -117,9 +117,23 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
     private float restRemaining;
     private bool bound;
 
+    // [멀티] 전력 진행은 서버만 돌린다. 채널 0=상태, 1=전력, 2=제출 잠김, 3=배정 번호.
+    private uint mpId;
+
     private void Awake()
     {
         Power = startPower;
+        mpId = MpSync.Register(this);
+    }
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) { Current = (State)(int)value; RefreshPanelAction(); }
+        else if (channel == 1) Power = value;
+        else if (channel == 2) SubmitLocked = value > 0.5f;
+        else if (channel == 3) AssignmentNumber = (int)value;
     }
 
     private void OnEnable()
@@ -134,7 +148,12 @@ public class PowerMaintenanceController : MonoBehaviour, IParticipantPauseReceiv
 
     private void Update()
     {
+        if (MpSync.IsClient) return;
         Tick(Time.deltaTime);
+        MpSync.Publish(mpId, 0, (int)Current);
+        MpSync.Publish(mpId, 1, Mathf.Round(Power * 10f) / 10f);
+        MpSync.Publish(mpId, 2, SubmitLocked ? 1f : 0f);
+        MpSync.Publish(mpId, 3, AssignmentNumber);
     }
 
     /// <summary>구독을 연결한다. Editor 자가검증(EditMode)은 OnEnable이 불리지 않아 직접 부른다.</summary>

@@ -28,7 +28,7 @@ using UnityEngine;
 /// PanelUser = 지금 이 사물의 화면을 열어 둔 참가자. 점유(Users)와는 별개다 — Tab으로 조종 캐릭터를
 /// 바꾸거나 개인 복귀·거리 이탈이 있으면 화면만 닫히고 점유는 유지된다(§2.5, 회신 3).
 /// </summary>
-public class RoleSlot : MonoBehaviour, IInteractionProvider
+public class RoleSlot : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Tooltip("이 슬롯의 역할 ID. 챕터 안에서 유일해야 한다 " +
              "(예: \"Book\", \"Computer\", \"Power\" — CH8은 \"Mixer\", \"Monitor\").")]
@@ -64,6 +64,66 @@ public class RoleSlot : MonoBehaviour, IInteractionProvider
     public bool IsPanelOpen => PanelUser != null;
 
     private readonly List<PlayerMover> users = new List<PlayerMover>();
+
+    // ── [멀티] 담당자는 서버가 확정한다(채널 0~2=담당 몸 ID+1, 이벤트 0=사용 요청, 1=사용 종료, arg=몸 ID).
+    // 화면(PanelUser)은 그 사람 PC에서만 열린다.
+    private uint mpId;
+    private readonly float[] mpUsers = new float[3];
+    private bool mpOpenWhenAssigned;
+
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void MpRequestAssign(PlayerMover p)
+    {
+        mpOpenWhenAssigned = true;
+        MpSync.SendEvent(mpId, 0, Vector3.zero, MpSync.BodyId(p));
+    }
+
+    public void MpRequestRelease(PlayerMover p) => MpSync.SendEvent(mpId, 1, Vector3.zero, MpSync.BodyId(p));
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        PlayerMover p = MpSync.MoverById(arg);
+        if (p == null || manager == null) return;
+        if (kind == 0) manager.TryAssign(this, p);
+        else if (kind == 1) Release(p);
+    }
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel < 0 || channel >= mpUsers.Length) return;
+        mpUsers[channel] = value;
+        users.Clear();
+        foreach (float id in mpUsers)
+        {
+            PlayerMover u = id > 0f ? MpSync.MoverById((uint)(id - 1f)) : null;
+            if (u != null) users.Add(u);
+        }
+        PlayerMover me = InteractionController.Controlled;
+        if (mpOpenWhenAssigned && me != null && users.Contains(me))
+        {
+            mpOpenWhenAssigned = false;
+            if (!IsPanelOpen) OpenPanel(me);
+        }
+        if (PanelUser != null && !users.Contains(PanelUser)) ClosePanel();
+    }
+
+    private void MpPublishUsers()
+    {
+        if (!MpSync.IsServer) return;
+        for (int i = 0; i < mpUsers.Length; i++)
+            MpSync.Publish(mpId, i, i < users.Count && users[i] != null ? MpSync.BodyId(users[i]) + 1f : 0f);
+    }
+
+    /// <summary>서버: 담당자의 몸이 사라졌으면(접속 끊김) 목록에서 빼고 true.</summary>
+    public bool MpPruneLost()
+    {
+        if (users.RemoveAll(u => u == null) == 0) return false;
+        MpPublishUsers();
+        return true;
+    }
     private readonly Dictionary<PlayerMover, int> overlaps = new Dictionary<PlayerMover, int>();
 
     private void OnEnable()
@@ -187,6 +247,7 @@ public class RoleSlot : MonoBehaviour, IInteractionProvider
     internal void AddUser(PlayerMover p)
     {
         if (p != null && !users.Contains(p)) users.Add(p);
+        MpPublishUsers();
     }
 
     /// <summary>RoleAssignmentManager 전용 — 사물 사용을 종료한다(화면 닫기 + 점유 해제).</summary>
@@ -195,6 +256,7 @@ public class RoleSlot : MonoBehaviour, IInteractionProvider
         if (p == null || !users.Contains(p)) return;
         if (PanelUser == p) ClosePanel();
         users.Remove(p);
+        MpPublishUsers();
         Released?.Invoke(p);
     }
 

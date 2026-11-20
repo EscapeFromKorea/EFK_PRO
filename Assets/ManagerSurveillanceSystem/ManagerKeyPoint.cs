@@ -7,7 +7,7 @@ using UnityEngine.Events;
 /// 획득은 팀 상태라 개인 복귀로 잃지 않고, 챕터 재시작(ChapterReset)만 숨김·미획득으로 되돌린다.
 /// 출구 조건은 onKeyTaken 또는 HasKey를 읽어 레벨에서 배선한다.
 /// </summary>
-public class ManagerKeyPoint : MonoBehaviour, IInteractionProvider
+public class ManagerKeyPoint : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Tooltip("조작 중인 참가자 조회와 챕터 재시작 신호를 받을 매니저.")]
     public RoleAssignmentManager manager;
@@ -28,7 +28,27 @@ public class ManagerKeyPoint : MonoBehaviour, IInteractionProvider
     private bool bound;
     private System.Action onInteract;
 
-    private void Awake() => onInteract = () => TryTake(manager != null ? manager.ControlledPlayer() : null);
+    private void Awake()
+    {
+        onInteract = () => TryTake(manager != null ? manager.ControlledPlayer() : null);
+        mpId = MpSync.Register(this);
+    }
+
+    // [멀티] 열쇠는 팀 공유이며 서버가 확정한다. 채널 0=공개(1)+획득(2) 비트, 이벤트 0=줍기(arg=몸 ID).
+    private uint mpId;
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    private void Update() { if (MpSync.IsServer) MpSync.Publish(mpId, 0, (Revealed ? 1 : 0) | (HasKey ? 2 : 0)); }
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel != 0) return;
+        Revealed = ((int)value & 1) != 0;
+        HasKey = ((int)value & 2) != 0;
+        RefreshVisual();
+    }
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (kind == 0 && MpSync.IsServer && MpSync.SenderOwnsBody(arg)) TryTake(MpSync.MoverById(arg));
+    }
 
     private void OnEnable()
     {
@@ -67,9 +87,11 @@ public class ManagerKeyPoint : MonoBehaviour, IInteractionProvider
 
     public bool TryTake(PlayerMover p)
     {
+        if (MpSync.IsClient) { if (p != null) MpSync.SendEvent(mpId, 0, Vector3.zero, MpSync.BodyId(p)); return false; }
         if (!Revealed || HasKey || !ManagerAgent.IsAlive(p)) return false;
         if (manager != null && manager.IsPaused) return false; // 재접속 대기 중엔 팀 진행을 바꾸지 않는다.
-        if (Vector3.Distance(p.transform.position, transform.position) > pickupRadius) return false;
+        // 서버가 보는 남의 몸 복사본은 전송 지연만큼 뒤처진다
+        if (Vector3.Distance(p.transform.position, transform.position) > pickupRadius + (MpSync.Active ? 1.5f : 0f)) return false;
         HasKey = true;
         RefreshVisual();
         Debug.Log("[Manager] 팀 열쇠 획득.", this);

@@ -10,7 +10,7 @@ using UnityEngine;
 /// 돌아간다 — "밀고 있는 동안만 켜진 스위치"에 가깝다.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class PanelLever : MonoBehaviour
+public class PanelLever : MonoBehaviour, IMpEventSink
 {
     [Tooltip("이 레버가 구동할 패널.")]
     public MovablePortalPanel panel;
@@ -30,12 +30,27 @@ public class PanelLever : MonoBehaviour
     private float pushDirection; // -1, 0, 1
     private float armAngle;
 
+    // [멀티] 몸과의 충돌은 주인 PC에서만 난다 — 미는 방향을 서버로 올리고 서버가 패널을 민다. 끊겨도 멈추도록 0.3초 뒤 풀린다.
+    private uint mpId;
+    private float mpPushUntil;
+    private float mpNextSend;
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (kind != 0 || !MpSync.IsServer) return;
+        pushDirection = Mathf.Clamp(data.x, -1f, 1f);
+        mpPushUntil = pushDirection != 0f ? Time.time + 0.3f : 0f;
+    }
+
     private void OnCollisionEnter(Collision collision) => UpdatePush(collision);
     private void OnCollisionStay(Collision collision) => UpdatePush(collision);
 
     private void OnCollisionExit(Collision collision)
     {
-        if (collision.gameObject.CompareTag("Player")) pushDirection = 0f;
+        if (!collision.gameObject.CompareTag("Player")) return;
+        pushDirection = 0f;
+        if (MpSync.IsClient) MpSync.SendEvent(mpId, 0, Vector3.zero);
     }
 
     // 충돌 지점의 표면 노멀(어느 면에 부딪혔는지)로 방향을 판정하면, 같은 "미는 의도"라도 레버
@@ -49,11 +64,17 @@ public class PanelLever : MonoBehaviour
         Vector3 playerPos = collision.rigidbody != null ? collision.rigidbody.position : collision.transform.position;
         float localX = transform.InverseTransformPoint(playerPos).x;
         pushDirection = (localX >= 0f ? 1f : -1f) * (invertDirection ? -1f : 1f);
+        if (MpSync.IsClient && Time.time >= mpNextSend)
+        {
+            mpNextSend = Time.time + 0.1f;
+            MpSync.SendEvent(mpId, 0, new Vector3(pushDirection, 0f, 0f));
+        }
     }
 
     private void FixedUpdate()
     {
-        if (pushDirection != 0f && panel != null) panel.ApplyDrive(pushDirection * driveMagnitude);
+        if (MpSync.IsServer && mpPushUntil > 0f && Time.time > mpPushUntil) { pushDirection = 0f; mpPushUntil = 0f; }
+        if (!MpSync.IsClient && pushDirection != 0f && panel != null) panel.ApplyDrive(pushDirection * driveMagnitude);
 
         if (leverArm != null)
         {

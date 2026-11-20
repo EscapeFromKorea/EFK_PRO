@@ -68,6 +68,7 @@ public class PlayerShapeController : MonoBehaviour
 
     // 초기 스케일 저장
     private Vector3 initialScale;
+    private float defaultGrowMultiplier; // 투석기 도킹이 growMultiplier를 바꿔 두므로 기본값을 따로 기억한다
 
     // 현재 목표 스케일
     private Vector3 targetScale;
@@ -98,6 +99,7 @@ public class PlayerShapeController : MonoBehaviour
 
         initialScale = transform.localScale;
         targetScale = initialScale;
+        defaultGrowMultiplier = growMultiplier;
 
         if (meshTransform == null)
             Debug.LogWarning($"[PlayerShapeController] '{gameObject.name}'의 meshTransform이 연결되지 않았습니다. Y 위치 보정이 동작하지 않습니다.");
@@ -287,6 +289,15 @@ public class PlayerShapeController : MonoBehaviour
     {
         growMultiplier = multiplier;
         if (currentState == EScaleState.Grown) RecomputeTargetScale();
+    }
+
+    /// <summary>기본 크기로 즉시 되돌린다(보간 없음). 리스폰이 순간이동 직전에 부른다. 질량은 다음 FixedUpdate가 크기에 맞춘다.</summary>
+    public void ResetToDefault()
+    {
+        currentState = EScaleState.Normal;
+        growMultiplier = defaultGrowMultiplier;
+        targetScale = initialScale;
+        transform.localScale = initialScale;
     }
 
     /// <summary>현재 접지 여부 반환 (외부 참조용)</summary>

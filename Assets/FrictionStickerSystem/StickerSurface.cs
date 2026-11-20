@@ -25,7 +25,7 @@ public enum StickerKind
 /// sharedMaterial에 적용되므로, 시소/레일카/회전판이 움직여도 스티커가 그대로 따라간다.
 /// </summary>
 [DisallowMultipleComponent]
-public class StickerSurface : MonoBehaviour
+public class StickerSurface : MonoBehaviour, IMpSynced, IMpEventSink
 {
     private static readonly List<StickerSurface> surfaces = new List<StickerSurface>();
     internal static IReadOnlyList<StickerSurface> Surfaces => surfaces;
@@ -54,9 +54,65 @@ public class StickerSurface : MonoBehaviour
         targetCollider != null ? targetCollider : GetComponent<Collider>();
 
     // 기존 씬 검색은 활성 GameObject의 비활성 마커도 반환한다.
-    private void Awake() => surfaces.Add(this);
+    private void Awake()
+    {
+        surfaces.Add(this);
+        mpId = MpSync.Register(this);
+    }
 
-    private void OnDestroy() => surfaces.Remove(this);
+    private void OnDestroy()
+    {
+        surfaces.Remove(this);
+        MpSync.Unregister(mpId, this);
+    }
+
+    // ── [멀티] 표면의 스티커는 마찰을 바꾸므로 모든 PC가 같아야 한다. 붙이기·떼기는 서버가 확정한다.
+    // 이벤트 1=법선(로컬), 0=위치(로컬)+arg 상태. 채널 0=상태(0 없음, 1 미끄럼, 2 벨크로), 1~3=위치, 4~6=법선.
+    private uint mpId;
+    private int mpState;
+    private Vector3 mpPoint;
+    private Vector3 mpNormal = Vector3.up;
+
+    public void MpRequestAttach(StickerKind kind, Vector3 worldPoint, Vector3 worldNormal)
+    {
+        MpSync.SendEvent(mpId, 1, transform.InverseTransformDirection(worldNormal));
+        MpSync.SendEvent(mpId, 0, transform.InverseTransformPoint(worldPoint), (uint)kind + 1u);
+    }
+
+    public void MpRequestRetract() => MpSync.SendEvent(mpId, 0, Vector3.zero, 0u);
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer) return;
+        if (kind == 1) { mpNormal = data; return; }
+        if (kind != 0 || arg > 2u) return;
+        if (arg > 0u && !Accepts((StickerKind)(arg - 1u))) return;
+        mpPoint = data;
+        for (int i = 0; i < 3; i++)
+        {
+            MpSync.Publish(mpId, 1 + i, mpPoint[i]);
+            MpSync.Publish(mpId, 4 + i, mpNormal[i]);
+        }
+        MpSync.Publish(mpId, 0, arg); // 위치를 먼저 보내야 받는 쪽이 올바른 자리에 붙인다
+        ApplyMpState((int)arg);
+    }
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) ApplyMpState((int)value);
+        else if (channel >= 1 && channel <= 3) mpPoint[channel - 1] = value;
+        else if (channel >= 4 && channel <= 6) mpNormal[channel - 4] = value;
+    }
+
+    private void ApplyMpState(int state)
+    {
+        if (state == mpState) return;
+        mpState = state;
+        if (Current != null) Current.Retract();
+        if (state > 0)
+            FrictionSticker.Attach(this, (StickerKind)(state - 1), FrictionStickerController.SharedSettings,
+                transform.TransformPoint(mpPoint), transform.TransformDirection(mpNormal).normalized);
+    }
 
     private void Reset()
     {

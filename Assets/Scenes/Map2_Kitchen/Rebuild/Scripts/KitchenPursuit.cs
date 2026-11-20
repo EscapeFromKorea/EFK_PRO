@@ -8,7 +8,7 @@ namespace Map2KitchenDraft
     /// jumps a belt gap, or leaves the sink. Capture and player recovery belong to a separate rule.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
-    public sealed class KitchenPursuit : MonoBehaviour
+    public sealed class KitchenPursuit : MonoBehaviour, IMpSynced
     {
         [Header("Kitchen scene references")]
         public KitchenDraftController draft;
@@ -68,6 +68,36 @@ namespace Map2KitchenDraft
             visuals = GetComponentsInChildren<Renderer>(true);
             RebuildPath();
             ResetPursuit();
+            // [멀티] 서버가 추격을 돌린다. 위치는 MpBodySync, 보임 여부는 채널 0으로 전한다.
+            MpBodySync.Ensure(this);
+            mpId = MpSync.Register(this);
+            mpLastPosition = transform.position;
+        }
+
+        private uint mpId;
+        private Vector3 mpLastPosition;
+
+        public void OnMpValue(int channel, float value) { if (channel == 0) ApplyVisuals(value > 0.5f); }
+
+        private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+        // 혼자 플레이는 조작 중인 도형, 멀티는 추격 경로에서 이 생물에 가장 가까운 몸을 쫓는다.
+        private Transform PickTarget()
+        {
+            if (!MpSync.Active) return draft.ActivePlayer;
+            Transform best = null, fallback = null;
+            float bestGap = float.PositiveInfinity, fallbackGap = float.PositiveInfinity;
+            foreach (PlayerMover body in MpSync.Bodies)
+            {
+                Transform t = body.transform;
+                if (!IsEligible(t)) continue;
+                float along = Project(t.position, out float lateral, out float height, out _);
+                // 출발 전에는 가장 앞서 달리는 몸을 본다 — 입구에 남은 사람이 있어도 앞선 사람이 간격을 벌리면 출발해야 한다
+                float gap = armed ? Mathf.Abs(along - CurrentPathDistance) : -along;
+                if (gap < fallbackGap) { fallbackGap = gap; fallback = t; }
+                if (lateral <= engageWidth && height <= MaxHeightDifference && gap < bestGap) { bestGap = gap; best = t; }
+            }
+            return best != null ? best : fallback;
         }
 
         private void OnEnable()
@@ -87,8 +117,8 @@ namespace Map2KitchenDraft
 
         private void Update()
         {
-            if (draft == null || marker == null || cumulative == null || cumulative.Length < 2) return;
-            Transform actor = draft.ActivePlayer;
+            if (MpSync.IsClient || draft == null || marker == null || cumulative == null || cumulative.Length < 2) return;
+            Transform actor = PickTarget();
             if (Kind == CreatureKind.Rat && draft.HasKey)
             {
                 Complete(false);
@@ -140,9 +170,19 @@ namespace Map2KitchenDraft
 
         private void FixedUpdate()
         {
+            if (MpSync.IsClient)
+            {
+                // 참가자 PC: 서버가 옮긴 방향으로 모습만 돌린다
+                Vector3 moved = transform.position - mpLastPosition;
+                mpLastPosition = transform.position;
+                moved.y = 0f;
+                if (facingVisual != null && moved.sqrMagnitude > .0001f)
+                    facingVisual.rotation = Quaternion.LookRotation(moved.normalized, Vector3.up);
+                return;
+            }
             if (!armed || HasReachedEnd || draft == null || marker == null || body == null ||
                 Time.time < movementStartsAt) return;
-            Transform actor = draft.ActivePlayer;
+            Transform actor = PickTarget();
             if (!IsEligible(actor) || (Kind == CreatureKind.Rat && draft.HasKey) || IsSortingPast(actor))
             {
                 IsChasing = false;
@@ -194,7 +234,7 @@ namespace Map2KitchenDraft
         {
             if (actor == null || !actor.gameObject.activeInHierarchy) return false;
             PlayerMover mover = actor.GetComponentInParent<PlayerMover>();
-            if (mover == null || !mover.isActiveAndEnabled) return false;
+            if (mover == null || (!MpSync.Active && !mover.isActiveAndEnabled)) return false; // 멀티의 복사본은 mover가 꺼져 있다
             if (marker.kind == CreatureKind.Cockroach)
             {
                 if (marker.activityBounds == null) return false;
@@ -227,6 +267,12 @@ namespace Map2KitchenDraft
         }
 
         private void SetVisualsActive(bool visible)
+        {
+            if (mpId != 0) MpSync.Publish(mpId, 0, visible ? 1f : 0f);
+            ApplyVisuals(visible);
+        }
+
+        private void ApplyVisuals(bool visible)
         {
             if (!Application.isPlaying) return;
             if (visuals == null) visuals = GetComponentsInChildren<Renderer>(true);

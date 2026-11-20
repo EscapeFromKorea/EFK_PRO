@@ -66,9 +66,11 @@ public class AxeTrap : PeriodicTrapBase
         restRotation = body.rotation;
         currentRotation = restRotation;
         swingClock = 0f;
+        MpInit();
     }
 
-    private bool IsDangerous => IsRunning && warmupDone; // 예고를 지나면 왕복 내내 위험(사양 §4 표).
+    protected override bool MpDangerNow => IsDangerous;
+    private bool IsDangerous => MpSync.IsClient ? MpDangerous : IsRunning && warmupDone; // 예고를 지나면 왕복 내내 위험(사양 §4 표).
 
     protected override void StartRun()
     {

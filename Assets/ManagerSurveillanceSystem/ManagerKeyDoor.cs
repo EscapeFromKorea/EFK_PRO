@@ -9,7 +9,7 @@ using UnityEngine.Events;
 /// doorPhysics.SetPadPressed(true)가 "목표 높이로 올린다"는 창구라 그대로 부른다(레버를 비워 두면 평소엔 닫힘 위치).
 /// 챕터 재시작(ChapterReset)에서 다시 닫는다 — 열쇠도 같은 신호로 미획득으로 돌아간다.
 /// </summary>
-public class ManagerKeyDoor : MonoBehaviour, IInteractionProvider
+public class ManagerKeyDoor : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Tooltip("조작 중인 참가자 조회와 챕터 재시작 신호를 받을 매니저.")]
     public RoleAssignmentManager manager;
@@ -30,7 +30,21 @@ public class ManagerKeyDoor : MonoBehaviour, IInteractionProvider
     private bool bound;
     private System.Action onInteract;
 
-    private void Awake() => onInteract = () => TryOpen(LocalInRange());
+    private void Awake()
+    {
+        onInteract = () => TryOpen(LocalInRange());
+        mpId = MpSync.Register(this);
+    }
+
+    // [멀티] 문 열기는 서버가 한다. 채널 0=열림, 이벤트 0=열기(arg=몸 ID).
+    private uint mpId;
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+    private void Update() { if (MpSync.IsServer) MpSync.Publish(mpId, 0, IsOpen ? 1f : 0f); }
+    public void OnMpValue(int channel, float value) { if (channel == 0) IsOpen = value > 0.5f; }
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (kind == 0 && MpSync.IsServer && MpSync.SenderOwnsBody(arg)) TryOpen(MpSync.MoverById(arg));
+    }
 
     private void OnEnable()
     {
@@ -70,6 +84,7 @@ public class ManagerKeyDoor : MonoBehaviour, IInteractionProvider
     /// <summary>문 열기 시도. 열쇠가 없으면 안내만 하고 false.</summary>
     public bool TryOpen(PlayerMover p)
     {
+        if (MpSync.IsClient) { if (p != null) MpSync.SendEvent(mpId, 0, Vector3.zero, MpSync.BodyId(p)); return false; }
         if (IsOpen || p == null) return false;
         if (manager != null && manager.IsPaused)
         {
@@ -93,6 +108,7 @@ public class ManagerKeyDoor : MonoBehaviour, IInteractionProvider
 
     public void Close()
     {
+        if (MpSync.IsClient) return;
         IsOpen = false;
         if (door != null) door.SetPadPressed(false);
         LokiTelemetry.Event("ch8_door_close");

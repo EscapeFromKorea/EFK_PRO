@@ -35,7 +35,7 @@ using UnityEngine.Events;
 /// [입력은 키보드]
 /// 숫자 키로 선택, Enter로 제출. 커서 잠금 때문에 OnGUI 버튼은 평소에 누를 수 없다(BookPanel 주석 참고).
 /// </summary>
-public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
+public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver, IMpSynced, IMpEventSink, IMpTextSink
 {
     [Serializable]
     public class Question
@@ -100,7 +100,46 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
     public bool ParticipantPaused { get; private set; }
 
     /// <summary>화면에 표시할 마지막 피드백("정답입니다" / "자료를 다시 확인하세요" 등).</summary>
-    public string LastFeedback { get; private set; }
+    private string lastFeedback;
+    public string LastFeedback
+    {
+        get => lastFeedback;
+        private set { lastFeedback = value; MpSync.SendText(mpId, value); }
+    }
+
+    // ── [멀티] 문답 진행은 서버가 확정한다. 담당자 PC의 입력은 이벤트(0=선택 data.x, 1=제출, 2=시작 동작, arg=몸 ID)로 올린다.
+    // 채널 0=문항, 1=전체 완료, 2=선택+1, 3=제출 가능.
+    private uint mpId;
+
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpText(string text) => lastFeedback = text;
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) CurrentIndex = (int)value;
+        else if (channel == 1) AllCleared = value > 0.5f;
+        else if (channel == 2) SelectedIndex = (int)value - 1;
+        else if (channel == 3) SubmitGateOpen = value > 0.5f;
+    }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        PlayerMover actor = MpSync.MoverById(arg);
+        if (kind == 0) Select((int)data.x, actor);
+        else if (kind == 1) Submit(actor);
+        else if (kind == 2) RequestAction(actor);
+    }
+
+    private void MpPublish()
+    {
+        MpSync.Publish(mpId, 0, CurrentIndex);
+        MpSync.Publish(mpId, 1, AllCleared ? 1f : 0f);
+        MpSync.Publish(mpId, 2, SelectedIndex + 1);
+        MpSync.Publish(mpId, 3, SubmitGateOpen ? 1f : 0f);
+    }
 
     private bool bound;
 
@@ -182,6 +221,7 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
     /// <summary>선택지를 고른다(제출은 아니다). 이 사물의 화면을 연 참가자만, 정지 중이 아닐 때만 가능.</summary>
     public bool Select(int choiceIndex, PlayerMover actor)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 0, new Vector3(choiceIndex, 0f, 0f), MpSync.BodyId(actor)); return true; }
         if (!CanAct(actor)) return false;
         Question q = CurrentQuestion();
         if (q == null || q.choices == null || choiceIndex < 0 || choiceIndex >= q.choices.Length) return false;
@@ -193,6 +233,7 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
     /// <summary>선택한 답을 제출한다. 권한/선택/게이트/정지 조건을 통과해야 판정한다.</summary>
     public SubmitResult Submit(PlayerMover actor)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 1, Vector3.zero, MpSync.BodyId(actor)); return SubmitResult.Rejected; }
         if (!CanAct(actor)) return SubmitResult.Rejected;
 
         Question q = CurrentQuestion();
@@ -243,8 +284,9 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
     /// 키 입력과 분리해 둔 이유는 Editor 자가검증이 입력 없이 재현하기 위해서다.</summary>
     public bool RequestAction(PlayerMover actor)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 2, Vector3.zero, MpSync.BodyId(actor)); return true; }
         if (string.IsNullOrEmpty(actionLabel) || actor == null || ParticipantPaused) return false;
-        if (slot == null || !slot.IsPanelOpen || slot.PanelUser != actor) return false;
+        if (slot == null || !MpCanOperate(actor)) return false;
         onActionRequested.Invoke(actor);
         return true;
     }
@@ -258,7 +300,13 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
     private bool CanAct(PlayerMover actor)
     {
         if (actor == null || AllCleared || ParticipantPaused) return false;
-        return slot != null && slot.IsPanelOpen && slot.PanelUser == actor;
+        return slot != null && MpCanOperate(actor);
+    }
+
+    // 화면은 담당자 PC에서만 열리므로 서버는 "담당자인가"로 권한을 본다
+    private bool MpCanOperate(PlayerMover actor)
+    {
+        return MpSync.Active ? slot.HasUser(actor) : slot.IsPanelOpen && slot.PanelUser == actor;
     }
 
     private Question CurrentQuestion()
@@ -271,6 +319,7 @@ public class QuizTerminal : MonoBehaviour, IParticipantPauseReceiver
 
     private void Update()
     {
+        if (MpSync.IsServer) MpPublish();
         if (slot == null || slot.manager == null) return;
         PlayerMover local = slot.manager.ControlledPlayer();
         if (!slot.CanShowTo(local)) return;

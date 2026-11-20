@@ -15,7 +15,7 @@ public sealed class MusicBoxRepairController : MonoBehaviour
     private void Update()
     {
         ResolveDirector();
-        if (director == null) return;
+        if (director == null || MpSync.IsClient) return; // 활성화 판정과 문 구동은 서버가 한다
 
         if (!director.IsMusicBoxActivated && director.AllItemsInstalled && activationLever != null &&
             activationLever.GetCurrentAngle() >= activationAngle)

@@ -114,10 +114,12 @@ public class PathChaserAgent : MonoBehaviour
         body = GetComponent<Rigidbody>();
         body.isKinematic = true;
         body.useGravity = false;
+        MpBodySync.Ensure(this); // [멀티] 서버가 움직이고 참가자 PC는 따라간다
     }
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return;
         if (hasOverride)
         {
             body.MovePosition(Vector3.MoveTowards(body.position, overrideTarget, speed * Time.fixedDeltaTime));

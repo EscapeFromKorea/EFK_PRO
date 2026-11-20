@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>맵4 CH5 전용: 천장 경고등 → 하강 → 안전 위치 확인 → 팀 도끼 예고·진자.</summary>
 [RequireComponent(typeof(Rigidbody))]
-public sealed class Lab_AxeReveal : MonoBehaviour
+public sealed class Lab_AxeReveal : MonoBehaviour, IMpSynced
 {
     public enum RevealPhase { Hidden, Warning, Descending, WaitingForClearance, TeamWarmup, Running }
     public AxeTrap trap;
@@ -32,6 +32,7 @@ public sealed class Lab_AxeReveal : MonoBehaviour
         // 두 Awake의 호출 순서와 무관하게 어느 쪽도 아직 회전을 바꾸지 않았다.
         baseRotation = body.rotation;
         RestPosition = transform.position - Vector3.up * lift;
+        mpId = MpSync.Register(this);
     }
 
     private void OnEnable()
@@ -62,10 +63,12 @@ public sealed class Lab_AxeReveal : MonoBehaviour
         StartedAt = Time.time;
         phaseTime = 0f;
         Phase = RevealPhase.Warning;
+        MpApplyState(); // Register가 OnEnable보다 먼저 받은 값(재접속)을 초기화 뒤에 적용한다
     }
 
     private void FixedUpdate()
     {
+        if (MpSync.IsClient) return; // 등장 연출의 진행은 서버가 정하고 자세는 도끼의 MpBodySync가 전한다
         phaseTime += Time.fixedDeltaTime;
         switch (Phase)
         {
@@ -101,11 +104,47 @@ public sealed class Lab_AxeReveal : MonoBehaviour
         }
     }
 
-    private void Enter(RevealPhase next) { Phase = next; phaseTime = 0f; }
+    private void Enter(RevealPhase next)
+    {
+        Phase = next;
+        phaseTime = 0f;
+        MpSync.Publish(mpId, 0, (int)next);
+    }
+
+    // [멀티] 채널 0=단계, 1=날이 보이는가
+    private uint mpId;
+    private int mpPhase = -1;
+    private bool mpShown;
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) mpPhase = (int)value;
+        else if (channel == 1) mpShown = value > 0.5f;
+        else return;
+        MpApplyState();
+    }
+
+    private void MpApplyState()
+    {
+        if (!MpSync.IsClient || visuals == null || !isActiveAndEnabled) return;
+        if (mpShown && !VisualsShown) ShowVisuals();
+        if (mpPhase < 0) return;
+        Phase = (RevealPhase)mpPhase;
+        if (Phase >= RevealPhase.TeamWarmup)
+        {
+            trap.bladeCollider.enabled = true;
+            trap.supportCollider.enabled = true;
+            trap.enabled = true;
+        }
+        if (Phase == RevealPhase.Running && warningLight != null) warningLight.enabled = false;
+    }
     private void ShowVisuals()
     {
         foreach (Renderer visual in visuals) visual.enabled = true;
         VisualsShown = true;
+        MpSync.Publish(mpId, 1, 1f);
     }
 
     private float BladeBottomY()

@@ -185,6 +185,23 @@ public class PlayerStickerCarrier : MonoBehaviour, IInteractionProvider
 
         FrictionSticker current = aimedSurface.Current;
 
+        if (MpSync.Active)
+        {
+            // [멀티] 보유량은 각자 관리하고, 표면 상태는 서버가 확정해 전원에게 전한다
+            if (current != null && current.Kind == selectedKind)
+            {
+                AddToInventory(selectedKind, 1);
+                aimedSurface.MpRequestRetract();
+            }
+            else if (aimedSurface.Accepts(selectedKind) && HasStock(selectedKind))
+            {
+                if (current != null) AddToInventory(current.Kind, 1);
+                AddToInventory(selectedKind, -1);
+                aimedSurface.MpRequestAttach(selectedKind, aimPoint, aimNormal);
+            }
+            return;
+        }
+
         // 같은 종류가 이미 붙어 있으면 → 회수(토글 오프).
         if (current != null && current.Kind == selectedKind)
         {

@@ -17,6 +17,12 @@ public interface IMpSynced
     void OnMpValue(int channel, float value);
 }
 
+/// <summary>서버가 전원에게 보내는 안내 문구를 받는 기믹(단말 피드백 등).</summary>
+public interface IMpTextSink
+{
+    void OnMpText(string text);
+}
+
 /// <summary>몸 주인 PC가 서버로 올리는 이벤트(예: 레버를 민 방향)를 받는 기믹.</summary>
 public interface IMpEventSink
 {
@@ -65,6 +71,89 @@ public static class MpSync
         return no != null && no.IsOwner;
     }
 
+    /// <summary>이 컴포넌트가 속한 플레이어 몸의 네트워크 ID. 없으면 0.</summary>
+    public static uint BodyId(Component c)
+    {
+        var no = c != null ? c.GetComponentInParent<NetworkObject>() : null;
+        return no != null ? (uint)no.NetworkObjectId : 0u;
+    }
+
+    /// <summary>네트워크 ID로 플레이어 몸을 찾는다.</summary>
+    public static PlayerMover MoverById(uint id)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.SpawnManager.SpawnedObjects.TryGetValue(id, out var no) || no == null) return null;
+        return no.GetComponent<PlayerMover>();
+    }
+
+    /// <summary>이 몸의 로비 슬롯(0~2). 팀 이동 때 도형끼리 겹치지 않게 자리를 나눈다.</summary>
+    public static int SlotOf(PlayerMover m)
+    {
+        var no = m != null ? m.GetComponent<NetworkObject>() : null;
+        return no != null && MpLobby.I != null ? MpLobby.I.SlotOf(no.OwnerClientId) : -1;
+    }
+
+    /// <summary>서버 → 전원: 안내 문구.</summary>
+    public static void SendText(uint id, string text)
+    {
+        if (IsServer) MpLobby.I.TextRpc(id, text ?? "");
+    }
+
+    internal static void ApplyText(uint id, string text)
+    {
+        if (reg.TryGetValue(id, out var c) && c is IMpTextSink s) s.OnMpText(text);
+    }
+
+    /// <summary>몸을 순간이동시킨다. 몸은 주인 PC가 굴리므로 남의 몸이면 그 PC에 요청한다.</summary>
+    public static void MoveBody(PlayerMover m, Vector3 position)
+    {
+        if (m == null) return;
+        var no = m.GetComponent<NetworkObject>();
+        if (!Active || no == null || no.IsOwner) { TeleportOwnBody(m.transform, position); return; }
+        MpLobby.I.MoveBodyRpc(no.NetworkObjectId, position, MpLobby.I.NetworkManager.RpcTarget.Single(no.OwnerClientId, RpcTargetUse.Temp));
+    }
+
+    public static void TeleportOwnBody(Transform body, Vector3 position)
+    {
+        if (body.TryGetComponent(out Rigidbody rb))
+        {
+            if (!rb.isKinematic)
+            {
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+            rb.position = position;
+        }
+        body.position = position;
+        if (body.TryGetComponent(out Unity.Netcode.Components.NetworkTransform nt) && nt.IsSpawned && nt.CanCommitToTransform)
+            nt.Teleport(position, body.rotation, body.localScale); // 다른 PC에서 미끄러져 보이지 않게
+        Physics.SyncTransforms();
+        PlayerFollowCamera.SnapToTarget(body);
+    }
+
+    /// <summary>주기 장치용 시계. 멀티에서는 모든 PC가 공유하는 서버 시간, 오프라인이면 물리 시간.</summary>
+    public static float SharedFixedTime => Active ? (float)NetworkManager.Singleton.ServerTime.Time : Time.fixedTime;
+
+    static readonly List<PlayerMover> bodies = new List<PlayerMover>();
+    static float nextBodyScan;
+
+    /// <summary>멀티 판의 플레이어 몸 전부(내 몸·남의 복사본). 0.5초마다 다시 찾는다.</summary>
+    public static IReadOnlyList<PlayerMover> Bodies
+    {
+        get
+        {
+            if (Time.unscaledTime >= nextBodyScan)
+            {
+                nextBodyScan = Time.unscaledTime + 0.5f;
+                bodies.Clear();
+                foreach (var p in UnityEngine.Object.FindObjectsByType<NetProtoPlayer>(FindObjectsSortMode.None))
+                    if (p.TryGetComponent(out PlayerMover m)) bodies.Add(m);
+            }
+            bodies.RemoveAll(m => m == null);
+            return bodies;
+        }
+    }
+
     /// <summary>기믹을 등록하고 ID를 돌려준다. 이미 서버가 올린 값이 있으면 곧바로 적용한다(늦게 합류·재접속).</summary>
     public static uint Register(Component c)
     {
@@ -104,12 +193,13 @@ public static class MpSync
     }
 
     /// <summary>남의 몸에 리스폰을 걸어야 할 때(서버의 낙하 판정 등) 그 몸의 주인 PC에 복귀를 요청한다. 복귀는 주인 PC가 실행한다.</summary>
-    public static void RequestRespawnAtOwner(GameObject body)
+    public static void RequestRespawnAtOwner(GameObject body, SectionSafePoint destination = null)
     {
         var no = body.GetComponentInParent<NetworkObject>();
         if (no == null || !Active) return;
-        if (no.IsOwner) { var rc = UnityEngine.Object.FindFirstObjectByType<RespawnController>(); if (rc != null) rc.RespawnPlayer(no.gameObject); return; }
-        MpLobby.I.RespawnBodyRpc(no.NetworkObjectId, MpLobby.I.NetworkManager.RpcTarget.Single(no.OwnerClientId, RpcTargetUse.Temp));
+        if (no.IsOwner) { var rc = UnityEngine.Object.FindFirstObjectByType<RespawnController>(); if (rc != null) rc.RespawnPlayer(no.gameObject, destination); return; }
+        uint point = destination != null ? TransformId(destination.transform) : 0u;
+        MpLobby.I.RespawnBodyRpc(no.NetworkObjectId, point, MpLobby.I.NetworkManager.RpcTarget.Single(no.OwnerClientId, RpcTargetUse.Temp));
     }
 
     /// <summary>몸 주인 PC가 서버로 이벤트를 올린다. 서버 자신이면 곧바로 처리한다.</summary>

@@ -29,7 +29,7 @@ using UnityEngine;
 /// WindupAxle↔IWindupReceiver와 같은 방향의 관례 — 슬롯이 자기 OnEnable/OnDisable에서
 /// RegisterSlot/UnregisterSlot을 부른다(수동 배열 나열 없음).
 /// </summary>
-public class RoleAssignmentManager : MonoBehaviour
+public class RoleAssignmentManager : MonoBehaviour, IMpSynced
 {
     /// <summary>챕터 진행 상태. Running 이외는 모두 "정지" — 수신자에게는 paused=true로 나간다.</summary>
     public enum SessionState
@@ -64,6 +64,53 @@ public class RoleAssignmentManager : MonoBehaviour
     /// 패널이 스스로 되돌릴 일을 구독한다(BookPanel, QuizTerminal). 같은 시스템 내부 신호라 C# 이벤트로
     /// 둔다(RoleSlot 이벤트와 같은 이유).</summary>
     public event System.Action ChapterReset;
+
+    /// <summary>모든 PC에서 발생하는 챕터 재시작 신호(화면 표시 초기화용). 진행 상태 초기화는 ChapterReset(서버)이 맡는다.</summary>
+    public event System.Action ChapterResetLocal;
+
+    // ── [멀티] 역할을 맡은 사람이 나가면 멈춘다. 돌아오면 재접속 완료 상태가 되고, 방장이 Enter로 언제든 재개할 수 있다(2026-11-18 확정).
+    // 채널 0=상태, 1=챕터 재시작 번호.
+    private uint mpId;
+    private int mpExpectedBodies;
+    private int mpLastBodies;
+    private float mpResets;
+
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 1)
+        {
+            if (!Mathf.Approximately(value, mpResets)) { mpResets = value; ChapterResetLocal?.Invoke(); }
+            return;
+        }
+        if (channel != 0) return;
+        bool was = IsPaused;
+        State = (SessionState)(int)value;
+        if (was != IsPaused) Broadcast(IsPaused);
+    }
+
+    private void MpServerTick()
+    {
+        bool lost = false;
+        foreach (RoleSlot s in slots)
+            if (s != null && s.MpPruneLost()) lost = true;
+        int bodies = MpSync.Bodies.Count;
+        if (lost && State == SessionState.Running)
+        {
+            mpExpectedBodies = mpLastBodies;
+            State = SessionState.WaitingReconnect;
+            Say("역할 담당자 이탈 — 재접속을 기다립니다. 방장은 Enter로 재개할 수 있습니다.", this);
+            Broadcast(true);
+        }
+        else if (State == SessionState.WaitingReconnect && bodies >= mpExpectedBodies)
+        {
+            State = SessionState.WaitingResume;
+        }
+        if (State == SessionState.Running) mpLastBodies = bodies;
+        MpSync.Publish(mpId, 0, (int)State);
+    }
 
     public SessionState State { get; private set; } = SessionState.Running;
 
@@ -224,6 +271,7 @@ public class RoleAssignmentManager : MonoBehaviour
             return false;
         }
 
+        if (MpSync.IsClient) { slot.MpRequestAssign(requester); return false; } // 배정은 서버가 확정한다
         slot.AddUser(requester);
         Say($"{ShapeLabel(requester)} → '{slot.roleId}' 사용 시작.", slot);
         return true;
@@ -236,6 +284,7 @@ public class RoleAssignmentManager : MonoBehaviour
         RoleSlot held = HeldSlot(p);
         if (held == null) return false;
 
+        if (MpSync.IsClient) { held.MpRequestRelease(p); return true; }
         held.Release(p);
         Say($"{ShapeLabel(p)}가 '{held.roleId}' 사용을 종료했다.", held);
         return true;
@@ -280,6 +329,9 @@ public class RoleAssignmentManager : MonoBehaviour
     {
         ReleaseAllRoles();
         ChapterReset?.Invoke();
+        ChapterResetLocal?.Invoke();
+        mpResets += 1f;
+        MpSync.Publish(mpId, 1, mpResets);
     }
 
     private RoleSlot HeldSlot(PlayerMover p)
@@ -376,11 +428,18 @@ public class RoleAssignmentManager : MonoBehaviour
     private void Update()
     {
         Tick();
+        if (MpSync.IsServer) MpServerTick();
 
         if (Input.GetKeyDown(releaseKey))
         {
             PlayerMover p = ControlledPlayer();
             if (p != null) ReleaseByPlayer(p);
+        }
+
+        if (MpSync.Active)
+        {
+            if (MpSync.IsServer && IsPaused && !InputGate.Blocked && Input.GetKeyDown(resumeKey)) Resume();
+            return;
         }
 
         if (State == SessionState.WaitingResume && Input.GetKeyDown(resumeKey))
@@ -420,6 +479,8 @@ public class RoleAssignmentManager : MonoBehaviour
         float w = 520f;
         Rect area = new Rect((Screen.width - w) * 0.5f, 12f, w, 60f);
         if (banner != null) GUI.Box(area, banner);
+        if (banner != null && MpSync.Active)
+            GUI.Label(new Rect(area.x + 8f, area.y + 30f, w - 16f, 24f), MpSync.IsServer ? "Enter: 현재 인원으로 재개" : "방장이 재개할 수 있습니다");
 
         if (!string.IsNullOrEmpty(LastMessage) && Time.unscaledTime < messageUntil)
             GUI.Label(new Rect(area.x, area.y + 64f, w, 24f), LastMessage);

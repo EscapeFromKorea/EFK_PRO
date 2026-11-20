@@ -9,14 +9,28 @@ using UnityEngine;
 /// </summary>
 public class PauseMenuController : MonoBehaviour
 {
-    // 싱글플레이는 시간을 멈춘다. 온라인 협동으로 넘어가면 false(오버레이만 띄우고 게임은 계속)로 바꾼다.
-    public bool freezeTime = true;
+    // 싱글플레이는 시간을 멈춘다. 네트워크 세션 중에는 내 물리·네트워크만 멈추면 안 되므로 오버레이만 띄운다(P-06).
+    static bool Online => Unity.Netcode.NetworkManager.Singleton != null && Unity.Netcode.NetworkManager.Singleton.IsListening;
+    bool _froze;
 
-    // 멀티플레이: 세션을 종료하고 홈 화면으로 간다. 설정되면 "메인화면으로 나가기"가 켜진다(PRD S-03).
+    // 메인 화면으로 나가는 동작. 설정되면 "메인화면으로 나가기"가 켜진다(PRD S-03). 싱글은 MpMenu, 멀티는 MpGame이 건다.
     public static System.Action OnLeaveToMain;
 
     enum State { Closed, Main, Settings }
     State _state = State.Closed;
+    bool _settingsFromHome;
+
+    public bool SettingsOpen => _state == State.Settings;
+
+    /// <summary>메인 화면의 "설정" 버튼. ESC 메뉴와 같은 설정 창을 게임 상태를 건드리지 않고 연다(PRD O-01).</summary>
+    public void OpenSettings()
+    {
+        _settingsFromHome = true;
+        _state = State.Settings;
+        _scroll = Vector2.zero;
+    }
+
+    void LeaveSettings() => _state = _settingsFromHome ? State.Closed : State.Main;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void Bootstrap()
@@ -34,6 +48,7 @@ public class PauseMenuController : MonoBehaviour
     void Open()
     {
         _state = State.Main;
+        _settingsFromHome = false;
         InputGate.Blocked = true;
         _wasLocked = Cursor.lockState == CursorLockMode.Locked;
         // PlayerFollowCamera는 건드리지 않고 공개 필드만 끈다 — 클릭 재잠금과 시점 회전, ESC 커서 해제가 같이 멈춘다.
@@ -44,7 +59,8 @@ public class PauseMenuController : MonoBehaviour
         foreach (var m in FindObjectsByType<PlayerMover>(FindObjectsSortMode.None)) { _prevLocked[m] = m.InputLocked; m.InputLocked = true; }
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
-        if (freezeTime)
+        _froze = !Online;
+        if (_froze)
         {
             _prevTimeScale = Time.timeScale;
             Time.timeScale = 0f;
@@ -59,8 +75,9 @@ public class PauseMenuController : MonoBehaviour
         InputGate.Blocked = false;
         foreach (var kv in _prevLocked) if (kv.Key != null) kv.Key.InputLocked = kv.Value; // 메뉴가 열린 사이 파괴된 도형은 건너뛴다.
         _prevLocked.Clear();
-        if (freezeTime)
+        if (_froze)
         {
+            _froze = false;
             Time.timeScale = _prevTimeScale;
             AudioListener.pause = false;
         }
@@ -107,10 +124,11 @@ public class PauseMenuController : MonoBehaviour
             case State.Closed:
                 // 터미널 같은 화면이 열려 있거나 방금 ESC로 닫혔으면 그 ESC는 이미 쓰였다.
                 if (InputGate.PanelOpenCount > 0 || InputGate.PanelClosedFrame == Time.frameCount) return;
+                if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == MpNet.HomeScene) return; // 메인 화면에는 일시정지가 없다
                 Open();
                 break;
             case State.Main: Close(); break;
-            case State.Settings: _state = State.Main; break;
+            case State.Settings: LeaveSettings(); break;
         }
     }
 
@@ -201,7 +219,7 @@ public class PauseMenuController : MonoBehaviour
         if (GUI.Button(new Rect(r.x + 60, r.y + 380, 400, 70), "게임 종료하기", _button)) QuitGame();
     }
 
-    static void QuitGame()
+    public static void QuitGame()
     {
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false; // 에디터에선 Application.Quit이 무동작이라 플레이 모드를 끈다.
@@ -321,7 +339,7 @@ public class PauseMenuController : MonoBehaviour
             if (GUI.Button(new Rect(r.x + 400, r.yMax - 118, 340, 44), "되돌리기 (ESC)", _button)) RevertScreen();
         }
         if (GUI.Button(new Rect(r.x + 30, r.yMax - 66, 330, 50), "기본값으로 되돌리기", _button)) GraphicsOptions.ResetToDefault();
-        if (GUI.Button(new Rect(r.xMax - 250, r.yMax - 66, 220, 50), "뒤로", _button)) { KeepScreen(); _state = State.Main; }
+        if (GUI.Button(new Rect(r.xMax - 250, r.yMax - 66, 220, 50), "뒤로", _button)) { KeepScreen(); LeaveSettings(); }
     }
 
     // 상세 옵션 하나가 바뀔 때: 프리셋에서 벗어났음을 표시하고 즉시 적용·저장한다.

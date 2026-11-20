@@ -59,7 +59,7 @@ using UnityEngine.Events;
 /// 위 계산은 플레이테스트 전 탁상 검산이다. 실측(구의 가감속, 조작 반응, 카메라 시야)으로 조정될 수
 /// 있으니 값은 전부 Inspector에 열어 두었다.
 /// </summary>
-public class FallingRockSpawner : MonoBehaviour
+public class FallingRockSpawner : MonoBehaviour, IMpSynced
 {
     /// <summary>임계 초과를 알리는 이벤트. 인자는 맞은 플레이어의 Root GameObject —
     /// 나중에 들어올 리스폰 시스템이 "누구를 시작점으로 되돌릴지" 알 수 있어야 한다.</summary>
@@ -165,6 +165,29 @@ public class FallingRockSpawner : MonoBehaviour
     public bool keepLane = true;
 
     private float nextVolleyAt;
+
+    // [멀티] 낙하 시점은 서버가 정한다(채널 0=낙하 번호). 낙석은 같은 지점에서 곧게 떨어지므로 각 PC가 같은 돌을 만들고 자기 몸의 피격만 센다.
+    private uint mpId;
+    private bool mpReady;
+    private float mpVolley;
+
+    private void Awake()
+    {
+        mpId = MpSync.Register(this);
+        mpReady = true;
+    }
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel != 0 || Mathf.Approximately(value, mpVolley)) return;
+        mpVolley = value;
+        if (!mpReady || spawnPositions == null) return;
+        live.RemoveAll(r => r == null);
+        foreach (Transform point in spawnPositions)
+            if (point != null) Spawn(point);
+    }
     private readonly List<FallingRock> live = new List<FallingRock>();
     private readonly Dictionary<Rigidbody, HitRecord> hits = new Dictionary<Rigidbody, HitRecord>();
 
@@ -190,7 +213,7 @@ public class FallingRockSpawner : MonoBehaviour
 
     private void Update()
     {
-        if (spawnPositions == null || spawnPositions.Length == 0) return;
+        if (MpSync.IsClient || spawnPositions == null || spawnPositions.Length == 0) return;
         if (Time.time < nextVolleyAt) return;
 
         // 감속 중에는 스폰 주기도 늘린다. 낙하만 늦추면 유량 보존(시간당 도착 수 불변) 때문에
@@ -198,6 +221,8 @@ public class FallingRockSpawner : MonoBehaviour
         bool slowed = referenceSlowZone != null && referenceSlowZone.IsActive;
         float interval = slowed ? spawnIntervalWhileSlowed : spawnInterval;
         nextVolleyAt = Time.time + Mathf.Max(0.05f, interval);
+        mpVolley += 1f;
+        MpSync.Publish(mpId, 0, mpVolley);
 
         live.RemoveAll(r => r == null);
         foreach (Transform point in spawnPositions)

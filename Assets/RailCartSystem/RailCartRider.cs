@@ -15,7 +15,7 @@ using UnityEngine;
 /// 광산차 몸체)은 전부 자식 오브젝트의 로컬 스케일로만 표현한다(`RailCartMenuItem` 참고). 그래서
 /// 탑승자를 카트 루트에 직접 부모화해도 전단이 생기지 않는다.
 /// </summary>
-public class RailCartRider : MonoBehaviour, IInteractionProvider
+public class RailCartRider : MonoBehaviour, IInteractionProvider, IMpSynced, IMpEventSink
 {
     [Tooltip("탑승/하차 대상 카트. 비워두면 이 컴포넌트가 붙은 오브젝트의 RailCart를 찾는다.")]
     public RailCart cart;
@@ -37,6 +37,72 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
     void Awake()
     {
         if (cart == null) cart = GetComponent<RailCart>();
+        mpId = MpSync.Register(this);
+    }
+
+    void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    // ── [멀티] 좌석은 서버가 배정한다(동시에 타려는 두 사람 방지). 이벤트 0=탑승 요청, 1=하차(arg=몸 ID), 채널 0=탑승한 몸 ID+1.
+    // 배정을 받은 몸의 주인 PC가 자기 몸을 좌석에 붙이고, 모든 PC가 그 몸과 카트의 충돌을 끈다(안 끄면 서버의 카트가 떠오른다).
+    private uint mpId;
+    private float mpOccupant;
+    private Collider[] mpIgnoredBody;
+
+    private bool RemoteOccupied => occupantBody == null && mpOccupant > 0f;
+
+    private static Unity.Netcode.NetworkObject BodyById(float idPlusOne)
+    {
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        return nm != null && nm.SpawnManager.SpawnedObjects.TryGetValue((ulong)(idPlusOne - 1f), out var no) ? no : null;
+    }
+
+    public void OnMpValue(int channel, float value) { if (channel == 0) ApplyOccupant(value); }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || !MpSync.SenderOwnsBody(arg)) return;
+        float body = arg + 1f;
+        if (kind == 0 && mpOccupant <= 0f) SetOccupant(body);
+        else if (kind == 1 && Mathf.Approximately(mpOccupant, body)) SetOccupant(0f);
+    }
+
+    private void SetOccupant(float value)
+    {
+        MpSync.Publish(mpId, 0, value);
+        ApplyOccupant(value);
+    }
+
+    private void ApplyOccupant(float value)
+    {
+        if (Mathf.Approximately(value, mpOccupant)) return;
+        SetRemoteBodyCollisionIgnored(false);
+        mpOccupant = value;
+        if (value <= 0f) return;
+        var no = BodyById(value);
+        if (no == null) return;
+        if (!no.IsOwner)
+        {
+            mpIgnoredBody = no.GetComponentsInChildren<Collider>(true);
+            SetRemoteBodyCollisionIgnored(true);
+            return;
+        }
+        if (occupantBody != null) return;
+        var mover = no.GetComponent<PlayerMover>();
+        var body = no.GetComponent<Rigidbody>();
+        // 배정을 기다리는 사이 다른 기믹에 붙잡혔으면 자리를 돌려준다
+        if (mover == null || body == null || mover.ExternallyDriven || body.isKinematic)
+            MpSync.SendEvent(mpId, 1, Vector3.zero, (uint)no.NetworkObjectId);
+        else Board(mover, body);
+    }
+
+    private void SetRemoteBodyCollisionIgnored(bool ignored)
+    {
+        if (mpIgnoredBody == null) return;
+        Collider[] carts = cart != null ? cart.GetComponentsInChildren<Collider>(true) : GetComponentsInChildren<Collider>(true);
+        foreach (Collider b in mpIgnoredBody)
+            foreach (Collider c in carts)
+                if (b != null && c != null) Physics.IgnoreCollision(b, c, ignored);
+        if (!ignored) mpIgnoredBody = null;
     }
 
     // 탑승자가 복귀 대상이 되면(추격자·레이저 피격, 장외, R) 먼저 내려놓는다 — 붙잡힌 채로는
@@ -78,6 +144,7 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
             return;
         }
 
+        if (RemoteOccupied) return; // 다른 플레이어가 타고 있거나 배정 중이다
         Rigidbody body = mover.GetComponent<Rigidbody>();
         if (body == null) return;
         float d = Vector3.Distance(body.position, transform.position);
@@ -119,7 +186,12 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
         TryBoard();
     }
 
-    private void FixedUpdate() => SyncOccupantToSeat();
+    private void FixedUpdate()
+    {
+        // [멀티] 탄 채 접속이 끊기면 하차 이벤트가 오지 않는다 — 서버가 자리를 비운다
+        if (MpSync.IsServer && mpOccupant > 0f && BodyById(mpOccupant) == null) SetOccupant(0f);
+        SyncOccupantToSeat();
+    }
     private void LateUpdate() => SyncOccupantToSeat();
 
     private void SyncOccupantToSeat()
@@ -150,6 +222,13 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
         float myDistance = Vector3.Distance(body.position, transform.position);
         if (myDistance > boardRange) return;
         if (!IsNearestRider(body.position, myDistance)) return;
+
+        if (MpSync.Active)
+        {
+            var no = mover.GetComponent<Unity.Netcode.NetworkObject>();
+            if (no != null && mpOccupant <= 0f) MpSync.SendEvent(mpId, 0, Vector3.zero, (uint)no.NetworkObjectId);
+            return;
+        }
 
         Board(mover, body);
     }
@@ -223,6 +302,8 @@ public class RailCartRider : MonoBehaviour, IInteractionProvider
         body.isKinematic = false;
         body.interpolation = occupantOriginalInterpolation;
         mover.ExternallyDriven = false;
+        if (MpSync.Active && body.TryGetComponent(out Unity.Netcode.NetworkObject bodyNo))
+            MpSync.SendEvent(mpId, 1, Vector3.zero, (uint)bodyNo.NetworkObjectId);
 
         occupantBody = null;
         occupantMover = null;

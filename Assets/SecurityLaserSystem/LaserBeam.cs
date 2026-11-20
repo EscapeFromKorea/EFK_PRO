@@ -10,7 +10,7 @@ using UnityEngine.Events;
 /// (origin→endPoint)을 공유해야 한다는 PRD §3·§4 "발사선-판정 일치" 요구를 이 클래스 하나로 강제한다.
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
-public class LaserBeam : MonoBehaviour
+public class LaserBeam : MonoBehaviour, IMpSynced
 {
     [Header("공통 판정 (PRD §4 사거리·광선 폭·차폐 레이어 — 미정, 그레이박스 기본값)")]
     [Tooltip("레이저 최대 사거리(U). 벽에 안 맞으면 이 거리까지 표시/판정한다.")]
@@ -52,6 +52,7 @@ public class LaserBeam : MonoBehaviour
         line.positionCount = 2;
         line.useWorldSpace = true;
         line.enabled = false;
+        mpId = MpSync.Register(this);
         if (line.sharedMaterial == null)
         {
             Shader s = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
@@ -60,10 +61,35 @@ public class LaserBeam : MonoBehaviour
     }
 
     /// <summary>CH4/CH5가 매 FixedUpdate 호출하는 유일한 공개 진입점.</summary>
+    // ── [멀티] 예고·발사 시점과 방향은 서버가 정한다(채널 0=상태 0끔/1예고/2발사, 1~3=방향). 각 PC가 같은 광선을 그리고
+    // 자기 몸의 피격만 판정한다.
+    private uint mpId;
+    private int mpState;
+    private Vector3 mpDirection = Vector3.forward;
+
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel == 0) mpState = (int)value;
+        else if (channel >= 1 && channel <= 3) mpDirection[channel - 1] = value;
+    }
+
+    private void FixedUpdate()
+    {
+        if (MpSync.IsClient) Tick(transform.position, mpDirection, mpState == 1, mpState == 2);
+    }
+
     public void Tick(Vector3 origin, Vector3 direction, bool telegraphOn, bool firingOn)
     {
         // 장치·활성 구간(주기)당 1회 집계 — 새 발사 활성 구간이 시작되는 전이에서만 비운다
         // (PeriodicTrapBase.TryRegisterHit과 같은 개념, 상속 없이 독립 구현).
+        if (MpSync.IsServer)
+        {
+            if (telegraphOn || firingOn)
+                for (int i = 0; i < 3; i++) MpSync.Publish(mpId, 1 + i, direction[i]);
+            MpSync.Publish(mpId, 0, firingOn ? 2f : telegraphOn ? 1f : 0f);
+        }
         if (firingOn && !wasFiring) hitThisFiring.Clear();
         wasFiring = firingOn;
 
@@ -118,7 +144,7 @@ public class LaserBeam : MonoBehaviour
             if (rb == null) continue;
 
             // 지정 대상 외 경로상의 다른 도형도 전부 피격(PRD §5 "교차 피격" 확정).
-            if (hitThisFiring.Add(rb))
+            if (MpSync.IsOwnBody(rb) && hitThisFiring.Add(rb))
                 OnHazardHit?.Invoke(rb.gameObject);
         }
     }

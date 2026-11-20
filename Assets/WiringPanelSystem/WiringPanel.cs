@@ -24,7 +24,7 @@ using UnityEngine.Events;
 /// 출력을 다시 선택하면 그 연결이 자동으로 풀리고 선택 상태로 돌아가는 것으로 구현한다 — 별도
 /// "선 끊기" 버튼을 PRD가 요구하지 않으므로 재선택 자체가 해제 동작을 겸한다.
 /// </summary>
-public class WiringPanel : MonoBehaviour
+public class WiringPanel : MonoBehaviour, IMpSynced, IMpEventSink
 {
     [System.Serializable]
     public class CompletionEvent : UnityEvent<WiringPanel, int, int, string> { }
@@ -54,6 +54,65 @@ public class WiringPanel : MonoBehaviour
     private readonly Dictionary<string, string> connections = new Dictionary<string, string>();
 
     public bool IsLocked => locked;
+
+    // ── [멀티] 배선은 서버가 판정한다. 이벤트 0=출력 선택, 1=입력 선택(data.x=포트 번호), 2=선택 취소.
+    // 채널 0=선택한 출력+1, 1=잠김, 2=회로 ID 해시, 3~=출력별 연결된 입력+1.
+    private uint mpId;
+    private int mpCircuitHash;
+    private int mpSelected;
+    private readonly int[] mpLinks = new int[13];
+
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    private static int HashOf(string s)
+    {
+        uint h = 2166136261;
+        foreach (char c in s ?? "") h = (h ^ c) * 16777619;
+        return (int)(h & 0xFFFFFF) + 1; // float에 손실 없이 들어가는 24비트, 0은 "없음"
+    }
+
+    private void Update()
+    {
+        if (!MpSync.IsServer) return;
+        MpSync.Publish(mpId, 0, selectedOutput != null ? System.Array.IndexOf(outputPorts, selectedOutput) + 1 : 0);
+        MpSync.Publish(mpId, 1, locked ? 1f : 0f);
+        MpSync.Publish(mpId, 2, currentCircuit != null ? HashOf(currentCircuit.circuitId) : 0);
+        for (int i = 0; outputPorts != null && i < outputPorts.Length && i < mpLinks.Length; i++)
+        {
+            int link = 0;
+            if (outputPorts[i] != null && connections.TryGetValue(outputPorts[i].portId, out string input))
+                link = System.Array.FindIndex(inputPorts, p => p != null && p.portId == input) + 1;
+            MpSync.Publish(mpId, 3 + i, link);
+        }
+    }
+
+    public void OnMpValue(int channel, float value)
+    {
+        int v = (int)value;
+        if (channel == 0) mpSelected = v;
+        else if (channel == 1) locked = v != 0;
+        else if (channel == 2) mpCircuitHash = v;
+        else if (channel - 3 < mpLinks.Length) mpLinks[channel - 3] = v;
+        if (mpCircuitHash == 0) currentCircuit = null;
+        else if (currentCircuit == null || HashOf(currentCircuit.circuitId) != mpCircuitHash)
+            foreach (WiringCircuitData c in Resources.FindObjectsOfTypeAll<WiringCircuitData>())
+                if (HashOf(c.circuitId) == mpCircuitHash) { currentCircuit = c; break; }
+        selectedOutput = mpSelected > 0 && outputPorts != null && mpSelected <= outputPorts.Length ? outputPorts[mpSelected - 1] : null;
+        connections.Clear();
+        for (int i = 0; outputPorts != null && i < outputPorts.Length && i < mpLinks.Length; i++)
+            if (mpLinks[i] > 0 && inputPorts != null && mpLinks[i] <= inputPorts.Length && outputPorts[i] != null && inputPorts[mpLinks[i] - 1] != null)
+                connections[outputPorts[i].portId] = inputPorts[mpLinks[i] - 1].portId;
+    }
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer) return;
+        int i = (int)data.x;
+        if (kind == 0 && outputPorts != null && i >= 0 && i < outputPorts.Length) SelectOutput(outputPorts[i]);
+        else if (kind == 1 && inputPorts != null && i >= 0 && i < inputPorts.Length) TrySelectInput(inputPorts[i]);
+        else if (kind == 2) CancelSelection();
+    }
     public WiringCircuitData CurrentCircuit => currentCircuit;
     public WiringPort SelectedOutput => selectedOutput;
     public IReadOnlyDictionary<string, string> Connections => connections;
@@ -61,7 +120,7 @@ public class WiringPanel : MonoBehaviour
     private void Start()
     {
         // 이미 누가 배정했으면 덮지 않는다(Start 순서와 무관하게 호출자의 배정이 우선).
-        if (initialCircuit != null && currentCircuit == null)
+        if (!MpSync.IsClient && initialCircuit != null && currentCircuit == null)
             AssignCircuit(initialCircuit, 1);
     }
 
@@ -95,6 +154,7 @@ public class WiringPanel : MonoBehaviour
     /// (§4 "출력 재연결" — 클래스 요약 참고).</summary>
     public void SelectOutput(WiringPort output)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 0, new Vector3(System.Array.IndexOf(outputPorts, output), 0f, 0f)); return; }
         if (locked || currentCircuit == null || output == null || output.role != WiringPort.Role.Output) return;
 
         if (connections.ContainsKey(output.portId))
@@ -110,6 +170,7 @@ public class WiringPanel : MonoBehaviour
     /// 새 선을 저장하지 않고 출력 선택만 해제한다 — 기존 정답 선은 그대로 유지된다(§4 "오답 처리").</summary>
     public void TrySelectInput(WiringPort input)
     {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 1, new Vector3(System.Array.IndexOf(inputPorts, input), 0f, 0f)); return; }
         if (locked || currentCircuit == null || input == null || input.role != WiringPort.Role.Input) return;
         if (selectedOutput == null) return; // 출력을 먼저 골라야 한다.
 
@@ -139,7 +200,11 @@ public class WiringPanel : MonoBehaviour
     }
 
     /// <summary>W_CANCEL이 호출 — 현재 출력 선택만 취소한다. 이미 맺어진 연결에는 영향 없다.</summary>
-    public void CancelSelection() => selectedOutput = null;
+    public void CancelSelection()
+    {
+        if (MpSync.IsClient) { MpSync.SendEvent(mpId, 2, Vector3.zero); return; }
+        selectedOutput = null;
+    }
 
     private void CheckCompletion()
     {

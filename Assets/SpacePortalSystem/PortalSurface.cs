@@ -14,7 +14,7 @@ using UnityEngine;
 /// 바닥/벽/천장 어디에든 붙일 수 있다.
 /// </summary>
 [RequireComponent(typeof(BoxCollider))]
-public class PortalSurface : MonoBehaviour
+public class PortalSurface : MonoBehaviour, IMpSynced, IMpEventSink
 {
     private BoxCollider box;
     public BoxCollider Box => box != null ? box : (box = GetComponent<BoxCollider>());
@@ -22,6 +22,57 @@ public class PortalSurface : MonoBehaviour
     private void Awake()
     {
         box = GetComponent<BoxCollider>();
+        mpId = MpSync.Register(this);
+    }
+
+    // ── [멀티] 포탈 설치는 서버가 순서를 정해 전원이 같은 자리에 만든다. 이벤트 = 색(data=로컬 위치).
+    // 채널 색*4 + 0=설치 번호, +1~3=위치. 색마다 더 큰 번호가 최신이다(포탈은 다른 패널로 옮겨갈 수 있다).
+    private uint mpId;
+    private readonly Vector3[] mpPoint = new Vector3[2];
+    private static readonly float[] mpSeq = new float[2];
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics() { mpSeq[0] = 0f; mpSeq[1] = 0f; }
+
+    private void OnDestroy()
+    {
+        MpSync.Unregister(mpId, this);
+        mpSeq[0] = 0f; // 맵을 다시 시작하면 번호도 처음부터다
+        mpSeq[1] = 0f;
+    }
+
+    public void MpRequestPlace(EnergyColor color, Vector3 worldCenter) =>
+        MpSync.SendEvent(mpId, (int)color, transform.InverseTransformPoint(worldCenter));
+
+    public void OnMpEvent(int kind, Vector3 data, uint arg)
+    {
+        if (!MpSync.IsServer || kind < 0 || kind > 1) return;
+        float seq = mpSeq[kind] + 1f;
+        for (int i = 0; i < 3; i++) MpSync.Publish(mpId, kind * 4 + 1 + i, data[i]);
+        MpSync.Publish(mpId, kind * 4, seq); // 위치를 먼저 보낸다
+        mpPoint[kind] = data;
+        Place((EnergyColor)kind, seq);
+    }
+
+    public void OnMpValue(int channel, float value)
+    {
+        int color = channel / 4, k = channel % 4;
+        if (color > 1) return;
+        if (k > 0) { Vector3 p = mpPoint[color]; p[k - 1] = value; mpPoint[color] = p; }
+        else Place((EnergyColor)color, value);
+    }
+
+    private void Place(EnergyColor color, float seq)
+    {
+        if (seq <= mpSeq[(int)color]) return;
+        mpSeq[(int)color] = seq;
+        SpacePortal portal = color == EnergyColor.Orange ? SpacePortal.Orange : SpacePortal.Blue;
+        if (portal == null)
+        {
+            portal = new GameObject($"SpacePortal_{color}").AddComponent<SpacePortal>();
+            portal.color = color;
+        }
+        portal.PlaceAt(transform.TransformPoint(mpPoint[(int)color]), transform.forward, transform.up, transform);
     }
 
     /// <summary>패널 로컬 2D(가로=X, 세로=Y) 반치수(Unit). localScale=(1,1,1) 전제 하에 월드 단위와

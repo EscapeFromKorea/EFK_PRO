@@ -14,7 +14,7 @@ using UnityEngine;
 /// 판정은 트리거 이벤트가 아니라 좌표(ClosestPoint)로 한다 — 팀 TeamExitZone/OutOfBoundsVolume과 같은
 /// 이유(도형 콜라이더 2개 중복, 잠든 Rigidbody에 Stay 없음).
 /// </summary>
-public class Lab_ActivateWhenPlayersReady : MonoBehaviour
+public class Lab_ActivateWhenPlayersReady : MonoBehaviour, IMpSynced
 {
     [Tooltip("도형이 이 안에 들어오면 켠다(isTrigger 권장).")]
     public Collider zone;
@@ -27,22 +27,36 @@ public class Lab_ActivateWhenPlayersReady : MonoBehaviour
 
     private float nextScan;
 
+    // [멀티] 서버가 진입을 판정하고 전원의 대상을 켠다
+    private uint mpId;
+    private void Awake() => mpId = MpSync.Register(this);
+    private void OnDestroy() => MpSync.Unregister(mpId, this);
+
+    public void OnMpValue(int channel, float value)
+    {
+        if (channel != 0 || value < 0.5f) return;
+        foreach (GameObject t in targets)
+            if (t != null) t.SetActive(true);
+        enabled = false;
+    }
+
     void FixedUpdate()
     {
-        if (Time.time < nextScan) return;
+        if (MpSync.IsClient || Time.time < nextScan) return;
         nextScan = Time.time + scanInterval;
         if (zone == null) return;
 
         foreach (PlayerMover mover in Object.FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
         {
             Rigidbody rb = mover.GetComponent<Rigidbody>();
-            if (rb != null && !rb.useGravity) continue; // 아직 Director가 배치 중(C4).
+            if (!MpSync.Active && rb != null && !rb.useGravity) continue; // 아직 Director가 배치 중(C4).
 
             Vector3 p = mover.transform.position;
             if (zone.ClosestPoint(p) != p) continue;
 
             foreach (GameObject t in targets)
                 if (t != null) t.SetActive(true);
+            MpSync.Publish(mpId, 0, 1f);
             Debug.Log($"[Lab_ActivateWhenPlayersReady] '{mover.name}' 진입 — 대상 {targets.Length}개를 켰다.", this);
             enabled = false;
             return;

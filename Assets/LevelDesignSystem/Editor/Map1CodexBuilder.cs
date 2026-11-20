@@ -168,6 +168,7 @@ public static class Map1CodexBuilder
     {
         Transform p = Phase(1, "Cloudstep_Tutorial");
         Platform(p, "P01_Start_Island", new Vector3(0, -1, 0), new Vector3(16, 2, 12));
+        Checkpoint(p, "Checkpoint_P00", Vector3.zero); // 시작 지점: 첫 체크포인트 전에 떨어져도 돌아올 곳
         for (int i = 0; i < 4; i++)
         {
             float top = i * 0.65f;

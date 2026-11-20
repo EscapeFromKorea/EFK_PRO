@@ -33,6 +33,10 @@ public class FrictionStickerController : MonoBehaviour
     public float rescanInterval = 1f;
 
     private static FrictionStickerController instance;
+    private static readonly FrictionStickerSettings fallbackSettings = new FrictionStickerSettings();
+
+    /// <summary>다른 PC가 붙인 스티커를 이 PC에 재현할 때 쓰는 공용 설정.</summary>
+    public static FrictionStickerSettings SharedSettings => instance != null ? instance.frictionSettings : fallbackSettings;
     private float rescanTimer;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]

@@ -22,6 +22,17 @@ public sealed class ToyWorldRepairItem : MonoBehaviour
         ResolveDirector();
         if (director != null && director.HasItem(itemType))
             ApplyCollectedState();
+        if (MpSync.Active && director != null) director.ProgressChanged += SyncFromDirector; // 참가자 PC는 서버 진행으로 사라진다
+    }
+
+    private void SyncFromDirector()
+    {
+        if (!collected && director != null && director.HasItem(itemType)) ApplyCollectedState();
+    }
+
+    private void OnDestroy()
+    {
+        if (director != null) director.ProgressChanged -= SyncFromDirector;
     }
 
     private void OnTriggerEnter(Collider other)
