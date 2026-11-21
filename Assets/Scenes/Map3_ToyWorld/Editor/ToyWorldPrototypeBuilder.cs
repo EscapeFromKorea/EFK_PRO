@@ -519,8 +519,10 @@ public static class ToyWorldPrototypeBuilder
         Box("GEO_DollAttic", area, new Vector3(34f, 17.5f, -41f), new Vector3(22f, 1f, 5f), Mat("Accent"));
 
         RotatingBoard("DYN_DollBed_Ramp", area, new Vector3(34f, 0.3f, -25f), new Vector3(34f, 6.1f, -38.25f), 4f);
-        RotatingBoard("DYN_DollLivingBoard_Ramp", area, new Vector3(25.5f, 6.3f, -38.75f), new Vector3(35f, 12.1f, -29.75f), 4f);
-        RotatingBoard("DYN_DollAtticBoard_Ramp", area, new Vector3(42.5f, 12.3f, -29.25f), new Vector3(33f, 18.1f, -38.25f), 4f);
+        RotatingBoard("DYN_DollLivingBoard_Ramp", area, new Vector3(25.5f, 6.3f, -38.75f), new Vector3(35f, 12.1f, -29.75f), 4f,
+            returnToStartWhenUnoccupied: true);
+        RotatingBoard("DYN_DollAtticBoard_Ramp", area, new Vector3(42.5f, 12.3f, -29.25f), new Vector3(33f, 18.1f, -38.25f), 4f,
+            returnToStartWhenUnoccupied: true);
         Seesaw("DYN_DollShelf_Seesaw", area, new Vector3(39f, 18.8f, -41f), Quaternion.identity, false);
 
         ThreadAnchorObject("WIRE_DollMobile_Low", area, new Vector3(34f, 10f, -34f), 8f);
@@ -793,7 +795,8 @@ public static class ToyWorldPrototypeBuilder
         return plate;
     }
 
-    private static RotatingPlate RotatingBoard(string name, Transform parent, Vector3 start, Vector3 end, float width)
+    private static RotatingPlate RotatingBoard(string name, Transform parent, Vector3 start, Vector3 end, float width,
+        bool returnToStartWhenUnoccupied = false)
     {
         Vector3 delta = end - start;
         GameObject root = Box(name, parent, (start + end) * 0.5f, new Vector3(width, 0.4f, delta.magnitude), Mat("Dynamic"));
@@ -808,6 +811,7 @@ public static class ToyWorldPrototypeBuilder
         board.angularResistance = 0.05f;
         board.maxAngularSpeedDeg = 720f;
         board.plateUseGravity = false;
+        board.returnToStartWhenUnoccupied = returnToStartWhenUnoccupied;
         root.AddComponent<PuzzleResettable>().autoResetBelowY = -7f;
         root.AddComponent<StickerSurface>();
         ThreadAnchorObject("WIRE_" + name, root.transform, end + Vector3.up * 0.5f, 6f, true);
