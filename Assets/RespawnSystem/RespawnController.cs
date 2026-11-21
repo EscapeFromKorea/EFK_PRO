@@ -268,6 +268,7 @@ public class RespawnController : MonoBehaviour, IMpEventSink
 
     private bool StoreCheckpoint(RespawnZone zone)
     {
+        if (zone.requiredCheckpoint != null && !claimed.Contains(zone.requiredCheckpoint)) return false;
         if (MpSync.IsClient) return false; // [멀티 M4] 체크포인트는 서버만 확정한다 — 참가자 PC는 RespawnZone.Active를 따른다(SyncCheckpointFromZone)
         // **한 번 잡은 구역은 다시 활성화되지 않는다.** 뒤로 걸어가 이전 체크포인트를 다시 밟으면
         // 복귀 지점이 뒤로 밀려 진행이 되감기고, 어려운 구간을 통과한 직후에 죽으면 그 구간을 다시
