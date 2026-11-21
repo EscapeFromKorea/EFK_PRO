@@ -401,6 +401,47 @@ public class MpSmoke : MonoBehaviour
         FlushErrors("맵4 위험 장치");
     }
 
+    // 맵 1 협동 운반대: 탄 채 운반대가 출발하면 몸이 같이 움직여야 한다(수평이 2배로 밀리면 실패).
+    // 멀티는 참가자(슬롯 1)가 타고 서버가 보낸다 — 참가자 PC의 운반은 MpBodySync, 서버·싱글은 Map1CoopPlatform이 맡는다.
+    Map1CoopPlatform coop;
+    Vector3 coopStart, coopOffset;
+
+    IEnumerator CoopBoard(Transform me)
+    {
+        coop = FindObjectsByType<Map1CoopPlatform>(FindObjectsSortMode.None).OrderBy(p => p.name).First();
+        var deck = coop.GetComponent<BoxCollider>().bounds;
+        Put(me, new Vector3(deck.center.x, deck.max.y + 0.8f, deck.center.z));
+        yield return new WaitForSecondsRealtime(2f);
+        coopStart = coop.transform.position;
+        coopOffset = me.position - coopStart;
+    }
+
+    void CoopDrive()
+    {
+        if (coop == null) coop = FindObjectsByType<Map1CoopPlatform>(FindObjectsSortMode.None).OrderBy(p => p.name).First();
+        var journey = typeof(Map1CoopPlatform).GetField("journey", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        journey.SetValue(coop, Enum.ToObject(journey.FieldType, 3)); // ToDestination
+    }
+
+    IEnumerator CoopMeasure(Transform me, string n)
+    {
+        yield return new WaitForSecondsRealtime(3f);
+        Vector3 moved = coop.transform.position - coopStart;
+        Vector3 drift = me.position - coop.transform.position - coopOffset;
+        Check(moved.magnitude > 2f, $"{n} 운반대 이동 ({coop.name} {moved.magnitude:F2}m)");
+        Check(drift.magnitude < 0.75f, $"{n} 운반대 탑승자가 같이 이동 (어긋남 {drift.magnitude:F2}m, 운반대 {moved.magnitude:F2}m)");
+    }
+
+    IEnumerator CheckCoopPlatformMp(int slot, bool host)
+    {
+        var me = NetProtoRunner.LocalPlayer;
+        if (slot == 1) yield return CoopBoard(me);
+        yield return Barrier("coop-on", slot);
+        if (host) CoopDrive();
+        if (slot == 1) yield return CoopMeasure(me, "멀티 맵1 참가자");
+        yield return Barrier("coop-off", slot);
+    }
+
     // 맵 3: 부품 수집·설치·진행 공유, 레일카 좌석, 스티커, 퍼즐 초기화, 포탈 범위, 출구 클리어
     IEnumerator CheckToyWorldMp(MpLobby L, int slot)
     {
@@ -602,6 +643,13 @@ public class MpSmoke : MonoBehaviour
             FindFirstObjectByType<MpMenu>().StartSingle(i);
             yield return WaitMap(i);
             yield return CheckPlayable(i);
+            if (i == 0)
+            {
+                var rider = Movers.First(m => m.IsControlled).transform;
+                yield return CoopBoard(rider);
+                CoopDrive();
+                yield return CoopMeasure(rider, "맵1");
+            }
             if (i % 2 == 0) { LevelManager.Instance.CompleteLevel(); Check(LevelManager.Instance.IsCleared, $"맵{i + 1} 클리어 화면"); LevelManager.Instance.GoHome(); yield return BackHome("클리어 Home"); }
             else { PauseMenuController.OnLeaveToMain(); yield return BackHome("ESC 나가기"); }
             FlushErrors("맵" + (i + 1));
@@ -681,7 +729,7 @@ public class MpSmoke : MonoBehaviour
         if (map == 1) yield return CheckKitchenMp(L, slot);
         else if (map == 2) yield return CheckToyWorldMp(L, slot);
         else if (map == 3) { yield return CheckHazardsMp(slot, host); yield return CheckScaleResetMp(L, slot, host, map); yield return CheckLabPuzzlesMp(L, slot, host); }
-        else yield return CheckScaleResetMp(L, slot, host, map);
+        else { yield return CheckScaleResetMp(L, slot, host, map); yield return CheckCoopPlatformMp(slot, host); }
         FlushErrors("멀티 맵" + (map + 1));
         yield return new WaitForSecondsRealtime(host ? 8f : 2f);
         var leave = mp.Leave(null);

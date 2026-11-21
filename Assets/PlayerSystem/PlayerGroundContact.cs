@@ -60,6 +60,16 @@ public class PlayerGroundContact : MonoBehaviour
     /// 부모화라 PlayerMover 자체가 관여하지 않음).</summary>
     public Vector3 GroundVelocity { get; private set; } = Vector3.zero;
 
+    /// <summary>움직이는 발판이 탑승자를 좌표로 옮길 때(rider.position += delta) 실제로 더할 양.
+    /// 접지 중이면 PlayerMover가 GroundVelocity로 수평 이동을 이미 따라가므로 수직만 옮긴다 —
+    /// 수평까지 더하면 발판보다 2배로 밀려 앞쪽으로 미끄러진다(2026-11-22 맵 1 운반대 멀티 실측).
+    /// 공중(튕기는 중)이면 속도로 따라가지 않으니 전부 옮긴다.</summary>
+    public static Vector3 CarryDelta(Rigidbody rider, Vector3 delta)
+    {
+        var contact = rider.GetComponentInChildren<PlayerGroundContact>();
+        return contact != null && contact.IsGrounded ? new Vector3(0f, delta.y, 0f) : delta;
+    }
+
     private void Awake()
     {
         // The player can be grouped below a scene/map root. transform.root would then include every
