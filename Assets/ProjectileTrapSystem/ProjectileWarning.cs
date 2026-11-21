@@ -30,6 +30,7 @@ public class ProjectileWarning : MonoBehaviour
     public void SetWarning(bool warning)
     {
         if (target == null) return;
+        mpb ??= new MaterialPropertyBlock(); // [멀티] 늦게 로드된 섹터에서 발사기 Awake가 동기화 값을 먼저 적용해 이 Awake보다 빨리 불릴 수 있다
         mpb.SetColor(ColorId, warning ? warnColor : idleColor);
         target.SetPropertyBlock(mpb);
     }

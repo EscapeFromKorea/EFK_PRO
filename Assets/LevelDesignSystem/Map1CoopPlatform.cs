@@ -17,7 +17,6 @@ public sealed class Map1CoopPlatform : MonoBehaviour
     private Journey journey;
     private Rigidbody body;
     private BoxCollider deck;
-    private Vector3 previousClientPosition;
     private bool hasDelivered;
     private readonly Collider[] contacts = new Collider[32];
     private readonly HashSet<Rigidbody> riders = new HashSet<Rigidbody>();
@@ -28,23 +27,15 @@ public sealed class Map1CoopPlatform : MonoBehaviour
         body.isKinematic = true;
         body.useGravity = false;
         deck = GetComponent<BoxCollider>();
-        previousClientPosition = body.position;
         MpBodySync.Ensure(this);
         journey = call == null ? Journey.Boarding : Journey.Parked;
     }
 
     private void FixedUpdate()
     {
+        // 참가자 PC: 자세와 탑승자 이동은 MpBodySync가 맡는다(LiftPlatform과 같음). 여기서도 옮기면 2배로 밀린다.
+        if (MpSync.IsClient) return;
         int boarding = FindRiders();
-        if (MpSync.IsClient)
-        {
-            Vector3 position = body.position;
-            Vector3 delta = position - previousClientPosition;
-            // Ignore initial synchronization jumps.
-            if (delta.sqrMagnitude < 1f) Carry(delta);
-            previousClientPosition = position;
-            return;
-        }
 
         if (journey == Journey.Parked && call.IsSet) journey = Journey.ToPickup;
         int required = PassengerMask();
@@ -116,6 +107,6 @@ public sealed class Map1CoopPlatform : MonoBehaviour
     {
         if (delta == Vector3.zero) return;
         foreach (Rigidbody rider in riders)
-            if (!rider.isKinematic && MpSync.IsOwnBody(rider)) rider.position += delta;
+            if (!rider.isKinematic && MpSync.IsOwnBody(rider)) rider.position += PlayerGroundContact.CarryDelta(rider, delta);
     }
 }
