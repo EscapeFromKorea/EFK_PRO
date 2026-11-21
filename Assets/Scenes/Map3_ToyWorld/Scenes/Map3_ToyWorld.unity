@@ -31367,6 +31367,7 @@ MonoBehaviour:
   angularResistance: 0.05
   maxAngularSpeedDeg: 720
   plateUseGravity: 0
+  returnToStartWhenUnoccupied: 1
   driveTorqueScale: 1
 --- !u!59 &1097189436
 HingeJoint:
@@ -40497,6 +40498,7 @@ MonoBehaviour:
   angularResistance: 0.05
   maxAngularSpeedDeg: 720
   plateUseGravity: 0
+  returnToStartWhenUnoccupied: 1
   driveTorqueScale: 1
 --- !u!59 &1363038838
 HingeJoint:

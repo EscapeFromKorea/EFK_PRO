@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -12,6 +13,7 @@ using UnityEngine;
 ///   · 정사면체 쐐기 / 딱딱 블록 / 벨크로 스티커 → 콜라이더가 물리로 막음 (코드 없음)
 ///   · 회전 저항 = Rigidbody.angularDrag / 최대 각속도 = Rigidbody.maxAngularVelocity
 ///   · 회전 범위 = HingeJoint.limits (limit은 각도 제한일 뿐 스냅이 아니다)
+/// - 복귀 옵션을 켠 경사판은 플레이어가 위에 없을 때만 토크로 시작 각도를 회복한다.
 ///
 /// [태엽 축 연동 — 이 진입점은 현재 아무도 호출하지 않는다, 2026-09-15 확인]
 /// 이 클래스가 작성된 시점엔 `WindupAxleSystem`이 미착수였고, 태엽이 나오면 여기 노출한
@@ -58,6 +60,10 @@ public class RotatingPlate : MonoBehaviour
     [Tooltip("판이 중력을 받는가. 끄면(기본) 밀어 놓은 각도에 그대로 머문다. 켜면 무게로 아래쪽 각도/제한까지 처진다.")]
     public bool plateUseGravity = false;
 
+    [Header("빈 판 복귀")]
+    [Tooltip("판 위에 올라선 플레이어 도형이 없으면 씬에 배치된 각도로 돌아갑니다.")]
+    public bool returnToStartWhenUnoccupied;
+
     [Header("외부 토크 주입 창구 (현재 미사용 — 태엽 축 연동은 WindupAxleSystem/RotatingPlatform이 대신 담당)")]
     [Tooltip("ApplyDriveTorque로 들어온 값에 곱하는 배율. 태엽 축 쪽 수치를 안 건드리고 여기서 세기를 맞춘다. " +
              "토크는 ForceMode.Acceleration으로 인가한다(질량/관성 무관, 저장소 관례) — 값은 각가속(rad/s²) 느낌. " +
@@ -66,6 +72,10 @@ public class RotatingPlate : MonoBehaviour
 
     private Rigidbody rb;
     private HingeJoint hinge;
+    private Quaternion startRotation;
+    private Vector3 localReturnReference;
+    private float emptySeconds;
+    private readonly HashSet<Collider> playerContacts = new();
     private float pendingDriveTorque;   // 이번 FixedUpdate에 인가할 외부 토크 합(인가 후 0으로 리셋).
 
     /// <summary>힌지 회전축의 월드 방향(정규화). 태엽 축 등 외부 시스템이 토크 방향을 잡을 때 쓴다.</summary>
@@ -99,6 +109,10 @@ public class RotatingPlate : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         hinge = GetComponent<HingeJoint>();
         ApplyConfig();
+        startRotation = rb.rotation;
+        Vector3 axis = hinge.axis.normalized;
+        localReturnReference = Vector3.ProjectOnPlane(
+            Mathf.Abs(axis.y) < 0.9f ? Vector3.up : Vector3.forward, axis).normalized;
         MpBodySync.Ensure(this); // [멀티 M4 B1] 서버가 굴리고 참가자 PC는 키네마틱으로 따라간다
     }
 
@@ -143,6 +157,45 @@ public class RotatingPlate : MonoBehaviour
             rb.AddTorque(HingeAxisWorld * (pendingDriveTorque * driveTorqueScale), ForceMode.Acceleration);
             pendingDriveTorque = 0f;
         }
+        if (returnToStartWhenUnoccupied) ReturnWhenEmpty();
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (!returnToStartWhenUnoccupied || MpSync.IsClient) return;
+        if (collision.collider.GetComponentInParent<PlayerShapeIdentity>() == null) return;
+        playerContacts.Add(collision.collider);
+    }
+
+    private void OnCollisionExit(Collision collision) => playerContacts.Remove(collision.collider);
+
+    private void OnDisable()
+    {
+        playerContacts.Clear();
+        emptySeconds = 0f;
+    }
+
+    private void ReturnWhenEmpty()
+    {
+        playerContacts.RemoveWhere(contact => contact == null || !contact.enabled || !contact.gameObject.activeInHierarchy);
+        Vector3 up = rb.rotation * Vector3.up;
+        foreach (Collider contact in playerContacts)
+        {
+            if (Vector3.Dot(contact.bounds.center - rb.position, up) <= 0f) continue;
+            emptySeconds = 0f;
+            return;
+        }
+        // Give brief gaps in physics contact time to settle before starting the return.
+        emptySeconds = Mathf.Min(emptySeconds + Time.fixedDeltaTime, 0.2f);
+        if (emptySeconds < 0.2f || rb.isKinematic) return;
+
+        Vector3 axis = HingeAxisWorld;
+        float angle = Vector3.SignedAngle(rb.rotation * localReturnReference,
+            startRotation * localReturnReference, axis);
+        float angularSpeed = Vector3.Dot(rb.angularVelocity, axis);
+        if (Mathf.Abs(angle) < 0.15f && Mathf.Abs(angularSpeed) < 0.01f) return;
+        float acceleration = 28f * angle * Mathf.Deg2Rad - 10f * angularSpeed;
+        rb.AddTorque(axis * acceleration, ForceMode.Acceleration);
     }
 
     private void OnDrawGizmosSelected()
