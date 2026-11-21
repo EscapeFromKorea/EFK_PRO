@@ -43,7 +43,7 @@ public static class WindZoneMenuItem
     // 구역 forward(+Z) 방향으로 흐르는 "바람줄기"(길게 늘어지는 속도선)를 박스 전체에 뿌려,
     // 플레이어가 구역에 들어가기 전에도 방향을 눈으로 알 수 있게 한다. WindZone.windSpeed와는
     // 독립된 순수 시각 효과이므로 굳이 실시간으로 windSpeed를 따라갈 필요는 없다.
-    private static void ConfigureWindParticles(ParticleSystem ps, Vector3 boxSize)
+    internal static void ConfigureWindParticles(ParticleSystem ps, Vector3 boxSize, Material material = null)
     {
         var main = ps.main;
         main.loop = true;
@@ -98,14 +98,14 @@ public static class WindZoneMenuItem
         // "구역 절반만 보임"의 확인된 원인은 리사이즈 시 파티클 shape가 안 따라가는 것이었다.
         // WindZone.SyncVisualToBox 참고).
         ParticleSystemRenderer renderer = ps.GetComponent<ParticleSystemRenderer>();
-        renderer.material = CreateWindMaterial();
+        renderer.sharedMaterial = material != null ? material : CreateWindMaterial();
         renderer.renderMode = ParticleSystemRenderMode.Stretch;
         renderer.velocityScale = 0.15f;
         renderer.lengthScale = 2.5f;
         renderer.minParticleSize = 0.02f;
     }
 
-    private static Material CreateWindMaterial()
+    internal static Material CreateWindMaterial()
     {
         Shader shader = Shader.Find("Particles/Standard Unlit");
         if (shader == null) shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended");

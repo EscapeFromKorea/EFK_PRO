@@ -57,6 +57,9 @@ public class RespawnZone : MonoBehaviour, IMpSynced
     [Tooltip("진행 순서(클수록 뒤). 같은 진행 구간에서 중복되면 배치 오류다.")]
     public int progressOrder;
 
+    [Tooltip("Optional checkpoint the team must have reached before this one can save.")]
+    public RespawnZone requiredCheckpoint;
+
     [Header("깃발 (시각화 — 비워 두면 깃발 없이 동작한다)")]
     [Tooltip("게양될 깃발의 Renderer. 막대(Pole) 아래에 두고, 인스펙터에 배치한 위치가 '게양 완료' " +
              "지점이 된다(게양 연출은 아래 raiseFromLocalY에서 여기까지 올라온다).")]
