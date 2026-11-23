@@ -41,7 +41,9 @@ public class NetProtoPlayer : NetworkBehaviour
             if (IsOwner)
             {
                 mover.UseRemoteInput = true; // 축은 아래 FixedUpdate에서 로컬로 직접 대입(RPC 없음)
-                rb.position = SpawnPos();
+                // 순간이동으로 보내야 한다: 위치만 바꾸면 다른 PC의 복사본이 처음 자리에서 스폰 지점까지 보간으로 미끄러지며
+                // 지나는 길의 체크포인트 구역을 서버가 밟은 것으로 판정한다(재접속자를 현재 체크포인트에 낼 때 체크포인트가 뒤로 갱신됐다)
+                MpSync.TeleportOwnBody(transform, SpawnPos());
             }
             else DisableBody();
         }
