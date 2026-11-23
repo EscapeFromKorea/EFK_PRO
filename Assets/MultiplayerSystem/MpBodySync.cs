@@ -68,7 +68,7 @@ public class MpBodySync : MonoBehaviour, IMpPosed
         foreach (var kv in riders)
         {
             if (kv.Key == null || Time.time - kv.Value > 0.2f) { dead.Add(kv.Key); continue; }
-            kv.Key.position += delta;
+            kv.Key.position += PlayerGroundContact.CarryDelta(kv.Key, delta);
         }
         foreach (var r in dead) riders.Remove(r);
     }
