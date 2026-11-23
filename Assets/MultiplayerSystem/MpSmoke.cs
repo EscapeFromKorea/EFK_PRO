@@ -10,6 +10,7 @@ using UnityEngine.SceneManagement;
 
 /// <summary>
 /// 개발 빌드 전용 자동 점검. 싱글: -spsmoke / 멀티: -mpsmoke host|client -slot N -map N -codefile 경로.
+/// 맵 1 재접속 점검은 -map 0에 -rejoin(일반 깃발) 또는 -rejointeam(팀 깃발·재접속 스폰)을 더한다.
 /// 결과는 로그의 [Smoke] 줄. 기믹 조작감은 확인하지 못한다 — 진입·복귀·일시정지·컨트롤러·이동·스폰만 본다.
 /// </summary>
 public class MpSmoke : MonoBehaviour
@@ -178,11 +179,13 @@ public class MpSmoke : MonoBehaviour
 
     // 맵 4 퍼즐: 배선 → 격리 → 에너지볼·포탈 → 혼합(역할) → 매니저 수면 → 열쇠·문 → 최종 탈출(팀 이동) → 클리어
     // 세 창이 같은 단계에 도착할 때까지 기다린다(참가 코드별 표시 파일)
-    IEnumerator Barrier(string step, int slot)
+    string lastCode;
+    IEnumerator Barrier(string step, int slot, int parties = 3)
     {
-        string prefix = Arg("-codefile") + "." + MpNet.I.Session.Code + "." + step + ".";
+        if (MpNet.I.Session != null) lastCode = MpNet.I.Session.Code;
+        string prefix = Arg("-codefile") + "." + lastCode + "." + step + ".";
         File.WriteAllText(prefix + slot, "1");
-        yield return Until(() => File.Exists(prefix + 0) && File.Exists(prefix + 1) && File.Exists(prefix + 2), 90f);
+        yield return Until(() => Enumerable.Range(0, parties).All(i => File.Exists(prefix + i)), 90f);
     }
 
     IEnumerator CheckLabPuzzlesMp(MpLobby L, int slot, bool host)
@@ -623,6 +626,115 @@ public class MpSmoke : MonoBehaviour
         }
     }
 
+    // 재접속 후 체크포인트 갱신: A(재접속 전) → 슬롯 2 나갔다 재접속 → B(재접속자) → C(슬롯 1)
+    IEnumerator CheckRejoinCheckpoint(int slot)
+    {
+        var mp = MpNet.I;
+        var team = FindObjectsByType<Map1TeamCheckpoint>(FindObjectsSortMode.None).Select(t => t.checkpoint).ToHashSet();
+        var free = FindObjectsByType<RespawnZone>(FindObjectsSortMode.None)
+            .Where(z => z.name != "Checkpoint_P00" && !team.Contains(z) && z.requiredCheckpoint == null && !z.useProgressOrder && z.GetComponent<Collider>().enabled)
+            .OrderBy(z => z.name).ToArray();
+        var names = free.Select(z => z.name).ToArray();
+        if (free.Length < 3) { Debug.Log("[Smoke] SKIP 자유 체크포인트 3개 미만"); yield break; }
+        string code = mp.Session.Code;
+
+        IEnumerator Claim(int who, string zn, string label)
+        {
+            var z = FindObjectsByType<RespawnZone>(FindObjectsSortMode.None).First(x => x.name == zn); // 재접속자는 맵을 다시 불러와 옛 참조가 파괴됨
+            if (slot == who)
+            {
+                var me = NetProtoRunner.LocalPlayer;
+                var b = z.GetComponent<Collider>().bounds;
+                Put(me, new Vector3(b.center.x, z.FindGroundPoint().y + 1f, b.center.z));
+            }
+            yield return Until(() => RespawnZone.Active == z, 15f);
+            Check(RespawnZone.Active == z, $"{label}: 슬롯{who}이 {z.name} 진입 → 이 PC 활성 체크포인트 {(RespawnZone.Active != null ? RespawnZone.Active.name : "없음")}");
+        }
+
+        yield return Barrier("rj-a", slot);
+        yield return Claim(1, names[0], "재접속 전");
+        yield return Barrier("rj-left", slot);
+        if (slot == 2)
+        {
+            var leave = mp.Leave(null);
+            yield return Until(() => leave.IsCompleted, 20f);
+            yield return BackHome("재접속 시험 나가기");
+            yield return new WaitForSecondsRealtime(3f);
+            var c = mp.JoinRoom(code); yield return Until(() => c.IsCompleted, 40f);
+            Check(c.IsCompleted && c.Result == null, "재접속 " + (c.IsCompleted ? c.Result : "시간 초과"));
+            yield return Until(() => Active == MpLobby.MapScenes[0], 90f);
+            yield return Until(() => NetProtoRunner.LocalPlayer != null, 60f);
+            Check(NetProtoRunner.LocalPlayer != null, "재접속 후 내 도형 스폰");
+            yield return new WaitForSecondsRealtime(4f);
+            Debug.Log($"[Smoke] INFO 재접속 후 활성 체크포인트 {(RespawnZone.Active != null ? RespawnZone.Active.name : "없음")}");
+        }
+        else yield return new WaitForSecondsRealtime(2f);
+        yield return Barrier("rj-back", slot);
+        Check(FindObjectsByType<NetProtoPlayer>(FindObjectsSortMode.None).Length == 3, "재접속 후 네트워크 도형 3개");
+        yield return Claim(2, names[1], "재접속 후 재접속자");
+        yield return Barrier("rj-b", slot);
+        yield return Claim(1, names[2], "재접속 후 기존 참가자");
+        yield return Barrier("rj-c", slot);
+        if (free.Length > 3) yield return Claim(0, names[3], "재접속 후 방장");
+        yield return Barrier("rj-d", slot);
+    }
+
+    // 맵 1 팀 깃발: 슬롯 2가 나가 있는 동안 둘이 P05에 모이면 저장돼야 하고(접속 중인 도형만 집결 조건),
+    // 재접속자는 현재 체크포인트에서 태어나며, 셋이 P06에 모이면 저장돼야 한다(P06은 P05가 저장돼 있어야 열린다).
+    IEnumerator CheckRejoinTeamCheckpoint(int slot)
+    {
+        var mp = MpNet.I;
+        string code = mp.Session.Code;
+        if (MpSync.IsServer)
+            foreach (var sw in FindObjectsByType<Map1CoopSwitch>(FindObjectsSortMode.None))
+            {
+                typeof(Map1CoopSwitch).GetMethod("Set", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(sw, null);
+                MpSync.Publish((uint)typeof(Map1CoopSwitch).GetField("syncId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(sw), 0, 1);
+            }
+        yield return Barrier("tm-a", slot);
+
+        IEnumerator Gather(string zoneName)
+        {
+            var team = FindObjectsByType<Map1TeamCheckpoint>(FindObjectsSortMode.None).First(t => t.checkpoint.name == zoneName);
+            Put(NetProtoRunner.LocalPlayer, team.transform.position + team.transform.right * ((slot - 1) * 0.9f) + Vector3.up * 1f);
+            yield return Until(() => RespawnZone.Active != null && RespawnZone.Active.name == zoneName, 12f);
+        }
+        string ActiveName() => RespawnZone.Active != null ? RespawnZone.Active.name : "없음";
+
+        if (slot == 2)
+        {
+            var leave = mp.Leave(null);
+            yield return Until(() => leave.IsCompleted, 20f);
+            yield return BackHome("팀 깃발 시험 나가기");
+            yield return Until(() => File.Exists(Arg("-codefile") + "." + code + ".tm-p05.1"), 90f);
+            yield return new WaitForSecondsRealtime(2f);
+            var c = mp.JoinRoom(code); yield return Until(() => c.IsCompleted, 40f);
+            Check(c.IsCompleted && c.Result == null, "팀 깃발 시험 재접속 " + (c.IsCompleted ? c.Result : "시간 초과"));
+            yield return Until(() => Active == MpLobby.MapScenes[0], 90f);
+            yield return Until(() => NetProtoRunner.LocalPlayer != null, 60f);
+            yield return new WaitForSecondsRealtime(3f);
+            var z = RespawnZone.Active;
+            var p = NetProtoRunner.LocalPlayer.position;
+            var g = z != null ? z.FindGroundPoint() : Vector3.zero;
+            float flat = z != null ? new Vector2(p.x - g.x, p.z - g.z).magnitude : -1f;
+            Check(z != null && z.name != "Checkpoint_P00" && flat < 6f && p.y > g.y - 2f, $"재접속자가 현재 체크포인트({ActiveName()})에서 태어남 (위치 {p:F1}, 바닥 {g:F1}, 수평 {flat:F1}m)");
+        }
+        else
+        {
+            yield return new WaitForSecondsRealtime(4f);
+            yield return Barrier("tm-two", slot, 2);
+            yield return Gather("Checkpoint_P05");
+            Check(ActiveName() == "Checkpoint_P05", $"한 명 이탈 중 접속자 둘이 팀 깃발 P05 저장 (활성 {ActiveName()})");
+            yield return Barrier("tm-p05", slot, 2);
+        }
+        yield return Barrier("tm-back", slot);
+        yield return new WaitForSecondsRealtime(2f);
+        Check(ActiveName() == "Checkpoint_P05", $"재접속 직후 체크포인트가 뒤로 밀리지 않음 (활성 {ActiveName()})");
+        yield return Gather("Checkpoint_P06");
+        Check(ActiveName() == "Checkpoint_P06", $"재접속 후 셋이 모여 팀 깃발 P06 저장 (활성 {ActiveName()})");
+        yield return Barrier("tm-end", slot);
+    }
+
     IEnumerator BackHome(string how)
     {
         yield return Until(() => SceneManager.GetActiveScene().name == MpNet.HomeScene, 30f);
@@ -729,6 +841,8 @@ public class MpSmoke : MonoBehaviour
         if (map == 1) yield return CheckKitchenMp(L, slot);
         else if (map == 2) yield return CheckToyWorldMp(L, slot);
         else if (map == 3) { yield return CheckHazardsMp(slot, host); yield return CheckScaleResetMp(L, slot, host, map); yield return CheckLabPuzzlesMp(L, slot, host); }
+        else if (args.Contains("-rejointeam")) { yield return CheckRejoinTeamCheckpoint(slot); }
+        else if (args.Contains("-rejoin")) { yield return CheckRejoinCheckpoint(slot); }
         else { yield return CheckScaleResetMp(L, slot, host, map); yield return CheckCoopPlatformMp(slot, host); }
         FlushErrors("멀티 맵" + (map + 1));
         yield return new WaitForSecondsRealtime(host ? 8f : 2f);

@@ -12,13 +12,28 @@ public static class MpGame
     // 도형 슬롯별 스폰 위치 = 그 맵 씬에 원래 있던 같은 종류 도형의 위치(P-01: 씬 배치를 존중). 슬롯 순서는 MpLobby.ShapePrefabs(구·정육면체·정사면체)
     static readonly Vector3?[] spawnBySlot = new Vector3?[3];
 
-    public static void Begin(MpLobby lobby) => MpNet.I.StartCoroutine(Run(lobby));
+    // 이미 진행 중인 판에 들어왔는가(재접속). 맵 시작 위치가 아니라 팀의 현재 체크포인트에서 태어난다
+    static bool lateJoin;
+
+    public static void Begin(MpLobby lobby, bool lateJoin = false)
+    {
+        MpGame.lateJoin = lateJoin;
+        MpNet.I.StartCoroutine(Run(lobby));
+    }
 
     public static bool TrySpawnPoint(ulong clientId, out Vector3 pos)
     {
         pos = default;
         int slot = MpLobby.I != null ? MpLobby.I.SlotOf(clientId) : -1;
-        if (slot < 0 || !spawnBySlot[slot].HasValue) return false;
+        if (slot < 0) return false;
+        RespawnZone zone = RespawnZone.Active; // 서버가 확정한 초록 깃발(늦게 합류해도 MpSync가 맵 로드 때 맞춰 둔다)
+        if (lateJoin && zone != null)
+        {
+            // 슬롯마다 옆으로 비켜 서서 깃발에 서 있는 다른 도형과 겹치지 않게 한다
+            pos = zone.FindGroundPoint() + Vector3.right * ((slot - 1) * 1.5f) + Vector3.up * 1f;
+            return true;
+        }
+        if (!spawnBySlot[slot].HasValue) return false;
         pos = spawnBySlot[slot].Value;
         return true;
     }

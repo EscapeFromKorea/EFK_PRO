@@ -115,7 +115,7 @@ public class MpLobby : NetworkBehaviour
         Round.OnValueChanged += (_, now) => { if (now > 0) MpGame.Begin(this); };
         PoseVals.OnListChanged += e => { if (!IsServer && (e.Type == NetworkListEvent<MpPose>.EventType.Add || e.Type == NetworkListEvent<MpPose>.EventType.Value || e.Type == NetworkListEvent<MpPose>.EventType.Insert)) { MpSync.ApplyPose(e.Value); } };
         SyncVals.OnListChanged += e => { if (!IsServer && (e.Type == NetworkListEvent<MpVal>.EventType.Add || e.Type == NetworkListEvent<MpVal>.EventType.Value || e.Type == NetworkListEvent<MpVal>.EventType.Insert)) { MpSync.Apply(e.Value); } };
-        if (!IsServer && Round.Value > 0) MpGame.Begin(this); // 이미 시작된 뒤 스폰이 도착한 경우(안전망)
+        if (!IsServer && Round.Value > 0) MpGame.Begin(this, lateJoin: true); // 이미 시작된 판에 들어옴(재접속)
     }
 
     public override void OnNetworkDespawn() { if (I == this) I = null; }
