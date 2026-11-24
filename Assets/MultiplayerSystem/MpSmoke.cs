@@ -783,6 +783,11 @@ public class MpSmoke : MonoBehaviour
                 yield return CoopBoard(rider);
                 CoopDrive();
                 yield return CoopMeasure(rider, "맵1");
+                // 팀 깃발은 스위치와 무관하게 한 도형만 도착해도 켜진다(2026-11-24 회의 결정)
+                var flag = FindObjectsByType<Map1TeamCheckpoint>(FindObjectsSortMode.None).First(t => t.checkpoint.name == "Checkpoint_P05");
+                Put(rider, flag.transform.position + Vector3.up * 1f);
+                yield return Until(() => RespawnZone.Active == flag.checkpoint, 5f);
+                Check(RespawnZone.Active == flag.checkpoint, $"맵1 스위치 없이 한 도형 도착 → 팀 깃발 P05 저장 (활성 {(RespawnZone.Active != null ? RespawnZone.Active.name : "없음")})");
             }
             if (i == 3)
             {
@@ -827,7 +832,8 @@ public class MpSmoke : MonoBehaviour
         {
             var c = mp.CreateRoom(); yield return Until(() => c.IsCompleted, 40f);
             Check(c.IsCompleted && c.Result == null, "방 생성 " + (c.IsCompleted ? c.Result : "시간 초과"));
-            File.WriteAllText(file, mp.Session.Code);
+            File.WriteAllText(file + ".tmp", mp.Session.Code); // 쓰는 중에 참가자가 읽으면 공유 위반 — 다 쓴 뒤 이름 바꾸기
+            File.Move(file + ".tmp", file);
         }
         else
         {

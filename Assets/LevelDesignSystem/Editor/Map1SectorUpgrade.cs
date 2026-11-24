@@ -74,7 +74,6 @@ internal static partial class Map1SectorUpgrade
         team.checkpointTrigger = marker.GetComponent<BoxCollider>();
         team.checkpointTrigger.enabled = false;
         team.arrivalSize = number == "P09" ? P09ArrivalSize : new Vector3(13f, 4f, 6f);
-        team.requires = sector.GetComponentsInChildren<Map1CoopSwitch>(true);
     }
 
     private static GameObject Box(Transform parent, string name, Vector3 worldCenter, Vector3 size, Color color)
