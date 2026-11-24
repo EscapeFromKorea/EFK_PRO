@@ -14,7 +14,7 @@ public class MpLobby : NetworkBehaviour
     // R-12: 선택 가능한 맵 목록은 여기 한 곳에서만 정한다(정식 단계엔 "클리어한 맵만"으로 바꿀 자리)
     public static readonly string[] MapScenes = {
         "Assets/Scenes/Map1_DayDream/Map1_DayDream.unity",
-        "Assets/Scenes/Map2_Kitchen/Rebuild/Scenes/Map2KitchenPlayable.unity",
+        "Assets/KitchenTeamTrial/Map2KitchenTeamTrial.unity",
         "Assets/Scenes/Map3_ToyWorld/Scenes/Map3_ToyWorld.unity",
         "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity" }; // LevelManager의 경로와 같아야 클리어 판정(CurrentIndex)이 맞는다
     public static readonly string[] MapNames = { "맵 1", "맵 2", "맵 3", "맵 4" };

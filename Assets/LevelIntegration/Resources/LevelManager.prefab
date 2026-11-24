@@ -46,6 +46,6 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   levels:
   - scenePath: Assets/Scenes/Map1_DayDream/Map1_DayDream.unity
-  - scenePath: Assets/Scenes/Map2_Kitchen/Rebuild/Scenes/Map2KitchenPlayable.unity
+  - scenePath: Assets/KitchenTeamTrial/Map2KitchenTeamTrial.unity
   - scenePath: Assets/Scenes/Map3_ToyWorld/Scenes/Map3_ToyWorld.unity
   - scenePath: Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity

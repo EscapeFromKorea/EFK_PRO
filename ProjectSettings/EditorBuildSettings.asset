@@ -12,8 +12,8 @@ EditorBuildSettings:
     path: Assets/Scenes/Map1_DayDream/Map1_DayDream.unity
     guid: 7fbb6a8995846564cb51342500a734d3
   - enabled: 1
-    path: Assets/Scenes/Map2_Kitchen/Rebuild/Scenes/Map2KitchenPlayable.unity
-    guid: 3b0c23a8fa4fdb0469dc48c34875de6b
+    path: Assets/KitchenTeamTrial/Map2KitchenTeamTrial.unity
+    guid: 39884e78683547dd9db10a93c01d8a2c
   - enabled: 1
     path: Assets/Scenes/Map3_ToyWorld/Scenes/Map3_ToyWorld.unity
     guid: 254151e5afa64304aa758db6477f1c41

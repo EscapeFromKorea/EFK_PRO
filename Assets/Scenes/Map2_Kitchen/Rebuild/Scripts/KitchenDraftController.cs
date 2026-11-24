@@ -20,6 +20,7 @@ namespace Map2KitchenDraft
         // The record supports review; the physical kitchen layout defines the route.
         public BoxCollider sinkInteriorVolume;
         public float interactionRadius = 2f;
+        [SerializeField] private RespawnZone[] fallCheckpoints;
 
         public bool HasKey { get; private set; }
         public bool ExitReached { get; private set; }
@@ -56,6 +57,7 @@ namespace Map2KitchenDraft
         private Texture2D panelPixel;
         private bool showReviewHelp;
         private KitchenMapHandoff mapHandoff;
+        private RespawnController fallRecovery;
 
         // [멀티] 열쇠·도착은 팀 공유 상태로 서버가 확정한다(채널 0=열쇠, 1=도착). 참가자는 E를 이벤트 0(arg=내 몸 ID)으로 보고한다.
         private uint mpId;
@@ -67,6 +69,26 @@ namespace Map2KitchenDraft
             ApplyDoorState();
             mpId = MpSync.Register(this);
         }
+
+        private void Start()
+        {
+            if (MpSync.Active || !HasFallCheckpoints) return;
+            RespawnController.SetCheckpoint(fallCheckpoints[0]);
+            fallRecovery = FindFirstObjectByType<RespawnController>();
+            if (fallRecovery != null) fallRecovery.PlayerRespawned += RearmPursuersAfterRespawn;
+        }
+
+        private void RearmPursuersAfterRespawn(GameObject player)
+        {
+            Transform actor = ActivePlayer;
+            if (actor == null || actor.gameObject != player) return;
+            foreach (var pursuer in FindObjectsByType<KitchenPursuit>(FindObjectsSortMode.None))
+                pursuer.ResetPursuit();
+        }
+
+        private bool HasFallCheckpoints => fallCheckpoints != null && fallCheckpoints.Length > 0;
+
+        public void SetFallCheckpoints(RespawnZone[] checkpoints) => fallCheckpoints = checkpoints;
 
         public void OnMpValue(int channel, float value)
         {
@@ -163,6 +185,8 @@ namespace Map2KitchenDraft
             MoveActor(actor, start.position);
             CurrentChapter = zeroBasedIndex;
             PlayerFollowCamera.SnapToTarget(actor);
+            if (!MpSync.Active && HasFallCheckpoints && zeroBasedIndex < fallCheckpoints.Length)
+                RespawnController.RestartCheckpoint(fallCheckpoints[zeroBasedIndex], fallCheckpoints);
         }
 
         public void ResetDraft()
@@ -388,6 +412,7 @@ namespace Map2KitchenDraft
 
         private void OnDestroy()
         {
+            if (fallRecovery != null) fallRecovery.PlayerRespawned -= RearmPursuersAfterRespawn;
             MpSync.Unregister(mpId, this);
             if (panelPixel != null) Destroy(panelPixel);
         }
