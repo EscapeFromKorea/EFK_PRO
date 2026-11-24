@@ -744,12 +744,34 @@ public class MpSmoke : MonoBehaviour
         Check(PauseMenuController.OnLeaveToMain == null, how + " 후 나가기 훅 해제");
     }
 
+    // 맵 4 최종 출구: 섹터 8의 S8_FinalExit_Checkpoint 트리거를 실제로 밟아 클리어 화면이 뜨는지, 마지막 맵이라 Next가 무동작인지 본다
+    IEnumerator CheckFinalExit()
+    {
+        var exit = FindObjectsByType<LevelGoal>(FindObjectsSortMode.None).FirstOrDefault(g => g.name == "S8_FinalExit_Checkpoint");
+        Check(exit != null, "맵4 최종 출구에 LevelGoal 부착");
+        if (exit == null) yield break;
+        Check(!LevelManager.Instance.IsCleared, "맵4 출구 밟기 전 클리어 아님");
+        var m = Movers.First(x => x.IsControlled);
+        var rb = m.GetComponent<Rigidbody>();
+        var p = exit.GetComponent<Collider>().bounds.center;
+        rb.linearVelocity = Vector3.zero; rb.position = p; m.transform.position = p;
+        yield return Until(() => LevelManager.Instance.IsCleared, 5f);
+        Check(LevelManager.Instance.IsCleared && Time.timeScale == 0f, "맵4 최종 출구 트리거 → 클리어 화면");
+        string scene = SceneManager.GetActiveScene().path;
+        LevelManager.Instance.GoNext(); // 마지막 맵: Last Stage Clear(비활성)와 같은 경로라 아무 일도 없어야 한다
+        yield return new WaitForSecondsRealtime(1f);
+        Check(SceneManager.GetActiveScene().path == scene && LevelManager.Instance.IsCleared, "맵4 Last Stage Clear — 다음 맵 없음");
+    }
+
     IEnumerator Single()
     {
         yield return Until(() => FindFirstObjectByType<MpMenu>() != null, 20f);
         Check(SceneManager.GetActiveScene().name == MpNet.HomeScene, "첫 화면이 메인 화면");
         yield return MenuViews();
         yield return LeaveDuringMap4Load();
+        // 클리어 기록은 PlayerPrefs라 이 PC의 실제 기록과 섞인다 — 비우고 시험한 뒤 원래 값으로 되돌린다
+        var saved = MpLobby.MapScenes.Select(s => PlayerPrefs.GetInt(LevelManager.ClearKey(s), 0)).ToArray();
+        foreach (var s in MpLobby.MapScenes) PlayerPrefs.DeleteKey(LevelManager.ClearKey(s));
         for (int i = 0; i < 4; i++)
         {
             FindFirstObjectByType<MpMenu>().StartSingle(i);
@@ -761,8 +783,24 @@ public class MpSmoke : MonoBehaviour
                 yield return CoopBoard(rider);
                 CoopDrive();
                 yield return CoopMeasure(rider, "맵1");
+                // 팀 깃발은 스위치와 무관하게 한 도형만 도착해도 켜진다(2026-11-24 회의 결정)
+                var flag = FindObjectsByType<Map1TeamCheckpoint>(FindObjectsSortMode.None).First(t => t.checkpoint.name == "Checkpoint_P05");
+                Put(rider, flag.transform.position + Vector3.up * 1f);
+                yield return Until(() => RespawnZone.Active == flag.checkpoint, 5f);
+                Check(RespawnZone.Active == flag.checkpoint, $"맵1 스위치 없이 한 도형 도착 → 팀 깃발 P05 저장 (활성 {(RespawnZone.Active != null ? RespawnZone.Active.name : "없음")})");
             }
-            if (i % 2 == 0) { LevelManager.Instance.CompleteLevel(); Check(LevelManager.Instance.IsCleared, $"맵{i + 1} 클리어 화면"); LevelManager.Instance.GoHome(); yield return BackHome("클리어 Home"); }
+            if (i == 3)
+            {
+                // ESC로 나가면 클리어 기록 없음 → 다시 들어가 최종 출구를 밟고 Home으로 나가면 기록
+                PauseMenuController.OnLeaveToMain(); yield return BackHome("맵4 ESC 나가기");
+                Check(!LevelManager.IsMapCleared(MpLobby.MapScenes[3]), "맵4 ESC 나가기 → 클리어 기록 없음");
+                FindFirstObjectByType<MpMenu>().StartSingle(3);
+                yield return WaitMap(3);
+                yield return CheckFinalExit();
+                LevelManager.Instance.GoHome(); yield return BackHome("최종 클리어 Home");
+                Check(LevelManager.IsMapCleared(MpLobby.MapScenes[3]), "맵4 클리어 Home → 클리어 기록");
+            }
+            else if (i % 2 == 0) { LevelManager.Instance.CompleteLevel(); Check(LevelManager.Instance.IsCleared, $"맵{i + 1} 클리어 화면"); LevelManager.Instance.GoHome(); yield return BackHome("클리어 Home"); }
             else { PauseMenuController.OnLeaveToMain(); yield return BackHome("ESC 나가기"); }
             FlushErrors("맵" + (i + 1));
         }
@@ -778,6 +816,9 @@ public class MpSmoke : MonoBehaviour
             CheckControllers($"Next Stage 맵{i + 1}");
             FlushErrors("Next 맵" + (i + 1));
         }
+        for (int i = 0; i < saved.Length; i++)
+            if (saved[i] == 1) PlayerPrefs.SetInt(LevelManager.ClearKey(MpLobby.MapScenes[i]), 1); else PlayerPrefs.DeleteKey(LevelManager.ClearKey(MpLobby.MapScenes[i]));
+        PlayerPrefs.Save();
     }
 
     IEnumerator Multi()
@@ -791,7 +832,8 @@ public class MpSmoke : MonoBehaviour
         {
             var c = mp.CreateRoom(); yield return Until(() => c.IsCompleted, 40f);
             Check(c.IsCompleted && c.Result == null, "방 생성 " + (c.IsCompleted ? c.Result : "시간 초과"));
-            File.WriteAllText(file, mp.Session.Code);
+            File.WriteAllText(file + ".tmp", mp.Session.Code); // 쓰는 중에 참가자가 읽으면 공유 위반 — 다 쓴 뒤 이름 바꾸기
+            File.Move(file + ".tmp", file);
         }
         else
         {

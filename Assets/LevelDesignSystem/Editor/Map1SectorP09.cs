@@ -96,10 +96,7 @@ internal static partial class Map1SectorUpgrade
         vent.reveal = new[] { returnWalk };
 
         if (sector.Find("Checkpoint_P09").TryGetComponent<Map1TeamCheckpoint>(out var checkpoint))
-        {
-            checkpoint.requires = new[] { weight, fan, vent };
             checkpoint.arrivalSize = P09ArrivalSize;
-        }
         return true;
     }
 

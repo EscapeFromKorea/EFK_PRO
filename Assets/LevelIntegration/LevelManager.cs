@@ -14,6 +14,8 @@ public sealed class LevelManager : MonoBehaviour
     public static LevelManager Instance { get; private set; }
     private bool cleared;
     public bool IsCleared => cleared;
+    public static string ClearKey(string scenePath) => "clear:" + scenePath;
+    public static bool IsMapCleared(string scenePath) => PlayerPrefs.GetInt(ClearKey(scenePath), 0) == 1;
     private float previousTimeScale;
     private bool previousInputBlocked;
     private CursorLockMode previousCursorLock;
@@ -105,6 +107,9 @@ public sealed class LevelManager : MonoBehaviour
         if (cleared) return;
         if (CurrentIndex() < 0) { Debug.LogError("The current scene is not in LevelManager's level list."); return; }
         cleared = true;
+        // 싱글 클리어 기록. 클리어 화면에선 ESC가 막혀 있어(PauseMenuController) ESC로 나간 판은 기록되지 않는다.
+        PlayerPrefs.SetInt(ClearKey(SceneManager.GetActiveScene().path), 1);
+        PlayerPrefs.Save();
         previousTimeScale = Time.timeScale;
         previousInputBlocked = InputGate.Blocked;
         previousCursorLock = Cursor.lockState;
