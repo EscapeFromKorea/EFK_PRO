@@ -99,7 +99,7 @@ public class MpMenu : MonoBehaviour
     {
         GUILayout.Label("맵 선택");
         for (int i = 0; i < MpLobby.MapNames.Length; i++)
-            if (GUILayout.Button(MpLobby.MapNames[i], GUILayout.Height(40))) StartSingle(i);
+            if (GUILayout.Button(MpLobby.MapNames[i] + (LevelManager.IsMapCleared(MpLobby.MapScenes[i]) ? "  [클리어]" : ""), GUILayout.Height(40))) StartSingle(i);
         if (GUILayout.Button("뒤로", GUILayout.Height(32))) Go(V.Home);
     }
 
