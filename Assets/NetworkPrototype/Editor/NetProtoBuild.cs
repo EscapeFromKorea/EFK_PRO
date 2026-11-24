@@ -10,7 +10,7 @@ public static class NetProtoBuild
         var opts = new BuildPlayerOptions
         {
             scenes = new[] { "Assets/Scenes/MpHome.unity", "Assets/Scenes/IsolationRescue_Test_local.unity", // 평지 모드는 런타임에 월드를 갈아끼우므로 아무 씬이나 하나
-                "Assets/Scenes/Map1_DayDream/Map1_DayDream.unity", "Assets/Scenes/Map2_Kitchen/Rebuild/Scenes/Map2KitchenPlayable.unity",
+                "Assets/Scenes/Map1_DayDream/Map1_DayDream.unity", "Assets/KitchenTeamTrial/Map2KitchenTeamTrial.unity",
                 "Assets/Scenes/Map3_ToyWorld/Scenes/Map3_ToyWorld.unity", "Assets/Scenes/Map4_Laboratory/Scenes/Map4_Master.unity",
                 "Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S1.unity", "Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S2.unity",
                 "Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S3.unity", "Assets/Scenes/Map4_Laboratory/Scenes/Sectors/Map4_S4.unity",
