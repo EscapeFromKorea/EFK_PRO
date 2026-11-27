@@ -115,7 +115,15 @@ public class RespawnZone : MonoBehaviour, IMpSynced
         // (에디터에서 깃발이 보이는 채로 저장됐을 수 있어 런타임에 강제로 끈다).
         flagRaisedLocalPos = flagRenderer.transform.localPosition;
         flagBlock = new MaterialPropertyBlock();
-        flagRenderer.enabled = false;
+        SetFlagVisible(false);
+    }
+
+    // 깃발 자식(맵3의 별 장식 등)도 깃발과 함께 숨기고 보인다 — 색 덮어쓰기는 깃발 본체에만 한다.
+    private Renderer[] flagRenderers;
+    private void SetFlagVisible(bool visible)
+    {
+        flagRenderers ??= flagRenderer.GetComponentsInChildren<Renderer>(true);
+        foreach (Renderer r in flagRenderers) if (r != null) r.enabled = visible;
     }
 
     /// <summary>컨트롤러가 체크포인트 상태 변화를 밀어 준다. 활성은 씬에서 항상 하나뿐이다.</summary>
@@ -139,7 +147,7 @@ public class RespawnZone : MonoBehaviour, IMpSynced
 
         if (next == FlagState.Hidden)
         {
-            flagRenderer.enabled = false;
+            SetFlagVisible(false);
             return;
         }
 
@@ -149,7 +157,7 @@ public class RespawnZone : MonoBehaviour, IMpSynced
         flagBlock.SetColor(ColorId, next == FlagState.Active ? activeColor : visitedColor);
         flagRenderer.SetPropertyBlock(flagBlock);
 
-        flagRenderer.enabled = true;
+        SetFlagVisible(true);
         if (wasHidden && raiseSeconds > 0f && isActiveAndEnabled)
             StartCoroutine(RaiseFlag());
         else

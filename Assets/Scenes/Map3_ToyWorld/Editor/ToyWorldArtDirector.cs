@@ -361,7 +361,13 @@ public static class ToyWorldArtDirector
     {
         Transform g=Geometry(cp.transform);
         Part("CheckpointMedal",g,new Vector3(-1.3f,-1.9f,0),new Vector3(1.2f,.16f,1.2f),"Gold","Cylinder");
-        Part("CheckpointStar",g,new Vector3(-.65f,.4f,-.07f),new Vector3(.43f,.43f,.06f),"Ivory","Star");
+        // 별은 깃발 자식으로 둔다 — 받침과 함께 구우면 깃발이 게양되기 전부터 보인다. RespawnZone이 깃발 자식까지 함께 숨기고 올린다.
+        if(cp.flagRenderer==null) return;
+        Transform flag=cp.flagRenderer.transform;
+        Transform old=flag.Find("CheckpointStar");
+        if(old!=null) UnityEngine.Object.DestroyImmediate(old.gameObject);
+        Vector3 s=flag.localScale;
+        Part("CheckpointStar",flag,new Vector3(0,0,-.07f/s.z),new Vector3(.43f/s.x,.43f/s.y,.06f/s.z),"Ivory","Star");
     }
 
     private static void DressLandmarks(Transform generated)
