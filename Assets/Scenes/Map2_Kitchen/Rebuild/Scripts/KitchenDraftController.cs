@@ -147,7 +147,7 @@ namespace Map2KitchenDraft
                 return;
             }
 
-            // 싱글 테스트 전용: 1–7 = 해당 구역 시작점으로 이동, F1 = 나머지 도형을 조작 중인 도형 곁으로 모은다, F2 = 안내.
+            // 싱글 테스트 전용: 1–7 = 해당 구역 시작점으로 이동, F2 = 안내(F1 도형 모으기는 PlayerControlSwitcher가 전 맵 공통으로 처리).
             // R은 여기서 처리하지 않는다 — RespawnController가 마지막 체크포인트로 복귀시킨다(예전엔 ResetDraft가 CH1로 되감았다).
             if (InputGate.Blocked) return;
             for (int index = 0; index < 7; index++)
@@ -158,7 +158,6 @@ namespace Map2KitchenDraft
                     break;
                 }
             }
-            if (Input.GetKeyDown(KeyCode.F1)) GatherOthersToActive();
             if (Input.GetKeyDown(KeyCode.F2)) showReviewHelp = !showReviewHelp;
         }
 
@@ -189,25 +188,6 @@ namespace Map2KitchenDraft
             PlayerFollowCamera.SnapToTarget(actor);
             if (!MpSync.Active && HasFallCheckpoints && zeroBasedIndex < fallCheckpoints.Length)
                 RespawnController.RestartCheckpoint(fallCheckpoints[zeroBasedIndex], fallCheckpoints);
-        }
-
-        /// <summary>[싱글 테스트 전용] 조작 중이 아닌 도형들을 조작 중인 도형 좌우로 옮긴다. 멀티에서는 아무것도 안 한다.</summary>
-        public void GatherOthersToActive()
-        {
-            if (MpSync.Active) return;
-            Transform actor = ControlledTransform();
-            if (actor == null) return;
-            // 겹쳐 놓으면 물리가 튕겨내므로 카메라 기준 좌우로 1.3씩 벌린다(구는 자유회전이라 actor.right는 믿을 수 없다).
-            Vector3 side = Camera.main != null ? Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized : Vector3.right;
-            if (side == Vector3.zero) side = Vector3.right;
-            int slot = 0;
-            foreach (PlayerMover mover in FindObjectsByType<PlayerMover>(FindObjectsSortMode.None))
-            {
-                if (mover.transform == actor || mover.ExternallyDriven) continue;
-                float offset = 1.3f * (slot / 2 + 1) * (slot % 2 == 0 ? 1f : -1f);
-                MoveActor(mover.transform, actor.position + side * offset + Vector3.up * 0.3f);
-                slot++;
-            }
         }
 
         public void ResetDraft()
