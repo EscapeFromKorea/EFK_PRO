@@ -349,8 +349,15 @@ public static class ToyWorldPrototypeBuilder
     {
         Transform area = Node("Branch_BlockFort", areas);
         Box("GEO_BlockFortFloor", area, new Vector3(-40f, -0.5f, 18f), new Vector3(30f, 1f, 28f), Mat("Ground"));
-        Box("GEO_BlockFortWall", area, new Vector3(-37f, 2.5f, 18f), new Vector3(2f, 5f, 22f), Mat("Wall"));
-        Box("GEO_BlockFortBattlement", area, new Vector3(-37f, 5.25f, 18f), new Vector3(3f, 0.5f, 24f), Mat("Accent"));
+        // 성벽은 바닥 깊이(28) 전체를 막는다 — 예전 22/24는 양 끝에 걸어서 돌아가는 틈을 남겼다.
+        Box("GEO_BlockFortWall", area, new Vector3(-37f, 2.5f, 18f), new Vector3(2f, 5f, 28.4f), Mat("Wall"));
+        Box("GEO_BlockFortBattlement", area, new Vector3(-37f, 5.25f, 18f), new Vector3(3f, 0.5f, 28.3f), Mat("Accent"));
+        // 안쪽 요새(윗면 5.5) — 열쇠는 그 위. 계단 블록(높이 1~5)을 쌓아야 오른다. 성벽 윗단에서 약 10 떨어져 뛰어 건널 수 없다.
+        Box("GEO_BlockFortKeepWall_N", area, new Vector3(-52f, 2.5f, 20f), new Vector3(6f, 5f, 2f), Mat("Wall"));
+        Box("GEO_BlockFortKeepWall_S", area, new Vector3(-52f, 2.5f, 16f), new Vector3(6f, 5f, 2f), Mat("Wall"));
+        Box("GEO_BlockFortKeepWall_W", area, new Vector3(-54f, 2.5f, 18f), new Vector3(2f, 5f, 6f), Mat("Wall"));
+        Box("GEO_BlockFortKeepWall_E", area, new Vector3(-50f, 2.5f, 18f), new Vector3(2f, 5f, 6f), Mat("Wall"));
+        Box("GEO_BlockFortKeepBattlement", area, new Vector3(-52f, 5.25f, 18f), new Vector3(7f, 0.5f, 7f), Mat("Accent"));
 
         for (int i = 0; i < 5; i++)
         {
@@ -367,9 +374,9 @@ public static class ToyWorldPrototypeBuilder
         slipRamp.AddComponent<StickerSurface>();
         Seesaw("DYN_BlockFort_Seesaw_Bypass", area, new Vector3(-31f, 0.7f, 10f), Quaternion.identity, true);
 
-        Checkpoint("CP_BlockFort", safety, new Vector3(-47f, 2f, 18f));
+        Checkpoint("CP_BlockFort", safety, new Vector3(-44f, 2f, 18f));
         ToyWorldRepairItem item = RepairItem("GOAL_WindUpSpring", area, ToyWorldRepairItemType.WindUpSpring,
-            new Vector3(-47f, 1.2f, 18f), Mat("Spring"));
+            new Vector3(-52f, 6.7f, 18f), Mat("Spring"));
         return new BranchRefs { item = item };
     }
 
