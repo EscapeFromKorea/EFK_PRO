@@ -318,6 +318,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         block.GetFaces(blockFaces);
         float bestSqr = snapDistance * snapDistance;
         float cosTol = Mathf.Cos(Mathf.Deg2Rad * Mathf.Clamp(snapAngleToleranceDeg, 0f, 179f));
+        BoxCollider blockBox = block.GetComponent<BoxCollider>();
 
         Vector3 c = selfBox.center;
         Vector3 h = selfBox.size * 0.5f;
@@ -332,16 +333,32 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
             {
                 if (Vector3.Dot(selfNormal, -blockFaces[k].normal) < cosTol) continue;
 
-                float sqr = (selfCenter - blockFaces[k].center).sqrMagnitude;
+                // 블록 면 "중심"이 아니라 면 위에서 정육면체 면 중심과 가장 가까운 점을 기준으로 잰다 — 중심끼리만
+                // 보면 정육면체(1칸)보다 큰 블록(계단 블록 높이 2~5)은 면 중심이 공중에 있어 바닥에서 도킹이 안 되고,
+                // 되더라도 정렬이 정육면체를 그 높이로 띄워 올렸다(2026-11-27 맵 3 플레이테스트).
+                Vector3 target = ClosestPointOnFace(blockBox, blockFaces[k], selfCenter);
+                float sqr = (selfCenter - target).sqrMagnitude;
                 if (sqr > bestSqr) continue;
 
                 bestSqr = sqr;
                 aimSelfFaceCenter = selfCenter;
-                aimBlockFaceCenter = blockFaces[k].center;
+                aimBlockFaceCenter = target;
                 aimBlockFaceNormal = blockFaces[k].normal;
                 hasCandidate = true;
             }
         }
+    }
+
+    // 블록 면(사각형) 위에서 point와 가장 가까운 점. 면 법선 축은 면에 고정하고 나머지 두 축만 박스 범위로 자른다.
+    private static Vector3 ClosestPointOnFace(BoxCollider box, SnapBlock.Face face, Vector3 point)
+    {
+        if (box == null) return face.center;
+        Vector3 local = box.transform.InverseTransformPoint(point) - box.center;
+        Vector3 half = box.size * 0.5f;
+        int axis = face.index / 2;
+        for (int a = 0; a < 3; a++)
+            local[a] = a == axis ? face.localCenter[a] - box.center[a] : Mathf.Clamp(local[a], -half[a], half[a]);
+        return box.transform.TransformPoint(local + box.center);
     }
 
     // 도킹 불가면 사유, 가능하면 null.
