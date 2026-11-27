@@ -417,6 +417,20 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
             return;
         }
 
+        if (snapAlignOnDock && AlignYawToBlock(aimed.transform))
+        {
+            // 방향을 바꿨으니 맞물릴 면을 새 방향 기준으로 다시 찾는다. 못 찾으면(드묾) 원래 방향으로 되돌린다.
+            Physics.SyncTransforms();
+            FindBestFacePair(aimed);
+            if (!hasCandidate)
+            {
+                body.rotation = transform.rotation = preAlignRotation;
+                Physics.SyncTransforms();
+                FindBestFacePair(aimed);
+                if (!hasCandidate) return;
+            }
+        }
+
         if (snapAlignOnDock)
         {
             // 면 법선 방향으로만 밀어 두 면을 같은 평면에 맞춘다(측면 위치·회전 미변경 → FreezeRotation과 무충돌).
@@ -500,14 +514,60 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         Debug.Log($"[CubeDock] '{dockedBlock.name}' 구조물에 도킹했습니다.");
     }
 
+    [Tooltip("도킹 대상 블록이 이 각도(도) 넘게 기울어 있으면 정육면체 방향 맞춤을 건너뛴다(정육면체를 기울일 수는 없다).")]
+    public float alignMaxBlockTiltDeg = 10f;
+    private Quaternion preAlignRotation;
+
+    /// <summary>정육면체를 블록의 수평 축에 맞게 수평으로만 돌린다(최대 45°). 면이 비뚤어진 채(허용 20°) 도킹하면
+    /// 그 각도 그대로 고정돼 모서리가 블록에 파고들고, 물리가 겹침을 밀어내며 한쪽으로 밀렸다(2026-11-27 플레이테스트).
+    /// 블록이 아니라 정육면체를 돌리는 이유: 블록은 결합된 구조물 전체를 같이 돌려야 한다. 정육면체는 물리 회전만
+    /// 고정(FreezeRotation)이라 코드로 방향을 바꾸는 건 문제없고, 바꾼 방향이 이후 그대로 유지된다. 돌렸으면 true.</summary>
+    private bool AlignYawToBlock(Transform block)
+    {
+        preAlignRotation = transform.rotation;
+        // 블록의 세 축 중 세로에 가장 가까운 축이 충분히 서 있어야 한다(옆으로 누운 블록도 세로축만 맞으면 된다).
+        Vector3[] blockAxes = { block.right, block.up, block.forward };
+        float bestUp = 0f; int upAxis = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            float d = Mathf.Abs(Vector3.Dot(blockAxes[i], Vector3.up));
+            if (d > bestUp) { bestUp = d; upAxis = i; }
+        }
+        if (bestUp < Mathf.Cos(alignMaxBlockTiltDeg * Mathf.Deg2Rad)) return false;
+        Vector3 blockRef = Vector3.ProjectOnPlane(blockAxes[(upAxis + 1) % 3], Vector3.up);
+
+        // 정육면체도 수평에 가장 가까운 축 하나를 기준으로 삼는다.
+        Vector3[] selfAxes = { transform.right, transform.forward, transform.up };
+        Vector3 selfRef = Vector3.zero; float bestFlat = -1f;
+        foreach (Vector3 a in selfAxes)
+        {
+            float flat = 1f - Mathf.Abs(a.y);
+            if (flat > bestFlat) { bestFlat = flat; selfRef = a; }
+        }
+        selfRef = Vector3.ProjectOnPlane(selfRef, Vector3.up);
+        if (blockRef.sqrMagnitude < 1e-6f || selfRef.sqrMagnitude < 1e-6f) return false;
+
+        // 90° 대칭이라 차이를 -45~45°로 접는다.
+        float delta = Vector3.SignedAngle(selfRef, blockRef, Vector3.up);
+        delta = Mathf.Repeat(delta + 45f, 90f) - 45f;
+        if (Mathf.Abs(delta) < 0.05f) return false;
+
+        Quaternion rotated = Quaternion.AngleAxis(delta, Vector3.up) * transform.rotation;
+        body.rotation = rotated;
+        transform.rotation = rotated;
+        return true;
+    }
+
     // 정육면체를 offset만큼 옮긴 자리가 비어 있는가. 자기 몸·도킹 대상 구조물은 무시한다(면이 맞닿아 있으므로
-    // 5% 줄여 검사). 정육면체는 회전이 고정이라 축 정렬 박스로 충분하다.
+    // 5% 줄여 검사).
     private bool IsDockPoseClear(Vector3 offset)
     {
         if (selfBox == null || aimed == null) return false;
-        Bounds b = selfBox.bounds;
-        Collider[] hits = Physics.OverlapBox(b.center + offset, b.extents * 0.95f, Quaternion.identity,
-                                             ~0, QueryTriggerInteraction.Ignore);
+        // 방향 맞춤으로 정육면체가 축에서 돌아갈 수 있으니 월드 AABB가 아니라 실제 방향의 박스로 검사한다(AABB는 부풀어 오탐).
+        Transform t = selfBox.transform;
+        Vector3 center = t.TransformPoint(selfBox.center) + offset;
+        Vector3 half = Vector3.Scale(selfBox.size, t.lossyScale) * 0.5f * 0.95f;
+        Collider[] hits = Physics.OverlapBox(center, half, t.rotation, ~0, QueryTriggerInteraction.Ignore);
         foreach (Collider h in hits)
         {
             if (h.transform.IsChildOf(transform) || transform.IsChildOf(h.transform)) continue;
