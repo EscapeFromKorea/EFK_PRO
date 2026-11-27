@@ -60,6 +60,9 @@ public class PlayerGroundContact : MonoBehaviour
     /// 부모화라 PlayerMover 자체가 관여하지 않음).</summary>
     public Vector3 GroundVelocity { get; private set; } = Vector3.zero;
 
+    /// <summary>마지막으로 바닥으로 잡힌 콜라이더(마찰 스티커 판정용). 접지가 끊겨도 값은 남으므로 IsGrounded와 함께 본다.</summary>
+    public Collider GroundCollider { get; private set; }
+
     /// <summary>움직이는 발판이 탑승자를 좌표로 옮길 때(rider.position += delta) 실제로 더할 양.
     /// 접지 중이면 PlayerMover가 GroundVelocity로 수평 이동을 이미 따라가므로 수직만 옮긴다 —
     /// 수평까지 더하면 발판보다 2배로 밀려 앞쪽으로 미끄러진다(2026-11-22 맵 1 운반대 멀티 실측).
@@ -111,6 +114,7 @@ public class PlayerGroundContact : MonoBehaviour
             {
                 lastGroundedTime = Time.time;
                 GroundNormal = hitBuffer[i].normal;
+                GroundCollider = hitBuffer[i].collider;
                 Rigidbody groundRb = hitBuffer[i].collider.attachedRigidbody;
                 GroundVelocity = groundRb != null ? PointVel(groundRb, hitBuffer[i].point) : Vector3.zero;
                 return;
@@ -147,6 +151,7 @@ public class PlayerGroundContact : MonoBehaviour
             {
                 lastGroundedTime = Time.time;
                 GroundNormal = contact.normal;
+                GroundCollider = collision.collider;
                 GroundVelocity = collision.rigidbody != null
                     ? PointVel(collision.rigidbody, contact.point)
                     : Vector3.zero;

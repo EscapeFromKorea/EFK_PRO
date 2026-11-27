@@ -190,6 +190,23 @@ public class PlayerMover : MonoBehaviour
              "찍는 잔 홉(착지 충격 3 미만)에서는 아무 일도 일어나지 않는다.")]
     public float landingImpactMinSpeed = 3f;
 
+    [Header("바닥 접지력 (마찰 스티커)")]
+    [Tooltip("미끄러운 바닥(미끄럼 스티커)에서 수평 속도가 바뀔 수 있는 최대 가속도(U/s²). 평소엔 속도를 즉시 대입하지만 " +
+             "미끄러운 바닥에선 이 값으로만 따라가 출발이 굼뜨고 멈출 때 미끄러진다. 작을수록 얼음 같다.")]
+    public float slipAcceleration = 6f;
+
+    /// <summary>바닥 콜라이더의 접지력 판정 훅: -1 미끄러움, 0 보통, +1 끈끈함. FrictionStickerSystem이 등록한다
+    /// (PlayerSystem이 스티커 시스템을 직접 참조하지 않게 — PointVelocityOverride와 같은 방식). 바닥 재질의
+    /// 마찰값을 일반적으로 읽지 않는 이유: 맵2 이동 접시 받침·맵4 S2 경사처럼 마찰 0 재질을 일부러 쓴 바닥이
+    /// 이미 있어, 그 조작감까지 바뀌기 때문이다.</summary>
+    public static System.Func<Collider, int> GroundTractionHook;
+
+    private int GroundTraction()
+    {
+        if (GroundTractionHook == null || groundContact == null || groundContact.GroundCollider == null) return 0;
+        return GroundTractionHook(groundContact.GroundCollider);
+    }
+
     [Header("조작권 상실 시 감쇠 (Tab 전환용)")]
     [Tooltip("조작권을 잃은 플레이어가 관성/각속도로 계속 굴러가지 않도록 초당 감쇠하는 비율. " +
              "값이 클수록 빨리 멈춘다(프레임레이트 무관). 수직(중력) 속도는 건드리지 않는다.")]
@@ -406,6 +423,8 @@ public class PlayerMover : MonoBehaviour
         bool slopeAffected = groundNormal.y <= idleStopMaxNormalY
                              && PlayerWeight.Of(rb) < slopeAccelMaxWeight;
         if (!slopeAffected) slopeSpeedBonus = 0f;
+        int traction = GroundTraction(); // -1 미끄럼 스티커 / +1 벨크로 / 0 보통
+        Vector3 currentXZ = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
 
         if (wasAirborne)
         {
@@ -452,8 +471,9 @@ public class PlayerMover : MonoBehaviour
                 Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, groundNormal);
                 downhill = new Vector3(downhill.x, 0f, downhill.z).normalized;
                 Vector3 horizontal = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-                float drift = Mathf.Clamp(Vector3.Dot(horizontal - lastTravelVelocity, downhill),
-                                          0f, moveSpeed * downhillSpeedCap);
+                float drift = traction > 0 ? 0f // 벨크로: 비탈에서 옆으로 흘러내리지 않는다
+                    : Mathf.Clamp(Vector3.Dot(horizontal - lastTravelVelocity, downhill),
+                                  0f, moveSpeed * downhillSpeedCap);
                 lastTravelVelocity = target;
 
                 // 진행 방향 성분은 SlopeSpeed가 이미 소유하므로 직교분만 더한다 — 정면 오르막/내리막
@@ -464,6 +484,13 @@ public class PlayerMover : MonoBehaviour
             else lastTravelVelocity = Vector3.zero;
             target += groundVelXZ;
             lastTravelVelocity += groundVelXZ; // 다음 스텝 drift 계산이 이 몫까지 "물리 몫"으로 오인하지 않도록 같이 반영
+            if (traction < 0)
+            {
+                // 미끄럼: 목표 속도로 즉시 바꾸지 않고 slipAcceleration으로만 따라간다(출발 굼뜸·방향 전환 시 미끄러짐).
+                // 실제 대입값을 lastTravelVelocity로 둬야 다음 스텝 drift가 중력 몫만 남는다(위 2차 수정과 같은 이유).
+                target = Vector3.MoveTowards(currentXZ, target, slipAcceleration * Time.fixedDeltaTime);
+                lastTravelVelocity = target;
+            }
             rb.linearVelocity = new Vector3(target.x, rb.linearVelocity.y, target.z);
             if (rollRadius > 0.0001f)
             {
@@ -486,7 +513,16 @@ public class PlayerMover : MonoBehaviour
             // 2026-08-10 플레이테스트로 확인).
             // 경사면에서는 대입을 건너뛰고 물리에 맡긴다. 마찰(PhysicsMaterial)이 도형별로
             // 얼마나 미끄러질지를 결정하므로 여기서 따로 도형 분기를 두지 않는다.
-            if (groundNormal.y > idleStopMaxNormalY)
+            if (traction < 0)
+            {
+                // 미끄럼: 평지에서도 딱 멈추지 않고 slipAcceleration으로 감속하며 미끄러진다(경사는 아래처럼 물리 몫이라 그대로 흘러내린다).
+                if (groundNormal.y > idleStopMaxNormalY)
+                {
+                    Vector3 slid = Vector3.MoveTowards(currentXZ, groundVelXZ, slipAcceleration * Time.fixedDeltaTime);
+                    rb.linearVelocity = new Vector3(slid.x, rb.linearVelocity.y, slid.z);
+                }
+            }
+            else if (groundNormal.y > idleStopMaxNormalY || traction > 0) // 벨크로는 비탈에서도 붙들어 멈춘다
                 rb.linearVelocity = new Vector3(groundVelXZ.x, rb.linearVelocity.y, groundVelXZ.z);
         }
     }
