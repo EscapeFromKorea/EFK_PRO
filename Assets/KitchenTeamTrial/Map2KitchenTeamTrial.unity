@@ -452450,7 +452450,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1d703935746e4caa9856cf5d8843f9a7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KitchenTeamMovementScale
-  horizontalMultiplier: 1.1
+  horizontalMultiplier: 1.375
 --- !u!4 &2003902140
 Transform:
   m_ObjectHideFlags: 0

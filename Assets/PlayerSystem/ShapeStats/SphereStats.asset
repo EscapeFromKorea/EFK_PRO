@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SphereStats
   m_EditorClassIdentifier: 
   kind: 0
-  moveSpeed: 10.5
+  moveSpeed: 8.4
   jumpHeight: 1.6
   mass: 1.5
   friction: 0.1
