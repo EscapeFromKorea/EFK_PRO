@@ -350,8 +350,9 @@ public static class ToyWorldPrototypeBuilder
         Transform area = Node("Branch_BlockFort", areas);
         Box("GEO_BlockFortFloor", area, new Vector3(-40f, -0.5f, 18f), new Vector3(30f, 1f, 28f), Mat("Ground"));
         // 성벽은 바닥 깊이(28) 전체를 막는다 — 예전 22/24는 양 끝에 걸어서 돌아가는 틈을 남겼다.
-        Box("GEO_BlockFortWall", area, new Vector3(-37f, 2.5f, 18f), new Vector3(2f, 5f, 28.4f), Mat("Wall"));
-        Box("GEO_BlockFortBattlement", area, new Vector3(-37f, 5.25f, 18f), new Vector3(3f, 0.5f, 28.3f), Mat("Accent"));
+        // 윗면 6.0(2026-11-27 플레이테스트로 5.5에서 상향). 씬에는 본체를 세로 1.1배 스케일해 아트까지 함께 늘렸다.
+        Box("GEO_BlockFortWall", area, new Vector3(-37f, 2.75f, 18f), new Vector3(2f, 5.5f, 28.4f), Mat("Wall"));
+        Box("GEO_BlockFortBattlement", area, new Vector3(-37f, 5.75f, 18f), new Vector3(3f, 0.5f, 28.3f), Mat("Accent"));
         // 안쪽 요새(윗면 5.5) — 열쇠는 그 위. 계단 블록(높이 1~5)을 쌓아야 오른다. 성벽 윗단에서 약 10 떨어져 뛰어 건널 수 없다.
         Box("GEO_BlockFortKeepWall_N", area, new Vector3(-52f, 2.5f, 20f), new Vector3(6f, 5f, 2f), Mat("Wall"));
         Box("GEO_BlockFortKeepWall_S", area, new Vector3(-52f, 2.5f, 16f), new Vector3(6f, 5f, 2f), Mat("Wall"));
