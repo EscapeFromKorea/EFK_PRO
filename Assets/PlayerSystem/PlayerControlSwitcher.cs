@@ -92,9 +92,13 @@ public class PlayerControlSwitcher : MonoBehaviour
         foreach (PlayerMover mover in players)
         {
             if (mover == null || mover == activePlayer || mover.ExternallyDriven) continue;
+            Rigidbody body = mover.GetComponent<Rigidbody>();
+            // 키네마틱 = 다른 기믹이 붙잡은 몸(세모 벽 부착·리스폰 페이드 중) — 옮기면 그 기믹 상태가 꼬인다(RespawnController.IsHeld와 같은 기준).
+            if (body != null && body.isKinematic) continue;
             float offset = 1.3f * (slot / 2 + 1) * (slot % 2 == 0 ? 1f : -1f);
             Vector3 dest = origin + side * offset + Vector3.up * 0.3f;
-            Rigidbody body = mover.GetComponent<Rigidbody>();
+            // 가속 발판 부스트 중이면 다음 FixedUpdate에 속도가 통째로 다시 대입돼 날아간다(RespawnController.TeleportRoutine과 같은 처리).
+            if (mover.TryGetComponent(out PlayerAccelReceiver accel)) accel.CancelBoost();
             if (body != null)
             {
                 body.linearVelocity = Vector3.zero;

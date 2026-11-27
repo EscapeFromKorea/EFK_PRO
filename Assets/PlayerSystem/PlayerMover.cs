@@ -424,13 +424,14 @@ public class PlayerMover : MonoBehaviour
                              && PlayerWeight.Of(rb) < slopeAccelMaxWeight;
         if (!slopeAffected) slopeSpeedBonus = 0f;
         int traction = GroundTraction(); // -1 미끄럼 스티커 / +1 벨크로 / 0 보통
-        Vector3 currentXZ = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
 
         if (wasAirborne)
         {
             wasAirborne = false;
             if (slopeAffected) ApplyLandingImpact(groundNormal);
         }
+        // 착지 충격 반영 뒤의 속도 — 미끄럼 바닥에서 이 값에서부터 목표로 따라간다.
+        Vector3 currentXZ = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
 
         if (move.sqrMagnitude > 0.0001f)
         {

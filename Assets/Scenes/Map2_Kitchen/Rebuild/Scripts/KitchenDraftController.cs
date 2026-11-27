@@ -187,7 +187,9 @@ namespace Map2KitchenDraft
             CurrentChapter = zeroBasedIndex;
             PlayerFollowCamera.SnapToTarget(actor);
             if (!MpSync.Active && HasFallCheckpoints && zeroBasedIndex < fallCheckpoints.Length)
-                RespawnController.RestartCheckpoint(fallCheckpoints[zeroBasedIndex], fallCheckpoints);
+                // fallCheckpoints에 없는 구역(CH6 다리 재시도 등)도 잡음 기록·깃발을 같이 지운다 — 안 지우면 구역 이동 후 그 구역이 다시 저장되지 않는다.
+                RespawnController.RestartCheckpoint(fallCheckpoints[zeroBasedIndex],
+                    FindObjectsByType<RespawnZone>(FindObjectsSortMode.None));
         }
 
         public void ResetDraft()
