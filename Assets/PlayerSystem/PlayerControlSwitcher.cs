@@ -64,7 +64,9 @@ public class PlayerControlSwitcher : MonoBehaviour
 
     void Update()
     {
-        if (InputGate.Blocked || !Input.GetKeyDown(KeyCode.Tab)) return; // 일시정지 메뉴가 열려 있으면 전환하지 않는다(PauseMenuSystem).
+        if (InputGate.Blocked) return; // 일시정지 메뉴가 열려 있으면 전환하지 않는다(PauseMenuSystem).
+        if (Input.GetKeyDown(KeyCode.F1)) GatherOthersToActive();
+        if (!Input.GetKeyDown(KeyCode.Tab)) return;
 
         SortRoster();
         if (players.Count <= 1) return;
@@ -75,6 +77,38 @@ public class PlayerControlSwitcher : MonoBehaviour
         activePlayer = players[(idx + 1) % players.Count];
 
         ApplyActive();
+    }
+
+    /// <summary>[싱글 테스트 전용 — F1] 조작 중이 아닌 도형들을 조작 중인 도형 좌우로 옮긴다.
+    /// 이 컴포넌트는 멀티 시작 시 MpGame이 파괴하므로 멀티에서는 애초에 불리지 않는다(아래 가드는 이중 안전망).</summary>
+    private void GatherOthersToActive()
+    {
+        if (MpSync.Active || activePlayer == null) return;
+        Vector3 origin = activePlayer.transform.position;
+        // 겹쳐 놓으면 물리가 튕겨내므로 카메라 기준 좌우로 1.3씩 벌린다(구는 자유회전이라 transform.right는 믿을 수 없다).
+        Vector3 side = Camera.main != null ? Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized : Vector3.right;
+        if (side == Vector3.zero) side = Vector3.right;
+        int slot = 0;
+        foreach (PlayerMover mover in players)
+        {
+            if (mover == null || mover == activePlayer || mover.ExternallyDriven) continue;
+            Rigidbody body = mover.GetComponent<Rigidbody>();
+            // 키네마틱 = 다른 기믹이 붙잡은 몸(세모 벽 부착·리스폰 페이드 중) — 옮기면 그 기믹 상태가 꼬인다(RespawnController.IsHeld와 같은 기준).
+            if (body != null && body.isKinematic) continue;
+            float offset = 1.3f * (slot / 2 + 1) * (slot % 2 == 0 ? 1f : -1f);
+            Vector3 dest = origin + side * offset + Vector3.up * 0.3f;
+            // 가속 발판 부스트 중이면 다음 FixedUpdate에 속도가 통째로 다시 대입돼 날아간다(RespawnController.TeleportRoutine과 같은 처리).
+            if (mover.TryGetComponent(out PlayerAccelReceiver accel)) accel.CancelBoost();
+            if (body != null)
+            {
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+                body.position = dest;
+            }
+            mover.transform.position = dest;
+            slot++;
+        }
+        Physics.SyncTransforms();
     }
 
     // 죽은 참조를 정리하고 이름 오름차순(ordinal)으로 정렬한다. 등록/삭제/전환 등 목록이 바뀌는

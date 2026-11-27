@@ -63,6 +63,8 @@ public class RotatingPlate : MonoBehaviour
     [Header("빈 판 복귀")]
     [Tooltip("판 위에 올라선 플레이어 도형이 없으면 씬에 배치된 각도로 돌아갑니다.")]
     public bool returnToStartWhenUnoccupied;
+    [Tooltip("판이 이 시간(초) 동안 계속 비어 있어야 복귀를 시작합니다. 점프 체공(약 1초) 중에 되돌아가지 않도록 그보다 길게 둡니다.")]
+    public float returnDelaySeconds = 2f;
 
     [Header("외부 토크 주입 창구 (현재 미사용 — 태엽 축 연동은 WindupAxleSystem/RotatingPlatform이 대신 담당)")]
     [Tooltip("ApplyDriveTorque로 들어온 값에 곱하는 배율. 태엽 축 쪽 수치를 안 건드리고 여기서 세기를 맞춘다. " +
@@ -185,9 +187,9 @@ public class RotatingPlate : MonoBehaviour
             emptySeconds = 0f;
             return;
         }
-        // Give brief gaps in physics contact time to settle before starting the return.
-        emptySeconds = Mathf.Min(emptySeconds + Time.fixedDeltaTime, 0.2f);
-        if (emptySeconds < 0.2f || rb.isKinematic) return;
+        // 점프로 잠깐 떨어진 건 "비었다"로 치지 않는다 — 예전 0.2초는 점프 체공보다 짧아 점프만 해도 판이 처음 각도로 되돌아갔다.
+        emptySeconds = Mathf.Min(emptySeconds + Time.fixedDeltaTime, returnDelaySeconds);
+        if (emptySeconds < returnDelaySeconds || rb.isKinematic) return;
 
         Vector3 axis = HingeAxisWorld;
         float angle = Vector3.SignedAngle(rb.rotation * localReturnReference,

@@ -98,5 +98,12 @@ public class PlayerJump : MonoBehaviour
             : heightUnits;
         float vy = Mathf.Sqrt(2f * g * h);
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, vy, rb.linearVelocity.z);
+        LastLaunchTime = Time.time;
+        LastLaunchAirtime = 2f * vy / g; // 올라갔다 같은 높이로 돌아올 때까지
     }
+
+    /// <summary>마지막 점프/점프대 발사 시각과 예상 체공 시간. PlayerMover의 벽 튀어오름 상한이 점프 중 상승을 자르지 않게 본다.</summary>
+    public float LastLaunchTime { get; private set; } = -100f;
+    public float LastLaunchAirtime { get; private set; }
+    public bool RecentlyLaunched => Time.time - LastLaunchTime < LastLaunchAirtime;
 }

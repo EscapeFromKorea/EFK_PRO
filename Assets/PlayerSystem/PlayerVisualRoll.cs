@@ -105,8 +105,10 @@ public class PlayerVisualRoll : MonoBehaviour
         // 목표 자세: 공중 이동 중이면 이동 방향으로 제한된 기울임, 접지면 바닥 법선에 정렬(평지=identity).
         // 공중에서는 바닥 법선이 의미가 없으므로(그리고 GroundNormal은 공중에서 마지막 값이 그대로
         // 남으므로) 정렬을 쓰지 않고 예전처럼 identity 기준으로만 기울인다.
-        // Root/Player_Mesh 회전이 identity라 월드축=로컬축이므로 월드축 기준 회전을 localRotation에
-        // 그대로 대입해도 정합한다.
+        // 아래 target은 월드축 기준 회전이다. 예전엔 Root 회전이 항상 identity라 그대로 localRotation에
+        // 넣었지만, 정육면체 도킹이 몸 방향을 블록에 맞춰 돌리므로(PlayerCubeDock.AlignYawToBlock) 부모
+        // 회전으로 로컬에 옮겨 넣는다 — 부모가 identity면 결과가 예전과 완전히 같다.
+        Quaternion parentRot = visual.parent != null ? visual.parent.rotation : Quaternion.identity;
         Quaternion target = Quaternion.identity;
         if (airborne)
         {
@@ -122,7 +124,8 @@ public class PlayerVisualRoll : MonoBehaviour
 
         // 프레임레이트 무관 지수 수렴. 누적이 아니라 목표를 향한 수렴이라 착지 시 되감을 양이 작다.
         float k = 1f - Mathf.Exp(-responsiveness * Time.deltaTime);
-        visual.localRotation = Quaternion.Slerp(visual.localRotation, target, k);
+        Quaternion localTarget = Quaternion.Inverse(parentRot) * target * parentRot;
+        visual.localRotation = Quaternion.Slerp(visual.localRotation, localTarget, k);
 
         // [침하 보정] 회전만 시키면 이번엔 메쉬가 비탈 위에 뜬다. 축 정렬된 정육면체(반높이 h)는
         // 아래 모서리 하나로 지탱해 중심이 비탈면에서 h(|n.x|+|n.y|+|n.z|)만큼 떠 있는데, 비탈에
@@ -133,8 +136,8 @@ public class PlayerVisualRoll : MonoBehaviour
         if (grounded && alignToGround)
         {
             sinkNormal = groundNormal;
-            sinkAmount = SupportDistance(Quaternion.identity, groundNormal)
-                       - SupportDistance(visual.localRotation, groundNormal);
+            sinkAmount = SupportDistance(parentRot, groundNormal)
+                       - SupportDistance(parentRot * visual.localRotation, groundNormal);
         }
         else
         {
@@ -142,7 +145,7 @@ public class PlayerVisualRoll : MonoBehaviour
             // 계수로 0까지 수렴시킨다.
             sinkAmount = Mathf.Lerp(sinkAmount, 0f, k);
         }
-        visual.localPosition = baseLocalPosition - sinkNormal * sinkAmount;
+        visual.localPosition = baseLocalPosition - Quaternion.Inverse(parentRot) * sinkNormal * sinkAmount;
     }
 
     /// <summary>

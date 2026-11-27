@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: CubeStats
   m_EditorClassIdentifier: 
   kind: 1
-  moveSpeed: 3.5
+  moveSpeed: 4.2
   jumpHeight: 1.2
   mass: 3
   friction: 0.5

@@ -318,6 +318,7 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         block.GetFaces(blockFaces);
         float bestSqr = snapDistance * snapDistance;
         float cosTol = Mathf.Cos(Mathf.Deg2Rad * Mathf.Clamp(snapAngleToleranceDeg, 0f, 179f));
+        BoxCollider blockBox = block.GetComponent<BoxCollider>();
 
         Vector3 c = selfBox.center;
         Vector3 h = selfBox.size * 0.5f;
@@ -332,16 +333,32 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
             {
                 if (Vector3.Dot(selfNormal, -blockFaces[k].normal) < cosTol) continue;
 
-                float sqr = (selfCenter - blockFaces[k].center).sqrMagnitude;
+                // 블록 면 "중심"이 아니라 면 위에서 정육면체 면 중심과 가장 가까운 점을 기준으로 잰다 — 중심끼리만
+                // 보면 정육면체(1칸)보다 큰 블록(계단 블록 높이 2~5)은 면 중심이 공중에 있어 바닥에서 도킹이 안 되고,
+                // 되더라도 정렬이 정육면체를 그 높이로 띄워 올렸다(2026-11-27 맵 3 플레이테스트).
+                Vector3 target = ClosestPointOnFace(blockBox, blockFaces[k], selfCenter);
+                float sqr = (selfCenter - target).sqrMagnitude;
                 if (sqr > bestSqr) continue;
 
                 bestSqr = sqr;
                 aimSelfFaceCenter = selfCenter;
-                aimBlockFaceCenter = blockFaces[k].center;
+                aimBlockFaceCenter = target;
                 aimBlockFaceNormal = blockFaces[k].normal;
                 hasCandidate = true;
             }
         }
+    }
+
+    // 블록 면(사각형) 위에서 point와 가장 가까운 점. 면 법선 축은 면에 고정하고 나머지 두 축만 박스 범위로 자른다.
+    private static Vector3 ClosestPointOnFace(BoxCollider box, SnapBlock.Face face, Vector3 point)
+    {
+        if (box == null) return face.center;
+        Vector3 local = box.transform.InverseTransformPoint(point) - box.center;
+        Vector3 half = box.size * 0.5f;
+        int axis = face.index / 2;
+        for (int a = 0; a < 3; a++)
+            local[a] = a == axis ? face.localCenter[a] - box.center[a] : Mathf.Clamp(local[a], -half[a], half[a]);
+        return box.transform.TransformPoint(local + box.center);
     }
 
     // 도킹 불가면 사유, 가능하면 null.
@@ -398,6 +415,27 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         {
             Debug.Log("[CubeDock] 블록에 Rigidbody가 없어 도킹할 수 없습니다.");
             return;
+        }
+
+        if (snapAlignOnDock)
+        {
+            // 블록(구조물)을 정육면체 면에 맞춰 돌린다. 돌릴 자리가 막혔거나 참가자 PC(블록을 서버가 굴림)면 정육면체를 대신 돌린다.
+            bool blockTurned = !MpSync.IsClient && AlignBlockYawToCube(aimed);
+            bool selfTurned = !blockTurned && AlignYawToBlock(aimed.transform);
+            if (blockTurned || selfTurned)
+            {
+                // 방향을 바꿨으니 맞물릴 면을 새 방향 기준으로 다시 찾는다. 못 찾으면(드묾) 원래대로 되돌린다.
+                Physics.SyncTransforms();
+                FindBestFacePair(aimed);
+                if (!hasCandidate)
+                {
+                    if (blockTurned) RestoreBlockPoses();
+                    else body.rotation = transform.rotation = preAlignRotation;
+                    Physics.SyncTransforms();
+                    FindBestFacePair(aimed);
+                    if (!hasCandidate) return;
+                }
+            }
         }
 
         if (snapAlignOnDock)
@@ -483,14 +521,131 @@ public class PlayerCubeDock : MonoBehaviour, IInteractionProvider
         Debug.Log($"[CubeDock] '{dockedBlock.name}' 구조물에 도킹했습니다.");
     }
 
+    [Tooltip("도킹 대상 블록이 이 각도(도) 넘게 기울어 있으면 정육면체 방향 맞춤을 건너뛴다(정육면체를 기울일 수는 없다).")]
+    public float alignMaxBlockTiltDeg = 10f;
+    private Quaternion preAlignRotation;
+
+    // 블록 정렬 전 자세(되돌리기용).
+    private readonly System.Collections.Generic.List<(Rigidbody rb, Vector3 pos, Quaternion rot)> savedBlockPoses =
+        new System.Collections.Generic.List<(Rigidbody, Vector3, Quaternion)>();
+
+    /// <summary>도킹 대상 블록(결합 구조물이면 전체)을 정육면체의 수평 축에 맞게 수평으로 돌린다(최대 45°).
+    /// 정육면체 모양이 돌아가 보이지 않게 블록 쪽을 돌리는 기본 경로(2026-11-27 플레이테스트 요청). 구조물은 대상 블록
+    /// 중심을 축으로 함께 돌려 블록끼리의 상대 자세(결합 조인트)를 그대로 둔다. 돌린 자리가 다른 물체와 겹치면
+    /// 아무것도 바꾸지 않고 false — 호출자가 정육면체 회전으로 대신한다.</summary>
+    private bool AlignBlockYawToCube(SnapBlock seed)
+    {
+        savedBlockPoses.Clear();
+        float delta = YawDeltaToAlign(transform, seed.transform); // 정육면체를 블록에 맞출 각도
+        if (float.IsNaN(delta) || Mathf.Abs(delta) < 0.05f) return false;
+        Quaternion turn = Quaternion.AngleAxis(-delta, Vector3.up); // 블록은 반대로 돌린다
+        Vector3 pivot = seed.transform.position;
+
+        // 구조물 전체를 모은다.
+        var members = new System.Collections.Generic.List<SnapBlock>();
+        var seen = new System.Collections.Generic.HashSet<SnapBlock> { seed };
+        var q = new System.Collections.Generic.Queue<SnapBlock>();
+        q.Enqueue(seed);
+        while (q.Count > 0)
+        {
+            SnapBlock b = q.Dequeue(); members.Add(b);
+            foreach (SnapBlock n in b.ConnectedBlocks) if (n != null && seen.Add(n)) q.Enqueue(n);
+        }
+
+        // 돌린 자리가 비었는지 먼저 전부 검사한다(구조물 자신·정육면체는 제외).
+        foreach (SnapBlock m in members)
+        {
+            BoxCollider box = m.GetComponent<BoxCollider>();
+            Rigidbody mrb = m.Body != null ? m.Body : m.GetComponent<Rigidbody>();
+            if (box == null || mrb == null || mrb.isKinematic) return false; // 들려 있는 등 다른 기믹이 붙잡은 블록은 건드리지 않는다
+            Vector3 newPos = pivot + turn * (m.transform.position - pivot);
+            Quaternion newRot = turn * m.transform.rotation;
+            Vector3 center = newPos + newRot * Vector3.Scale(box.center, m.transform.lossyScale);
+            Vector3 half = Vector3.Scale(box.size, m.transform.lossyScale) * 0.5f * 0.95f;
+            foreach (Collider h in Physics.OverlapBox(center, half, newRot, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (h.transform.IsChildOf(transform)) continue;
+                SnapBlock other = h.GetComponentInParent<SnapBlock>();
+                if (other != null && seen.Contains(other)) continue;
+                return false;
+            }
+        }
+
+        foreach (SnapBlock m in members)
+        {
+            Rigidbody mrb = m.Body != null ? m.Body : m.GetComponent<Rigidbody>();
+            savedBlockPoses.Add((mrb, mrb.position, mrb.rotation));
+            Vector3 newPos = pivot + turn * (m.transform.position - pivot);
+            Quaternion newRot = turn * m.transform.rotation;
+            mrb.linearVelocity = Vector3.zero; mrb.angularVelocity = Vector3.zero;
+            mrb.position = newPos; mrb.rotation = newRot;
+            m.transform.SetPositionAndRotation(newPos, newRot);
+        }
+        return true;
+    }
+
+    private void RestoreBlockPoses()
+    {
+        foreach (var (mrb, pos, rot) in savedBlockPoses)
+        {
+            if (mrb == null) continue;
+            mrb.position = pos; mrb.rotation = rot;
+            mrb.transform.SetPositionAndRotation(pos, rot);
+        }
+        savedBlockPoses.Clear();
+    }
+
+    /// <summary>self를 block의 수평 축에 맞추려면 돌려야 할 수평 각도(-45~45°). block이 alignMaxBlockTiltDeg 넘게
+    /// 기울었거나 기준 축을 못 잡으면 NaN.</summary>
+    private float YawDeltaToAlign(Transform self, Transform block)
+    {
+        Vector3[] blockAxes = { block.right, block.up, block.forward };
+        float bestUp = 0f; int upAxis = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            float d = Mathf.Abs(Vector3.Dot(blockAxes[i], Vector3.up));
+            if (d > bestUp) { bestUp = d; upAxis = i; }
+        }
+        if (bestUp < Mathf.Cos(alignMaxBlockTiltDeg * Mathf.Deg2Rad)) return float.NaN;
+        Vector3 blockRef = Vector3.ProjectOnPlane(blockAxes[(upAxis + 1) % 3], Vector3.up);
+        Vector3[] selfAxes = { self.right, self.forward, self.up };
+        Vector3 selfRef = Vector3.zero; float bestFlat = -1f;
+        foreach (Vector3 a in selfAxes)
+        {
+            float flat = 1f - Mathf.Abs(a.y);
+            if (flat > bestFlat) { bestFlat = flat; selfRef = a; }
+        }
+        selfRef = Vector3.ProjectOnPlane(selfRef, Vector3.up);
+        if (blockRef.sqrMagnitude < 1e-6f || selfRef.sqrMagnitude < 1e-6f) return float.NaN;
+        float delta = Vector3.SignedAngle(selfRef, blockRef, Vector3.up);
+        return Mathf.Repeat(delta + 45f, 90f) - 45f; // 90° 대칭이라 -45~45°로 접는다
+    }
+
+    /// <summary>[대체 경로] 블록을 돌릴 수 없을 때(돌린 자리가 막힘·참가자 PC) 정육면체를 블록의 수평 축에 맞게 수평으로
+    /// 돌린다(최대 45°). 면이 비뚤어진 채(허용 20°) 도킹하면 그 각도로 고정돼 모서리가 블록에 파고들고 겹침 해소로
+    /// 한쪽으로 밀렸다(2026-11-27). 정육면체는 물리 회전만 고정(FreezeRotation)이라 코드로 돌릴 수 있고 그 방향이 유지된다.</summary>
+    private bool AlignYawToBlock(Transform block)
+    {
+        preAlignRotation = transform.rotation;
+        float delta = YawDeltaToAlign(transform, block);
+        if (float.IsNaN(delta) || Mathf.Abs(delta) < 0.05f) return false;
+
+        Quaternion rotated = Quaternion.AngleAxis(delta, Vector3.up) * transform.rotation;
+        body.rotation = rotated;
+        transform.rotation = rotated;
+        return true;
+    }
+
     // 정육면체를 offset만큼 옮긴 자리가 비어 있는가. 자기 몸·도킹 대상 구조물은 무시한다(면이 맞닿아 있으므로
-    // 5% 줄여 검사). 정육면체는 회전이 고정이라 축 정렬 박스로 충분하다.
+    // 5% 줄여 검사).
     private bool IsDockPoseClear(Vector3 offset)
     {
         if (selfBox == null || aimed == null) return false;
-        Bounds b = selfBox.bounds;
-        Collider[] hits = Physics.OverlapBox(b.center + offset, b.extents * 0.95f, Quaternion.identity,
-                                             ~0, QueryTriggerInteraction.Ignore);
+        // 방향 맞춤으로 정육면체가 축에서 돌아갈 수 있으니 월드 AABB가 아니라 실제 방향의 박스로 검사한다(AABB는 부풀어 오탐).
+        Transform t = selfBox.transform;
+        Vector3 center = t.TransformPoint(selfBox.center) + offset;
+        Vector3 half = Vector3.Scale(selfBox.size, t.lossyScale) * 0.5f * 0.95f;
+        Collider[] hits = Physics.OverlapBox(center, half, t.rotation, ~0, QueryTriggerInteraction.Ignore);
         foreach (Collider h in hits)
         {
             if (h.transform.IsChildOf(transform) || transform.IsChildOf(h.transform)) continue;

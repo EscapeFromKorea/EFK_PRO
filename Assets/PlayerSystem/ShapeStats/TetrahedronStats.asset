@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: TetrahedronStats
   m_EditorClassIdentifier: 
   kind: 2
-  moveSpeed: 5
+  moveSpeed: 6
   jumpHeight: 2
   mass: 1
   friction: 0.8

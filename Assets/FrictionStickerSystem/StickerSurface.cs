@@ -53,6 +53,18 @@ public class StickerSurface : MonoBehaviour, IMpSynced, IMpEventSink
     public Collider ResolvedCollider =>
         targetCollider != null ? targetCollider : GetComponent<Collider>();
 
+    // 플레이어 이동은 접지 중 속도를 직접 대입해 물리 마찰을 거의 안 받는다 — 그래서 스티커 효과를
+    // PlayerMover에 직접 알린다(미끄럼 = 관성 있게 미끄러짐, 벨크로 = 비탈에서도 붙듦).
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void RegisterTractionHook() => PlayerMover.GroundTractionHook = TractionOf;
+
+    private static int TractionOf(Collider ground)
+    {
+        StickerSurface surface = ground.GetComponentInParent<StickerSurface>();
+        if (surface == null || surface.Current == null || surface.ResolvedCollider != ground) return 0;
+        return surface.Current.Kind == StickerKind.Slip ? -1 : 1;
+    }
+
     // 기존 씬 검색은 활성 GameObject의 비활성 마커도 반환한다.
     private void Awake()
     {
