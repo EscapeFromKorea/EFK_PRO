@@ -73,6 +73,13 @@ public class PlayerMover : MonoBehaviour
              "안 떨어지는 문제를 막는 벽 감지 거리(Unit). 몸 중심에서 이동 방향으로 이만큼 안에 벽(수직면)이 " +
              "있으면 그 벽으로 미는 성분을 지워, 벽면을 따라만 움직이고 중력으로 미끄러져 내려오게 한다. 0이면 비활성.")]
     public float airWallCheckDistance = 0.7f;
+    [Tooltip("땅에서도 실제로 닿아 있는 벽으로 미는 입력 성분을 지운다. 안 지우면 매 스텝 벽 안쪽으로 대입한 " +
+             "속도가 큰 접촉력을 만들고, 구의 구르는 회전이 그 마찰로 벽을 타고 올라간다(2026-11-27 실측: 1.5칸 상승). " +
+             "움직이는 물체(딱딱 블록 등 non-kinematic Rigidbody)는 벽으로 치지 않아 밀기는 그대로다.")]
+    public bool groundWallDeflect = true;
+    [Tooltip("자유회전 도형(구)이 벽에 부딪혀 마찰로 튀어오를 수 있는 최대 높이(칸). 벽에 닿기 시작한 높이 기준이며, " +
+             "닿을 때마다 한 번만 허용한다(벽에서 떨어졌다 다시 닿아야 다시 오른다). 점프·점프대 상승은 자르지 않는다.")]
+    public float wallBumpHeight = 0.5f;
 
     [Header("구르는 회전 연출 (접지 중에만 적용)")]
     [Tooltip("굴렀을 때의 반경으로 취급할 값(대략 오브젝트 반지름/절반 크기). " +
@@ -283,6 +290,7 @@ public class PlayerMover : MonoBehaviour
         shapeController = GetComponent<PlayerShapeController>();
         // Player_Collider(자식)에 붙는다 — 경사면 롤링(레거시 경로)이 이미 필터링된 법선을 읽는 데 쓴다.
         groundContact = GetComponentInChildren<PlayerGroundContact>();
+        jumpComp = GetComponent<PlayerJump>();
 
         if (shapeController == null)
             groundLayer &= ~(1 << gameObject.layer);
@@ -375,6 +383,8 @@ public class PlayerMover : MonoBehaviour
         if (Mathf.Abs(yaw) > 0.0001f)
             move = Quaternion.AngleAxis(yaw, Vector3.up) * move;
 
+        bool wallBumpCapped = UpdateWallBump();
+
         if (!IsGrounded())
         {
             // 공중 수평 속도 = 지상 속도 × airControlMultiplier(0.6). 도달 규격표의 가로 거리가
@@ -391,6 +401,10 @@ public class PlayerMover : MonoBehaviour
             airVelocity = rb.linearVelocity;
             lastTravelVelocity = Vector3.zero; // 공중에서는 이동 성분을 비탈에 대입하지 않았다.
             Vector3 airMove = DeflectAirMoveFromWall(move);
+            // 비스듬히 닿은 벽은 광선이 놓친다 — 실제 접촉 법선으로도 지워 공중에서 벽 마찰로 더 오르지 않게 한다(수평만, 점프 높이 무관).
+            // 단, 땅에서 시작한 벽 튀어오름이 상한에 닿기 전이면 그 상승을 허용한다(상한까지는 자연스럽게).
+            if (groundWallDeflect && FreeSpin && (wallBumpCapped || !(wallSession && wallStartGrounded)))
+                airMove = DeflectFromTouchingWalls(airMove, out _);
             rb.linearVelocity = new Vector3(airMove.x * airControlMultiplier, rb.linearVelocity.y, airMove.z * airControlMultiplier);
             // 회전은 건드리지 않는다(구는 자유 물리 회전 보존, 다면체는 PlayerVisualRoll이 시각만 처리).
             return;
@@ -411,6 +425,16 @@ public class PlayerMover : MonoBehaviour
         // 여전히 이 분기가 실행된다) Y velocity가 즉시 0으로 덮어써져 "이동 중엔 점프가 안 되는" 것처럼
         // 보였다. Y는 항상 `rb.velocity.y`를 그대로 보존하고(중력/점프의 소유물), 투영은 X/Z 방향에만
         // 적용한다 — 원래 코드가 항상 지키던 계약을 그대로 유지한다.
+        // 땅에서도 벽으로 미는 성분을 지운다 — 구가 벽을 타고 오르는 원인(groundWallDeflect 툴팁). 회전도 아래에서
+        // 이 move로 계산되므로 벽 쪽 구르기 회전까지 함께 사라진다. 광선(공중용)은 비스듬히 닿은 벽을 놓쳐
+        // (45°면 벽까지 0.71 > 감지 0.7 — 실측 0.69칸 상승) 실제 접촉 법선을 쓴다.
+        bool touchingWall = false;
+        if (groundWallDeflect && wallBumpCapped) // 튀어오름 상한(wallBumpHeight)까지는 자연스럽게 오르게 두고, 닿은 뒤부터 지운다
+        {
+            move = DeflectAirMoveFromWall(move, ignoreDynamic: true); // 정면으로 다가가는 벽 — 닿기 전에 미리 지운다
+            move = DeflectFromTouchingWalls(move, out touchingWall);  // 비스듬히 닿은 벽 — 실제 접촉 법선으로 지운다
+        }
+
         Vector3 groundNormal = groundContact != null ? groundContact.GroundNormal : Vector3.up;
         // 밟고 있는 바닥이 스스로 움직이는 dynamic Rigidbody(시소 등)면 그 접촉점의 속도를 목표
         // velocity에 더한다 — 안 더하면 아래에서 그대로 월드 고정값(0 또는 target)을 대입해 회전하는
@@ -496,7 +520,8 @@ public class PlayerMover : MonoBehaviour
             if (rollRadius > 0.0001f)
             {
                 Vector3 desiredAngularVelocity = Vector3.Cross(groundNormal, slopeMove) / rollRadius;
-                rb.angularVelocity = maxAngularAccel > 0f
+                // 벽에 닿아 있으면 회전을 즉시 바꾼다 — 서서히 바꾸면 벽 쪽으로 굴러오던 남은 회전이 벽을 문질러 타고 오른다.
+                rb.angularVelocity = maxAngularAccel > 0f && !touchingWall
                     ? Vector3.MoveTowards(rb.angularVelocity, desiredAngularVelocity, maxAngularAccel * Time.fixedDeltaTime)
                     : desiredAngularVelocity;
             }
@@ -718,7 +743,89 @@ public class PlayerMover : MonoBehaviour
     // 법선력이 사라져 마찰이 못 잡고 중력이 이긴다. 접지 중엔 적용하지 않는다(정상 이동/구르기 유지).
     // 레이어가 아니라 계층(PlayerMover 보유)으로 자신·타 플레이어를 걸러, 벽이 플레이어와 같은
     // Default 레이어여도 벽만 감지한다.
-    private Vector3 DeflectAirMoveFromWall(Vector3 horizontalMove)
+    // ── 벽 튀어오름 상한 ──
+    private bool wallSession, wallCapped, wallStartGrounded;
+    private float wallRefY, lastWallTouch;
+    private PlayerJump jumpComp;
+    private bool FreeSpin => rb != null && (rb.constraints & RigidbodyConstraints.FreezeRotation) != RigidbodyConstraints.FreezeRotation;
+
+    /// <summary>벽 접촉 구간을 추적해, 닿기 시작한 높이에서 wallBumpHeight만큼 오르면 위로 솟는 속도를 끊고
+    /// 이후 벽 밀기를 지우게 한다(true 반환). 정육면체·정사면체는 회전이 고정돼 벽을 타지 않으므로 대상이 아니다.</summary>
+    private bool UpdateWallBump()
+    {
+        if (!groundWallDeflect || !FreeSpin) return false;
+        bool touching = touchingWallCount > 0 && Time.fixedTime - touchingWallTime <= Time.fixedDeltaTime * 1.5f;
+        if (touching) lastWallTouch = Time.fixedTime;
+        if (!wallSession && touching)
+        {
+            wallSession = true; wallCapped = false;
+            wallRefY = rb.position.y; wallStartGrounded = IsGrounded();
+        }
+        else if (wallSession && Time.fixedTime - lastWallTouch > 0.2f)
+        {
+            wallSession = false; wallCapped = false; // 벽에서 떨어졌다 — 다음에 닿으면 다시 한 번 허용
+        }
+        if (wallSession && !wallCapped)
+        {
+            // 지금 위로 솟는 속도 그대로면 꼭대기가 어디일지 예측해, 상한을 넘을 것 같으면 그 순간 속도를 줄여 꼭대기를
+            // 정확히 상한에 맞춘다. 상한에 "닿은 뒤" 0으로 끊으면 남은 관성만큼 속도에 따라 0.05~0.15 더 올랐다(실측).
+            float vy = rb.linearVelocity.y;
+            // 무중력 버블 등 개별 중력 배율이 걸려 있으면 그 실효 중력으로 예측한다(PlayerJump.LaunchToHeight와 같은 기준).
+            PlayerGravityOverride gravityOverride = GetComponent<PlayerGravityOverride>();
+            float g = Mathf.Max(0.01f, gravityOverride != null ? gravityOverride.EffectiveGravityMagnitude : Mathf.Abs(Physics.gravity.y));
+            float limitY = wallRefY + wallBumpHeight;
+            float apex = rb.position.y + (vy > 0f ? vy * vy / (2f * g) : 0f);
+            if (apex >= limitY)
+            {
+                wallCapped = true;
+                // 땅에서 시작한 벽 타기만 자른다. 점프·점프대 상승, 공중에서 닿은 경우(투석기·트램펄린 등 다른 발사)는 건드리지 않는다.
+                bool launched = jumpComp != null && jumpComp.RecentlyLaunched;
+                if (wallStartGrounded && !launched && vy > 0f)
+                {
+                    float allowed = Mathf.Sqrt(2f * g * Mathf.Max(0f, limitY - rb.position.y));
+                    rb.linearVelocity = new Vector3(rb.linearVelocity.x, Mathf.Min(vy, allowed), rb.linearVelocity.z);
+                }
+            }
+        }
+        return wallSession && wallCapped;
+    }
+
+    // 직전 물리 스텝에 닿아 있던 벽(수직면, 움직이지 않는 콜라이더)의 법선. 모서리에서 두 벽에 닿을 수 있어 둘까지 둔다.
+    private readonly Vector3[] touchingWallNormals = new Vector3[2];
+    private int touchingWallCount;
+    private float touchingWallTime = -1f;
+
+    private void OnCollisionStay(Collision collision)
+    {
+        if (!groundWallDeflect) return;
+        // 밀 수 있는 물체·다른 플레이어는 벽이 아니다(밀기·부딪힘은 그대로).
+        if (collision.rigidbody != null && !collision.rigidbody.isKinematic) return;
+        if (collision.collider.GetComponentInParent<PlayerMover>() != null) return;
+        if (touchingWallTime != Time.fixedTime) { touchingWallTime = Time.fixedTime; touchingWallCount = 0; }
+        int n = collision.contactCount;
+        for (int i = 0; i < n && touchingWallCount < touchingWallNormals.Length; i++)
+        {
+            Vector3 normal = collision.GetContact(i).normal;
+            if (Mathf.Abs(normal.y) >= 0.5f) continue; // 바닥·천장 제외
+            normal.y = 0f;
+            touchingWallNormals[touchingWallCount++] = normal.normalized;
+        }
+    }
+
+    private Vector3 DeflectFromTouchingWalls(Vector3 horizontalMove, out bool touching)
+    {
+        // OnCollisionStay는 물리 스텝 뒤에 불리므로, 이번 FixedUpdate가 보는 건 바로 직전 스텝의 접촉이다.
+        touching = touchingWallCount > 0 && Time.fixedTime - touchingWallTime <= Time.fixedDeltaTime * 1.5f;
+        if (!touching) return horizontalMove;
+        for (int i = 0; i < touchingWallCount; i++)
+        {
+            float into = Vector3.Dot(horizontalMove, touchingWallNormals[i]);
+            if (into < 0f) horizontalMove -= into * touchingWallNormals[i];
+        }
+        return horizontalMove;
+    }
+
+    private Vector3 DeflectAirMoveFromWall(Vector3 horizontalMove, bool ignoreDynamic = false)
     {
         if (airWallCheckDistance <= 0f || horizontalMove.sqrMagnitude < 1e-4f) return horizontalMove;
 
@@ -731,6 +838,7 @@ public class PlayerMover : MonoBehaviour
             RaycastHit h = airWallRaycastBuffer[i];
             if (h.collider.GetComponentInParent<PlayerMover>() != null) continue; // 자신·타 플레이어 제외
             if (Mathf.Abs(h.normal.y) >= 0.5f) continue;                          // 바닥/천장 제외 — '벽(수직면)'만
+            if (ignoreDynamic && h.rigidbody != null && !h.rigidbody.isKinematic) continue; // 땅에서는 밀 수 있는 물체를 벽으로 치지 않는다
             if (h.distance < bestDist) { bestDist = h.distance; wallNormal = h.normal; }
         }
         if (wallNormal == Vector3.zero) return horizontalMove;
