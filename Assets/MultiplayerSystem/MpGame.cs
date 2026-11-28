@@ -96,7 +96,7 @@ public class MpCamera : MonoBehaviour
 
     void Update()
     {
-        if (follow != null) return;
+        if (follow != null || InputGate.Blocked) return;
         if (Input.GetKey(KeyCode.Q)) NetProtoRunner.CamYaw -= 90f * Time.deltaTime;
         if (Input.GetKey(KeyCode.E)) NetProtoRunner.CamYaw += 90f * Time.deltaTime;
     }

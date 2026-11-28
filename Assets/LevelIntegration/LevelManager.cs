@@ -103,6 +103,9 @@ public sealed class LevelManager : MonoBehaviour
 
     public void CompleteLevel()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        QaCommandConsole.CloseForStageClear();
+#endif
         if (OnClearOverride != null) { OnClearOverride(); return; }
         if (cleared) return;
         if (CurrentIndex() < 0) { Debug.LogError("The current scene is not in LevelManager's level list."); return; }

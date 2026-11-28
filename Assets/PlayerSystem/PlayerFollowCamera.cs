@@ -338,7 +338,7 @@ public class PlayerFollowCamera : MonoBehaviour
         // ─── [mnppi 추가] 마우스 입력 → 궤도 각도 갱신 + 커서 락 유지 ───
         if (enableMouseOrbit)
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (Input.GetKeyDown(KeyCode.Escape) && InputGate.PanelClosedFrame != Time.frameCount)
                 SetCursorLocked(false);
             else if (lockCursorOnPlay && !CursorFree && Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0))
             {
