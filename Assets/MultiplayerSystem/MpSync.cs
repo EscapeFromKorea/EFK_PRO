@@ -157,7 +157,11 @@ public static class MpSync
     /// <summary>기믹을 등록하고 ID를 돌려준다. 이미 서버가 올린 값이 있으면 곧바로 적용한다(늦게 합류·재접속).</summary>
     public static uint Register(Component c)
     {
-        uint id = IdOf(c);
+        return Register(c, IdOf(c));
+    }
+
+    internal static uint Register(Component c, uint id)
+    {
         if (reg.TryGetValue(id, out var old) && old != null && old != c)
             Debug.LogWarning($"[MpSync] ID 충돌 {id}: {PathOf(old)} / {PathOf(c)} — 같은 타입이 한 오브젝트에 둘이거나 해시 충돌");
         reg[id] = c;

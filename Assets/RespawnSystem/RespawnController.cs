@@ -115,6 +115,15 @@ public class RespawnController : MonoBehaviour, IMpEventSink
     /// 미루므로 영향이 없다. 구독자를 이 컨트롤러가 알 필요가 없도록 static 이벤트로만 연다.</summary>
     public static event System.Action<PlayerMover> ReleaseHoldRequested;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+    internal static bool TryReleaseForQaTeleport(PlayerMover mover)
+    {
+        if (instance != null && instance.busy.Contains(mover)) return false;
+        ReleaseHoldRequested?.Invoke(mover);
+        return !IsHeld(mover);
+    }
+#endif
+
     private static RespawnController instance;
 
     // 체크포인트는 도형별이 아니라 마지막에 갱신된 하나만 공유한다. 좌표로 들고 있어서 구역이
@@ -477,8 +486,17 @@ public class RespawnController : MonoBehaviour, IMpEventSink
         if (busy.Contains(mover)) return false; // 연출 중 재입력 무시
         if (MpSync.IsClient) SyncCheckpointFromZone();
 
+        Vector3? temporaryGround = null;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (destination == null && QaCommandConsole.TryGetCheckpoint(out Vector3 qaPoint))
+        {
+            temporaryGround = qaPoint;
+            useFade = true;
+        }
+#endif
+
         // 구간 목적지가 있으면 독립 좌표라 공용 체크포인트 유무와 무관하게 진행한다.
-        if (destination == null && !hasCheckpoint)
+        if (destination == null && !hasCheckpoint && !temporaryGround.HasValue)
         {
             if (!automatic || !warnedNoCheckpoint)
             {
@@ -493,7 +511,7 @@ public class RespawnController : MonoBehaviour, IMpEventSink
         // 구간 목적지의 점유 검사 — 벽/도형 겹침 없이, 전부 막히면 강제로 밀어 넣지 않고 이번 호출을
         // 포기한다(docs/PRD/SectionRespawn.md §4 "안전점 다중화"). 아래 좌석 해제보다 먼저 한다 —
         // 복귀가 불발될 호출에서 탑승자를 내려놓으면 안 된다.
-        Vector3? sectionPoint = null;
+        Vector3? sectionPoint = temporaryGround;
         if (destination != null)
         {
             // 예약 시간 = 페이드 아웃 + 순간이동 여유. 실제 도착 뒤엔 몸이 겹침 검사에 직접 잡힌다.

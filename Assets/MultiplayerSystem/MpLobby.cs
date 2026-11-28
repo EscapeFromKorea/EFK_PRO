@@ -80,6 +80,17 @@ public class MpLobby : NetworkBehaviour
             MpSync.TeleportOwnBody(no.transform, position);
     }
 
+    [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+    public void QaGatherRpc(ulong networkObjectId, Vector3 position, int round, RpcParams rpcParams = default)
+    {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (rpcParams.Receive.SenderClientId != NetworkManager.ServerClientId || Round.Value != round) return;
+        if (NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out var no) && no.IsOwner &&
+            no.TryGetComponent(out PlayerMover mover))
+            QaCommandConsole.TeleportPlayer(mover, position);
+#endif
+    }
+
     // 서버 → 참가자 PC: 단말 안내 문구 등
     [Rpc(SendTo.NotServer)]
     public void TextRpc(uint id, string text) => MpSync.ApplyText(id, text);
